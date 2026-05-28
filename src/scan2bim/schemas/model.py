@@ -4,7 +4,6 @@ Jokainen putken vaihe lukee/kirjoittaa tätä: pistepilvi → elementit → IFC/
 """
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Literal
 
@@ -113,8 +112,6 @@ class StructuralModel(BaseModel):
     spaces: list[Space] = Field(default_factory=list)
     discarded: Discarded = Field(default_factory=Discarded)
     metadata: Metadata = Field(default_factory=Metadata)
-
-    # --- serialisointi ---
 
     def save(self, path: str | Path) -> None:
         Path(path).write_text(self.model_dump_json(indent=2), encoding="utf-8")
