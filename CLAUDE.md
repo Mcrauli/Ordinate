@@ -3,47 +3,62 @@
 ## Projektin idea
 
 Pistepilvi → puhdas arkkitehtimalli (rakenteet + tilat, kalusteet/LVI pois). Kaupallinen tavoite.
+Sovelluspohja kuten `dwg2ifc`: PySide6 GUI + CLI + PyInstaller .exe.
 
 ## Ympäristö
 
 ```bash
 py -3.12 -m venv .venv
 .venv\Scripts\activate
-pip install -r requirements.txt
-pytest tests/
+pip install -e ".[gui,dev]"   # kaikki riippuvuudet + editable-asennus
+
+pytest tests/                 # testit
+scan2bim convert input.e57 output/   # CLI
+python -m scan2bim            # GUI
 ```
 
 Projektikansio: `C:/Users/lauri/scan2bim`
 
 ## Navigoi tästä
 
-- `docs/ARCHITECTURE.md` — koko putki + dataflow-kaavio
-- `docs/module-map.md` — moduulikartta (vastuu + sisään/ulos per moduuli)
-- `shared/schemas/` — sisäinen StructuralModel-schema (YDIN)
-- `reference/` — Cloud2BIM + dwg2ifc (verrokki + uudelleenkäytettävä koodi)
+| Haluat tietää...                  | Lue tämä                              |
+|-----------------------------------|---------------------------------------|
+| Miten putki toimii                | `docs/ARCHITECTURE.md`                |
+| Mikä moduuli tekee mitäkin        | `docs/module-map.md`                  |
+| Sisäinen datarakenne              | `src/scan2bim/schemas/model.py`       |
+| GUI-rakenne                       | `src/scan2bim/gui/main_window.py`     |
+| Pipeline-orkestroija              | `src/scan2bim/core/pipeline.py`       |
 
 ## Pääperiaatteet
 
-1. **Schema on sopimus.** Jokainen vaihe: schema sisään → schema ulos. Muuta schemaa vain `shared/schemas/`-kansiosta.
-2. **ElementDetector-rajapinta.** Uusi elementtityyppi = uusi `Detector`-luokka, ei muutoksia muualle.
+1. **Schema on sopimus.** `src/scan2bim/schemas/model.py` — kaikki vaiheet schema sisään → schema ulos.
+2. **ElementDetector-rajapinta.** Uusi elementtityyppi = uusi Detector-luokka (`core/segmentation/`), ei muutoksia muualle.
 3. **Tallenna kaikki välidata.** `data/intermediate/` debuggausta varten.
 4. **Deterministinen ensin, ML vasta myöhemmin.**
-5. **Confidence joka elementille.** Matala confidence → flagataan tarkistukseen.
+5. **Kolme kerrosta erillään** (kuten dwg2ifc): segmentointi (mikä se on) | geometria (miten mitataan) | export (miten kirjoitetaan).
 
 ## Uudelleenkäyttö
 
-- IFC-kirjoituslogiikka: `reference/dwg2ifc/src/dwg2ifc/` (ifcopenshell 0.8+)
+- IFC-kirjoituslogiikka: `reference/dwg2ifc/src/dwg2ifc/core/ifc_writer/` (skeleton + builders)
 - AutoLISP-rutiinit: `reference/dwg2ifc/autocad-tools/`
 - Validointiverrokki: `reference/Cloud2BIM/` (`python cloud2entities.py config.yaml`)
 
 ## Tech stack
 
-Python 3.12, open3d, pye57, laspy, numpy, scipy, opencv-python, ifcopenshell (LGPL), ezdxf (MIT), pydantic 2
+Python 3.12, open3d, pye57, laspy, numpy, scipy, opencv-python, ifcopenshell (LGPL), ezdxf (MIT), pydantic 2, PySide6, click
 
-## Testit
+## Rakenne (src/-layout)
 
-```bash
-pytest tests/                    # kaikki
-pytest tests/test_schema.py      # vain schema
-pytest tests/ -k "geometry"      # filtteri
+```
+src/scan2bim/
+  schemas/     — StructuralModel (YDIN)
+  core/
+    geometry/  — lataus + esikäsittely
+    segmentation/ — ElementDetector + detektorit
+    semantics/ — centerline, paksuus, tilat, confidence
+    ifc/       — IFC4-kirjoitus
+    export/    — DXF + AutoLISP
+    pipeline.py — orkestroija
+  gui/         — PySide6-sovellus
+  cli.py       — Click-CLI
 ```
