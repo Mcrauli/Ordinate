@@ -15,7 +15,9 @@ def load_point_cloud(path: Path) -> o3d.geometry.PointCloud:
         return _load_e57(path)
     if suffix in {".las", ".laz"}:
         return _load_las(path)
-    if suffix in {".pts", ".ply", ".pcd", ".xyz"}:
+    if suffix in {".pts", ".xyz"}:
+        return _load_pts_xyz(path)
+    if suffix in {".ply", ".pcd"}:
         return o3d.io.read_point_cloud(str(path))
 
     raise ValueError(f"Tuntematon formaatti: {suffix}")
@@ -28,6 +30,21 @@ def _load_e57(path: Path) -> o3d.geometry.PointCloud:
     xyz = np.column_stack([data["cartesianX"], data["cartesianY"], data["cartesianZ"]])
     cloud = o3d.geometry.PointCloud()
     cloud.points = o3d.utility.Vector3dVector(xyz.astype(np.float64))
+    return cloud
+
+
+def _load_pts_xyz(path: Path) -> o3d.geometry.PointCloud:
+    lines = path.read_text(encoding="utf-8").splitlines()
+    rows = []
+    for line in lines:
+        parts = line.split()
+        if len(parts) >= 3:
+            try:
+                rows.append([float(parts[0]), float(parts[1]), float(parts[2])])
+            except ValueError:
+                continue
+    cloud = o3d.geometry.PointCloud()
+    cloud.points = o3d.utility.Vector3dVector(np.array(rows, dtype=np.float64))
     return cloud
 
 
