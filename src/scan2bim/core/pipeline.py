@@ -1,14 +1,19 @@
 """
 Pipeline-orkestroija. Ajaa kaikki vaiheet järjestyksessä ja palauttaa StructuralModel.
 Kutsu: model = Pipeline(config).run(input_path, output_dir)
+
+Välidata tallennetaan output_dir/intermediate/ debuggausta varten.
 """
 from __future__ import annotations
 
 import logging
+import time
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
+
+import numpy as np
 
 from scan2bim.schemas.model import StructuralModel, Metadata
 
@@ -17,11 +22,12 @@ log = logging.getLogger(__name__)
 
 @dataclass
 class PipelineConfig:
-    voxel_size: float = 20.0                                   # mm
+    voxel_size: float = 20.0                           # mm
     detector: Literal["ransac", "density"] = "ransac"
     export_ifc: bool = True
     export_dxf: bool = True
     export_lsp: bool = True
+    save_intermediate: bool = True
 
 
 class Pipeline:
@@ -36,20 +42,43 @@ class Pipeline:
         self._progress = progress or (lambda msg: log.info(msg))
 
     def run(self, input_path: Path, output_dir: Path) -> StructuralModel:
+        t0 = time.monotonic()
         output_dir.mkdir(parents=True, exist_ok=True)
+        inter = output_dir / "intermediate"
+        if self.config.save_intermediate:
+            inter.mkdir(exist_ok=True)
 
+        # 1. Lataus
         self._progress(f"Ladataan: {input_path.name}")
         cloud = self._load(input_path)
+        n_raw = len(cloud.points)
+        self._progress(f"  → {n_raw:,} pistettä ladattu")
 
-        self._progress("Esikäsittely (downsample + kohinasuodatus)…")
+        if self.config.save_intermediate:
+            self._save_cloud(cloud, inter / "01_loaded.ply")
+
+        # 2. Esikäsittely
+        self._progress(f"Esikäsittely (voxel {self.config.voxel_size:.0f} mm)…")
         cloud = self._preprocess(cloud)
+        n_pre = len(cloud.points)
+        self._progress(f"  → {n_pre:,} pistettä esikäsittelyn jälkeen ({n_pre/n_raw*100:.1f} %)")
 
-        self._progress(f"Seinädetektio ({self.config.detector})…")
+        if self.config.save_intermediate:
+            self._save_cloud(cloud, inter / "02_preprocessed.ply")
+
+        # 3. Segmentointi + semantiikka
+        self._progress("Elementtien tunnistus…")
         model = self._detect(cloud, input_path)
+        self._progress(f"  → {model.summary()}")
 
+        if self.config.save_intermediate:
+            model.save(inter / "03_model_raw.json")
+
+        # 4. JSON-tallennus
         self._progress("Tallennetaan JSON…")
         model.save(output_dir / "model.json")
 
+        # 5. Export
         if self.config.export_ifc:
             self._progress("Kirjoitetaan IFC…")
             self._write_ifc(model, output_dir / "model.ifc")
@@ -62,10 +91,11 @@ class Pipeline:
             self._progress("Kirjoitetaan AutoLISP…")
             self._write_lsp(model, output_dir / "walls.lsp")
 
-        self._progress(f"Valmis. {model.summary()}")
+        elapsed = time.monotonic() - t0
+        self._progress(f"Valmis {elapsed:.1f} s — tulokset: {output_dir.resolve()}")
         return model
 
-    # --- yksityiset vaiheet (stub — korvataan M2+ toteutuksilla) -----------
+    # ------------------------------------------------------------------ #
 
     def _load(self, path: Path):
         from scan2bim.core.geometry.loader import load_point_cloud
@@ -79,10 +109,20 @@ class Pipeline:
         from scan2bim.core.segmentation.wall_detector import WallDetector
         from scan2bim.core.segmentation.slab_detector import SlabDetector
         from scan2bim.core.semantics.spaces import derive_spaces
+
+        self._progress("  Seinädetektio (RANSAC)…")
         walls = WallDetector().detect(cloud)
+        self._progress(f"    → {len(walls)} seinää")
+
+        self._progress("  Laattadetektio (z-histogram)…")
         slabs = SlabDetector().detect(cloud)
+        self._progress(f"    → {len(slabs)} laattaa")
+
+        self._progress("  Tilojen johtaminen…")
         partial = StructuralModel(walls=walls, slabs=slabs)
         spaces = derive_spaces(partial)
+        self._progress(f"    → {len(spaces)} tilaa")
+
         return StructuralModel(
             walls=walls,
             slabs=slabs,
@@ -105,3 +145,11 @@ class Pipeline:
     def _write_lsp(self, model: StructuralModel, path: Path) -> None:
         from scan2bim.core.export.autolisp import write_lsp
         write_lsp(model, path)
+
+    @staticmethod
+    def _save_cloud(cloud, path: Path) -> None:
+        try:
+            import open3d as o3d
+            o3d.io.write_point_cloud(str(path), cloud)
+        except Exception as e:
+            log.warning("Välidatan tallennus epäonnistui: %s", e)

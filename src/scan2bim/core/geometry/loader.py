@@ -1,26 +1,53 @@
-"""Pistepilvi-loaderi: E57 / LAS/LAZ / PTS / PLY → open3d.PointCloud."""
+"""Pistepilvi-loaderi: E57 / LAS/LAZ / PTS / PLY → open3d.PointCloud (mm).
+
+Automaattinen yksikkömuunnos: jos pistedata vaikuttaa olevan metreissä
+(bounding box max < 500), skaalataan × 1000 → millimetreiksi.
+Kynnys 500 m = realistinen yläraja rakennukselle metreissä.
+"""
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import numpy as np
 import open3d as o3d
 
+log = logging.getLogger(__name__)
+
+# Alle tämän max-dimension → todennäköisesti metrissä → skaala × 1000
+_METER_SCALE_THRESHOLD = 500.0
+
 
 def load_point_cloud(path: Path) -> o3d.geometry.PointCloud:
-    """Lataa pistepilvi tiedostosta formaatista riippumatta."""
+    """Lataa pistepilvi tiedostosta formaatista riippumatta. Palauttaa mm-koordinaatit."""
     suffix = path.suffix.lower()
 
     if suffix == ".e57":
-        return _load_e57(path)
-    if suffix in {".las", ".laz"}:
-        return _load_las(path)
-    if suffix in {".pts", ".xyz"}:
-        return _load_pts_xyz(path)
-    if suffix in {".ply", ".pcd"}:
-        return o3d.io.read_point_cloud(str(path))
+        cloud = _load_e57(path)
+    elif suffix in {".las", ".laz"}:
+        cloud = _load_las(path)
+    elif suffix in {".pts", ".xyz"}:
+        cloud = _load_pts_xyz(path)
+    elif suffix in {".ply", ".pcd"}:
+        cloud = o3d.io.read_point_cloud(str(path))
+    else:
+        raise ValueError(f"Tuntematon formaatti: {suffix}")
 
-    raise ValueError(f"Tuntematon formaatti: {suffix}")
+    return _ensure_mm(cloud)
+
+
+def _ensure_mm(cloud: o3d.geometry.PointCloud) -> o3d.geometry.PointCloud:
+    """Skaalaa metrinen pistepilvi millimetreiksi heuristiikalla."""
+    pts = np.asarray(cloud.points)
+    if len(pts) == 0:
+        return cloud
+    max_dim = float(np.ptp(pts, axis=0).max())   # suurin vaihteluväli
+    if max_dim < _METER_SCALE_THRESHOLD:
+        log.info(
+            "Yksikkömuunnos: max dimension %.2f → näyttää metriltä, skaala × 1000", max_dim
+        )
+        cloud.points = o3d.utility.Vector3dVector(pts * 1000.0)
+    return cloud
 
 
 def _load_e57(path: Path) -> o3d.geometry.PointCloud:
