@@ -62,21 +62,21 @@ def _make_room_cloud(
 def test_detect_returns_walls():
     cloud = _make_room_cloud()
     detector = WallDetector(distance_threshold=20.0)
-    walls = detector.detect(cloud)
+    walls, _ = detector.detect(cloud)
     assert len(walls) > 0, "Pitäisi löytää ainakin yksi seinä"
 
 
 def test_detect_finds_four_walls():
     cloud = _make_room_cloud()
     detector = WallDetector(distance_threshold=20.0, num_iterations=500)
-    walls = detector.detect(cloud)
+    walls, _ = detector.detect(cloud)
     assert len(walls) == 4, f"Odotettiin 4 seinää, löytyi {len(walls)}"
 
 
 def test_wall_types():
     cloud = _make_room_cloud()
     detector = WallDetector(distance_threshold=20.0)
-    walls = detector.detect(cloud)
+    walls, _ = detector.detect(cloud)
     for w in walls:
         assert isinstance(w, Wall)
         assert 0.0 <= w.confidence <= 1.0
@@ -91,7 +91,7 @@ def test_wall_dimensions_approx():
     width, depth, height = 6000.0, 4000.0, 2800.0
     cloud = _make_room_cloud(width=width, depth=depth, height=height)
     detector = WallDetector(distance_threshold=20.0)
-    walls = detector.detect(cloud)
+    walls, _ = detector.detect(cloud)
 
     lengths = []
     for w in walls:
@@ -108,7 +108,7 @@ def test_wall_height_approx():
     height = 2800.0
     cloud = _make_room_cloud(height=height)
     detector = WallDetector(distance_threshold=20.0)
-    walls = detector.detect(cloud)
+    walls, _ = detector.detect(cloud)
     for w in walls:
         assert abs(w.height - height) < 200, f"Korkeus {w.height} ei lähellä {height}"
 
@@ -117,7 +117,7 @@ def test_noisy_cloud_still_finds_walls():
     """Paljon kohinaa (15 mm) → löytyy silti seinät."""
     cloud = _make_room_cloud(noise_mm=15.0, rng=np.random.default_rng(7))
     detector = WallDetector(distance_threshold=30.0)
-    walls = detector.detect(cloud)
+    walls, _ = detector.detect(cloud)
     assert len(walls) >= 3, f"Meluisesta pilvistä pitäisi löytyä ≥3 seinää, löytyi {len(walls)}"
 
 
@@ -125,5 +125,5 @@ def test_empty_cloud_returns_empty():
     cloud = o3d.geometry.PointCloud()
     cloud.points = o3d.utility.Vector3dVector(np.zeros((0, 3)))
     detector = WallDetector()
-    walls = detector.detect(cloud)
+    walls, _ = detector.detect(cloud)
     assert walls == []

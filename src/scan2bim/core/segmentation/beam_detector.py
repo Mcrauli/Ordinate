@@ -39,22 +39,25 @@ class BeamDetector(ElementDetector):
         self.eps_mm = eps_mm
         self.min_points = min_points
 
-    def detect(self, cloud: o3d.geometry.PointCloud) -> list[Beam]:
+    def detect(
+        self,
+        cloud: o3d.geometry.PointCloud,
+    ) -> tuple[list[Beam], o3d.geometry.PointCloud]:
         pts = np.asarray(cloud.points)
         if len(pts) < self.min_points:
-            return []
+            return [], cloud
 
         z_max = float(pts[:, 2].max())
         z_lo = z_max - self.sub_ceiling_mm
-        z_hi = z_max - 30.0    # jätetään kattopinnan pisteet pois
+        z_hi = z_max - 30.0
 
-        mask = (pts[:, 2] >= z_lo) & (pts[:, 2] < z_hi)
-        zone_pts = pts[mask]
+        zone_mask = (pts[:, 2] >= z_lo) & (pts[:, 2] < z_hi)
+        zone_pts = pts[zone_mask]
+        zone_idx = np.where(zone_mask)[0]
 
         if len(zone_pts) < self.min_points:
-            return []
+            return [], cloud
 
-        # DBSCAN XY
         zone_2d = zone_pts.copy()
         zone_2d[:, 2] = 0.0
         cloud_2d = o3d.geometry.PointCloud()
@@ -66,6 +69,8 @@ class BeamDetector(ElementDetector):
         ))
 
         beams: list[Beam] = []
+        beam_labels: set[int] = set()
+
         for label in set(labels.tolist()):
             if label == -1:
                 continue
@@ -73,9 +78,18 @@ class BeamDetector(ElementDetector):
             beam = self._cluster_to_beam(cluster, label)
             if beam is not None:
                 beams.append(beam)
+                beam_labels.add(label)
 
-        log.info("BeamDetector: %d palkkia löytyi katto-vyöhykkeestä (z≥%.0f)", len(beams), z_lo)
-        return beams
+        # Poista palkki-inlierit alkuperäisestä pilvestä
+        beam_zone_inlier_idx = zone_idx[np.isin(labels, list(beam_labels))]
+        keep = np.ones(len(pts), dtype=bool)
+        keep[beam_zone_inlier_idx] = False
+        remaining = o3d.geometry.PointCloud()
+        remaining.points = o3d.utility.Vector3dVector(pts[keep])
+
+        log.info("BeamDetector: %d palkkia, %d pistettä jäljellä",
+                 len(beams), int(keep.sum()))
+        return beams, remaining
 
     # ------------------------------------------------------------------ #
 

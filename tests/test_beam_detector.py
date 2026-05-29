@@ -38,7 +38,7 @@ def _make_cloud(
 
 def test_detect_returns_beams():
     cloud = _make_cloud()
-    beams = BeamDetector(sub_ceiling_mm=400, eps_mm=120, min_points=15).detect(cloud)
+    beams, _ = BeamDetector(sub_ceiling_mm=400, eps_mm=120, min_points=15).detect(cloud)
     assert len(beams) > 0
 
 
@@ -46,7 +46,7 @@ def test_detect_finds_two_beams():
     """Odotetaan 2 palkkia; harvalla datalla DBSCAN voi jakaa → tarkistetaan
     että löytyi vähintään 2 ja yhteensä vähintään 2 erillistä Y-positiota."""
     cloud = _make_cloud()
-    beams = BeamDetector(sub_ceiling_mm=400, eps_mm=120, min_points=15).detect(cloud)
+    beams, _ = BeamDetector(sub_ceiling_mm=400, eps_mm=120, min_points=15).detect(cloud)
     assert len(beams) >= 2, f"Löytyi alle 2 palkkia: {len(beams)}"
     # Kumpikin palkki eri Y-positiossa (~1000 ja ~3000)
     y_centers = sorted(set(
@@ -57,7 +57,7 @@ def test_detect_finds_two_beams():
 
 def test_beam_schema_valid():
     cloud = _make_cloud()
-    beams = BeamDetector(sub_ceiling_mm=400, eps_mm=120, min_points=15).detect(cloud)
+    beams, _ = BeamDetector(sub_ceiling_mm=400, eps_mm=120, min_points=15).detect(cloud)
     for b in beams:
         assert isinstance(b, Beam)
         assert 0.0 <= b.confidence <= 1.0
@@ -70,7 +70,7 @@ def test_beam_schema_valid():
 def test_beam_total_span():
     """Kummankin palkin segmentit kattavat X-välin 500–4500mm."""
     cloud = _make_cloud()
-    beams = BeamDetector(sub_ceiling_mm=400, eps_mm=120, min_points=15).detect(cloud)
+    beams, _ = BeamDetector(sub_ceiling_mm=400, eps_mm=120, min_points=15).detect(cloud)
     # Ryhmittele Y:n mukaan (pyöristys 500mm tarkkuudella)
     from collections import defaultdict
     groups: dict[int, list] = defaultdict(list)
@@ -90,12 +90,12 @@ def test_short_cluster_not_beam():
     pts[:, 2] += 2600  # katto-vyöhykkeessä
     cloud = o3d.geometry.PointCloud()
     cloud.points = o3d.utility.Vector3dVector(pts)
-    beams = BeamDetector(sub_ceiling_mm=400, eps_mm=120, min_points=15).detect(cloud)
+    beams, _ = BeamDetector(sub_ceiling_mm=400, eps_mm=120, min_points=15).detect(cloud)
     assert len(beams) == 0
 
 
 def test_empty_cloud():
     cloud = o3d.geometry.PointCloud()
     cloud.points = o3d.utility.Vector3dVector(np.zeros((0, 3)))
-    beams = BeamDetector().detect(cloud)
+    beams, _ = BeamDetector().detect(cloud)
     assert beams == []

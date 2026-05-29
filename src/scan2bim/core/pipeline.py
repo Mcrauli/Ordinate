@@ -110,32 +110,40 @@ class Pipeline:
         from scan2bim.core.segmentation.slab_detector import SlabDetector
         from scan2bim.core.semantics.spaces import derive_spaces
 
-        self._progress("  Seinädetektio (RANSAC)…")
-        walls = WallDetector().detect(cloud)
-        self._progress(f"    -> {len(walls)} seinää")
-
-        self._progress("  Laattadetektio (z-histogram)…")
-        slabs = SlabDetector().detect(cloud)
-        self._progress(f"    -> {len(slabs)} laattaa")
-
-        self._progress("  Pilaridetektio (DBSCAN)…")
         from scan2bim.core.segmentation.column_detector import ColumnDetector
         from scan2bim.core.segmentation.beam_detector import BeamDetector
         from scan2bim.core.semantics.clutter import detect_clutter
-        columns = ColumnDetector().detect(cloud)
-        self._progress(f"    -> {len(columns)} pilaria")
+        from scan2bim.core.semantics.wall_pairing import refine_wall_thicknesses
+
+        # Ketjutettu inlier-subtraktio: jokainen detektori poistaa omat pisteensä
+        self._progress("  Seinädetektio (RANSAC)…")
+        walls_raw, cloud1 = WallDetector().detect(cloud)
+        self._progress(f"    -> {len(walls_raw)} seinää  ({len(cloud1.points):,} pt jäljellä)")
+
+        self._progress("  Seinäpaksuuden tarkennus…")
+        walls = refine_wall_thicknesses(walls_raw)
+        thick_ok = sum(1 for w in walls if w.thickness >= 50)
+        self._progress(f"    -> {thick_ok}/{len(walls)} seinällä mitattu/arvioitu paksuus")
+
+        self._progress("  Laattadetektio (z-histogram)…")
+        slabs, cloud2 = SlabDetector().detect(cloud1)
+        self._progress(f"    -> {len(slabs)} laattaa  ({len(cloud2.points):,} pt jäljellä)")
+
+        self._progress("  Pilaridetektio (DBSCAN)…")
+        columns, cloud3 = ColumnDetector().detect(cloud2)
+        self._progress(f"    -> {len(columns)} pilaria  ({len(cloud3.points):,} pt jäljellä)")
 
         self._progress("  Palkkidetektio (katto-vyöhyke)…")
-        beams = BeamDetector().detect(cloud)
-        self._progress(f"    -> {len(beams)} palkkia")
+        beams, cloud4 = BeamDetector().detect(cloud3)
+        self._progress(f"    -> {len(beams)} palkkia  ({len(cloud4.points):,} pt jäljellä)")
 
         self._progress("  Tilojen johtaminen…")
         partial = StructuralModel(walls=walls, slabs=slabs, columns=columns, beams=beams)
         spaces = derive_spaces(partial)
         self._progress(f"    -> {len(spaces)} tilaa")
 
-        self._progress("  Krääsäanalyysi…")
-        discarded = detect_clutter(cloud, partial)
+        self._progress("  Krääsäanalyysi (jäljellä olevista pisteistä)…")
+        discarded = detect_clutter(cloud4, partial)
         self._progress(f"    -> {discarded.clutter_cluster_count} klusteria merkitty krääsäksi")
 
         return StructuralModel(

@@ -22,9 +22,9 @@ log = logging.getLogger(__name__)
 
 _MAX_FOOTPRINT_MM = 700.0    # max pilarin leveys/syvyys
 _MAX_ASPECT_RATIO = 2.5      # max leveys/syvyys — yli tämän = seinäfragmentti
-_MIN_HEIGHT_MM = 600.0       # min pilarin korkeus
 _CIRCLE_RATIO = 1.3          # width/depth < tämä → pyöreä profiili
-_MIN_INLIERS = 50            # klusterin minimimäärä pisteitä
+_MIN_INLIERS = 50
+_MIN_HEIGHT_MM = 1500.0      # alle tämän → kalusteita, ei rakenteellinen pilari
 
 
 class ColumnDetector(ElementDetector):
@@ -38,12 +38,14 @@ class ColumnDetector(ElementDetector):
         self.eps_mm = eps_mm
         self.min_points = min_points
 
-    def detect(self, cloud: o3d.geometry.PointCloud) -> list[Column]:
+    def detect(
+        self,
+        cloud: o3d.geometry.PointCloud,
+    ) -> tuple[list[Column], o3d.geometry.PointCloud]:
         pts = np.asarray(cloud.points)
         if len(pts) < self.min_points:
-            return []
+            return [], cloud
 
-        # DBSCAN XY-tasoon projisoituna: pisteet eri korkeuksilla samassa pilarissa
         pts_xy = pts.copy()
         pts_xy[:, 2] = 0.0
         cloud_2d = o3d.geometry.PointCloud()
@@ -55,6 +57,7 @@ class ColumnDetector(ElementDetector):
         ))
 
         columns: list[Column] = []
+        column_labels: set[int] = set()
         unique = set(labels.tolist())
         unique.discard(-1)
 
@@ -64,9 +67,16 @@ class ColumnDetector(ElementDetector):
             col = self._cluster_to_column(cluster, label)
             if col is not None:
                 columns.append(col)
+                column_labels.add(label)
 
-        log.info("ColumnDetector: %d pilaria löytyi (%d klusterista)", len(columns), len(unique))
-        return columns
+        # Poista pilariinlierit — jätä noise (-1) ja ei-pilari-klusterit
+        keep = np.array([labels[i] not in column_labels for i in range(len(pts))])
+        remaining = o3d.geometry.PointCloud()
+        remaining.points = o3d.utility.Vector3dVector(pts[keep])
+
+        log.info("ColumnDetector: %d pilaria, %d pistettä jäljellä",
+                 len(columns), int(keep.sum()))
+        return columns, remaining
 
     # ------------------------------------------------------------------ #
 

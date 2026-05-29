@@ -41,10 +41,13 @@ class SlabDetector(ElementDetector):
         self.slab_thickness_mm = slab_thickness_mm
         self.min_area_mm2 = min_area_mm2
 
-    def detect(self, cloud: o3d.geometry.PointCloud) -> list[Slab]:
+    def detect(
+        self,
+        cloud: o3d.geometry.PointCloud,
+    ) -> tuple[list[Slab], o3d.geometry.PointCloud]:
         pts = np.asarray(cloud.points)
         if len(pts) < _MIN_INLIERS:
-            return []
+            return [], cloud
 
         z = pts[:, 2]
         z_min, z_max = float(z.min()), float(z.max())
@@ -58,7 +61,7 @@ class SlabDetector(ElementDetector):
 
         if not peak_bins:
             log.info("SlabDetector: ei tarpeeksi selkeitä vaakatasoja")
-            return []
+            return [], cloud
 
         peak_z = sorted(bin_centers[i] for i in peak_bins)
         log.info("SlabDetector: %d vaakatasoa z=%s", len(peak_z),
@@ -66,6 +69,7 @@ class SlabDetector(ElementDetector):
 
         slabs: list[Slab] = []
         n_peaks = len(peak_z)
+        used_mask = np.zeros(len(pts), dtype=bool)
 
         for j, z_center in enumerate(peak_z):
             if j == 0:
@@ -73,10 +77,10 @@ class SlabDetector(ElementDetector):
             elif j == n_peaks - 1:
                 slab_type = "ceiling"
             else:
-                slab_type = "floor"   # välipohjat → floor
+                slab_type = "floor"
 
-            mask = np.abs(z - z_center) <= self.z_band_mm
-            inliers = pts[mask]
+            band_mask = np.abs(z - z_center) <= self.z_band_mm
+            inliers = pts[band_mask]
             if len(inliers) < _MIN_INLIERS:
                 continue
 
@@ -100,9 +104,15 @@ class SlabDetector(ElementDetector):
                     thickness=self.slab_thickness_mm,
                 )
             )
+            used_mask |= band_mask   # merkitään inlierit
 
-        log.info("SlabDetector: %d laattaa löytyi", len(slabs))
-        return slabs
+        # Poista käytetyt pisteet → jäljellä oleva pilvi
+        remaining = o3d.geometry.PointCloud()
+        remaining.points = o3d.utility.Vector3dVector(pts[~used_mask])
+
+        log.info("SlabDetector: %d laattaa, %d pistettä jäljellä",
+                 len(slabs), int((~used_mask).sum()))
+        return slabs, remaining
 
     # ------------------------------------------------------------------ #
 

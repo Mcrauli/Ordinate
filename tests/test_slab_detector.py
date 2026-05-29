@@ -55,19 +55,19 @@ def _make_room_cloud(
 
 def test_detect_returns_slabs():
     cloud = _make_room_cloud()
-    slabs = SlabDetector().detect(cloud)
+    slabs, _ = SlabDetector().detect(cloud)
     assert len(slabs) > 0
 
 
 def test_detect_finds_floor_and_ceiling():
     cloud = _make_room_cloud()
-    slabs = SlabDetector().detect(cloud)
+    slabs, _ = SlabDetector().detect(cloud)
     assert len(slabs) == 2, f"Odotettiin 2 laattaa, löytyi {len(slabs)}"
 
 
 def test_slab_types():
     cloud = _make_room_cloud()
-    slabs = SlabDetector().detect(cloud)
+    slabs, _ = SlabDetector().detect(cloud)
     types = {s.slab_type for s in slabs}
     assert "floor" in types
     assert "ceiling" in types
@@ -76,7 +76,7 @@ def test_slab_types():
 def test_slab_elevations():
     floor_z, ceiling_z = 0.0, 2800.0
     cloud = _make_room_cloud(floor_z=floor_z, ceiling_z=ceiling_z)
-    slabs = SlabDetector().detect(cloud)
+    slabs, _ = SlabDetector().detect(cloud)
     elevations = sorted(s.elevation for s in slabs)
     assert abs(elevations[0] - floor_z) < 100, f"Lattia z={elevations[0]:.0f}, odotettiin ~{floor_z}"
     assert abs(elevations[-1] - ceiling_z) < 100, f"Katto z={elevations[-1]:.0f}, odotettiin ~{ceiling_z}"
@@ -84,7 +84,7 @@ def test_slab_elevations():
 
 def test_slab_boundary_is_closed():
     cloud = _make_room_cloud()
-    slabs = SlabDetector().detect(cloud)
+    slabs, _ = SlabDetector().detect(cloud)
     for s in slabs:
         assert len(s.boundary) >= 4
         assert s.boundary[0] == s.boundary[-1], "Polygonin pitää olla suljettu"
@@ -92,7 +92,7 @@ def test_slab_boundary_is_closed():
 
 def test_slab_schema_valid():
     cloud = _make_room_cloud()
-    slabs = SlabDetector().detect(cloud)
+    slabs, _ = SlabDetector().detect(cloud)
     for s in slabs:
         assert isinstance(s, Slab)
         assert 0.0 <= s.confidence <= 1.0
@@ -102,11 +102,11 @@ def test_slab_schema_valid():
 def test_empty_cloud_returns_empty():
     cloud = o3d.geometry.PointCloud()
     cloud.points = o3d.utility.Vector3dVector(np.zeros((0, 3)))
-    slabs = SlabDetector().detect(cloud)
+    slabs, _ = SlabDetector().detect(cloud)
     assert slabs == []
 
 
 def test_noisy_cloud_finds_slabs():
     cloud = _make_room_cloud(noise_mm=12.0, rng=np.random.default_rng(55))
-    slabs = SlabDetector(z_band_mm=60.0).detect(cloud)
+    slabs, _ = SlabDetector(z_band_mm=60.0).detect(cloud)
     assert len(slabs) >= 1

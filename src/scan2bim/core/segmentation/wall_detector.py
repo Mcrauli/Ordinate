@@ -5,6 +5,9 @@ Algoritmi:
   2. Suodattaa vertikaaliset tasot (|normal_z| < threshold).
   3. Yhdistää rinnakkaiset vastaavat tasot pariksi → paksuus.
   4. Poimii akselin PCA:lla, laskee korkeus z-vaihteluvälistä.
+
+Palauttaa (walls, remaining_cloud) — remaining on pilvi ilman seinä-inliereita.
+Lattia/katto-inliereitä EI poisteta, jotta SlabDetector löytää ne.
 """
 from __future__ import annotations
 
@@ -19,23 +22,22 @@ from .base import ElementDetector
 
 log = logging.getLogger(__name__)
 
-# --- Kynnysarvot --------------------------------------------------------- #
-_VERTICAL_NORMAL_Z_MAX = 0.20   # |n_z| < tämä → vertikaalinen taso (seinä)
-_MIN_INLIERS = 300              # alle tämän → ei seinä
-_MIN_LENGTH_MM = 200.0          # min seinäpituus
-_MIN_HEIGHT_MM = 400.0          # min seinäkorkeus
-_THICKNESS_MIN_MM = 50.0        # min järkevä paksuus
-_THICKNESS_MAX_MM = 900.0       # max järkevä paksuus
-_PARALLEL_CROSS_MAX = 0.10      # cross-product normaaleille — alle = rinnakkaiset
-_DEFAULT_THICKNESS_MM = 200.0   # fallback jos paria ei löydy
+_VERTICAL_NORMAL_Z_MAX = 0.20
+_MIN_INLIERS = 300
+_MIN_LENGTH_MM = 200.0
+_MIN_HEIGHT_MM = 400.0
+_THICKNESS_MIN_MM = 50.0
+_THICKNESS_MAX_MM = 900.0
+_PARALLEL_CROSS_MAX = 0.10
+_DEFAULT_THICKNESS_MM = 200.0
 
 
 class WallDetector(ElementDetector):
-    """Löytää seinät pistepilvestä RANSAC-tasosegmentoinnin avulla."""
+    """Löytää seinät RANSAC-tasosegmentoinnilla."""
 
     def __init__(
         self,
-        distance_threshold: float = 25.0,   # mm — inlier-etäisyys tasosta
+        distance_threshold: float = 25.0,
         ransac_n: int = 3,
         num_iterations: int = 1000,
         max_planes: int = 30,
@@ -45,13 +47,14 @@ class WallDetector(ElementDetector):
         self.num_iterations = num_iterations
         self.max_planes = max_planes
 
-    def detect(self, cloud: o3d.geometry.PointCloud) -> list[Wall]:
+    def detect(
+        self,
+        cloud: o3d.geometry.PointCloud,
+    ) -> tuple[list[Wall], o3d.geometry.PointCloud]:
         planes = self._extract_planes(cloud)
-        log.info("Löytyi %d tasoa, joista vertikaalia: %d",
-                 len(planes),
-                 sum(1 for p in planes if abs(p["normal"][2]) < _VERTICAL_NORMAL_Z_MAX))
 
         vertical = [p for p in planes if abs(p["normal"][2]) < _VERTICAL_NORMAL_Z_MAX]
+        log.info("Löytyi %d tasoa, vertikaalia: %d", len(planes), len(vertical))
 
         walls: list[Wall] = []
         used: set[int] = set()
@@ -66,17 +69,18 @@ class WallDetector(ElementDetector):
             if wall is not None:
                 walls.append(wall)
 
-        log.info("WallDetector: %d seinää löytyi", len(walls))
-        return walls
+        # Poista VAIN vertikaaliset (seinä)tasot — lattia/katto jätetään
+        remaining = self._subtract_planes(cloud, vertical)
 
-    # ------------------------------------------------------------------ #
-    # Yksityiset apumetodit
+        log.info("WallDetector: %d seinää, %d pistettä jäljellä",
+                 len(walls), len(remaining.points))
+        return walls, remaining
+
     # ------------------------------------------------------------------ #
 
     def _extract_planes(self, cloud: o3d.geometry.PointCloud) -> list[dict]:
         remaining = cloud
         planes: list[dict] = []
-
         for plane_id in range(self.max_planes):
             if len(remaining.points) < max(self.ransac_n, _MIN_INLIERS):
                 break
@@ -88,25 +92,42 @@ class WallDetector(ElementDetector):
             if len(inliers) < _MIN_INLIERS:
                 break
             normal = np.array(eq[:3])
-            norm_len = np.linalg.norm(normal)
+            norm_len = float(np.linalg.norm(normal))
             if norm_len > 0:
-                normal /= norm_len
+                normal = normal / norm_len
             planes.append({
                 "id": plane_id,
                 "normal": normal,
                 "d": float(eq[3]) / (norm_len if norm_len > 0 else 1.0),
+                "eq": np.array(eq),
                 "cloud": remaining.select_by_index(inliers),
             })
             remaining = remaining.select_by_index(inliers, invert=True)
-
         return planes
 
+    def _subtract_planes(
+        self,
+        cloud: o3d.geometry.PointCloud,
+        planes: list[dict],
+    ) -> o3d.geometry.PointCloud:
+        """Poistaa tiettyjen tasojen inlier-pisteet alkuperäisestä pilvestä."""
+        if not planes:
+            return cloud
+        orig_pts = np.asarray(cloud.points)
+        keep = np.ones(len(orig_pts), dtype=bool)
+        for p in planes:
+            n = p["normal"]
+            d = p["d"]
+            dists = np.abs(orig_pts @ n + d)
+            keep &= dists > self.distance_threshold
+        result = o3d.geometry.PointCloud()
+        result.points = o3d.utility.Vector3dVector(orig_pts[keep])
+        return result
+
     def _find_partner(self, i: int, planes: list[dict]) -> tuple[int | None, float]:
-        """Etsii rinnakkaisen vastakkaisen tason (toinen seinäpinta). Palauttaa (indeksi, paksuus)."""
         p = planes[i]
         best_idx: int | None = None
         best_dist: float | None = None
-
         for j, q in enumerate(planes):
             if j == i:
                 continue
@@ -119,41 +140,34 @@ class WallDetector(ElementDetector):
             if best_dist is None or dist < best_dist:
                 best_dist = dist
                 best_idx = j
-
         return best_idx, (best_dist if best_dist is not None else _DEFAULT_THICKNESS_MM)
 
     def _plane_to_wall(self, plane: dict, thickness: float, paired: bool) -> Wall | None:
         pts = np.asarray(plane["cloud"].points)
         if len(pts) < _MIN_INLIERS:
             return None
-
-        # Akseli: PCA XY-tasoon projisoituna
         xy = pts[:, :2]
         center_xy = xy.mean(axis=0)
         cov = np.cov((xy - center_xy).T)
         _, eigvecs = np.linalg.eigh(cov)
-        axis_dir = eigvecs[:, -1]   # suurin ominaisarvo = pituussuunta
-
+        axis_dir = eigvecs[:, -1]
         proj = (xy - center_xy) @ axis_dir
         p0_xy = center_xy + proj.min() * axis_dir
         p1_xy = center_xy + proj.max() * axis_dir
         length = float(np.linalg.norm(p1_xy - p0_xy))
-
         if length < _MIN_LENGTH_MM:
             return None
-
         height = float(pts[:, 2].max() - pts[:, 2].min())
         if height < _MIN_HEIGHT_MM:
             return None
-
-        # Confidence: enemmän inliirejä + pari löytyi → korkeampi
         raw_conf = min(1.0, len(pts) / 8000.0)
         confidence = round(raw_conf * (0.95 if paired else 0.65), 3)
-
+        # "measured" → RANSAC löysi parin; "default" → ei paria, käytetään oletusta
+        notes = "thickness_measured" if paired else "thickness_default"
         return Wall(
             id=str(uuid.uuid4()),
             confidence=confidence,
-            source=ElementSource(method="ransac", plane_ids=[plane["id"]]),
+            source=ElementSource(method="ransac", plane_ids=[plane["id"]], notes=notes),
             axis=[[float(p0_xy[0]), float(p0_xy[1])],
                   [float(p1_xy[0]), float(p1_xy[1])]],
             height=round(height, 1),

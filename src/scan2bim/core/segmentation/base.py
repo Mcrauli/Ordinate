@@ -10,6 +10,15 @@ from scan2bim.schemas.model import Element
 
 class ElementDetector(ABC):
     @abstractmethod
-    def detect(self, cloud: o3d.geometry.PointCloud) -> list[Element]:
-        """Tunnistaa elementit pistepilvestä. Schema sisään → schema ulos."""
+    def detect(
+        self,
+        cloud: o3d.geometry.PointCloud,
+    ) -> tuple[list[Element], o3d.geometry.PointCloud]:
+        """Tunnistaa elementit pistepilvestä.
+
+        Palauttaa:
+            (elementit, jäljellä_oleva_pilvi)
+            — jäljellä_oleva_pilvi = alkuperäinen pilvi ilman tämän
+              detektorin inlier-pisteitä.
+        """
         ...
