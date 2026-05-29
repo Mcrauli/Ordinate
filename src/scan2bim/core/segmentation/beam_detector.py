@@ -46,8 +46,9 @@ class BeamDetector(ElementDetector):
 
         z_max = float(pts[:, 2].max())
         z_lo = z_max - self.sub_ceiling_mm
+        z_hi = z_max - 30.0    # jätetään kattopinnan pisteet pois
 
-        mask = pts[:, 2] >= z_lo
+        mask = (pts[:, 2] >= z_lo) & (pts[:, 2] < z_hi)
         zone_pts = pts[mask]
 
         if len(zone_pts) < self.min_points:

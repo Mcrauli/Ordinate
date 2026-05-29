@@ -31,7 +31,7 @@ class PipelineConfig:
 
 
 class Pipeline:
-    """Koko pistepilvi → malli -putki."""
+    """Koko pistepilvi -> malli -putki."""
 
     def __init__(
         self,
@@ -52,7 +52,7 @@ class Pipeline:
         self._progress(f"Ladataan: {input_path.name}")
         cloud = self._load(input_path)
         n_raw = len(cloud.points)
-        self._progress(f"  → {n_raw:,} pistettä ladattu")
+        self._progress(f"  -> {n_raw:,} pistettä ladattu")
 
         if self.config.save_intermediate:
             self._save_cloud(cloud, inter / "01_loaded.ply")
@@ -61,7 +61,7 @@ class Pipeline:
         self._progress(f"Esikäsittely (voxel {self.config.voxel_size:.0f} mm)…")
         cloud = self._preprocess(cloud)
         n_pre = len(cloud.points)
-        self._progress(f"  → {n_pre:,} pistettä esikäsittelyn jälkeen ({n_pre/n_raw*100:.1f} %)")
+        self._progress(f"  -> {n_pre:,} pistettä esikäsittelyn jälkeen ({n_pre/n_raw*100:.1f} %)")
 
         if self.config.save_intermediate:
             self._save_cloud(cloud, inter / "02_preprocessed.ply")
@@ -69,7 +69,7 @@ class Pipeline:
         # 3. Segmentointi + semantiikka
         self._progress("Elementtien tunnistus…")
         model = self._detect(cloud, input_path)
-        self._progress(f"  → {model.summary()}")
+        self._progress(f"  -> {model.summary()}")
 
         if self.config.save_intermediate:
             model.save(inter / "03_model_raw.json")
@@ -112,31 +112,31 @@ class Pipeline:
 
         self._progress("  Seinädetektio (RANSAC)…")
         walls = WallDetector().detect(cloud)
-        self._progress(f"    → {len(walls)} seinää")
+        self._progress(f"    -> {len(walls)} seinää")
 
         self._progress("  Laattadetektio (z-histogram)…")
         slabs = SlabDetector().detect(cloud)
-        self._progress(f"    → {len(slabs)} laattaa")
+        self._progress(f"    -> {len(slabs)} laattaa")
 
         self._progress("  Pilaridetektio (DBSCAN)…")
         from scan2bim.core.segmentation.column_detector import ColumnDetector
         from scan2bim.core.segmentation.beam_detector import BeamDetector
         from scan2bim.core.semantics.clutter import detect_clutter
         columns = ColumnDetector().detect(cloud)
-        self._progress(f"    → {len(columns)} pilaria")
+        self._progress(f"    -> {len(columns)} pilaria")
 
         self._progress("  Palkkidetektio (katto-vyöhyke)…")
         beams = BeamDetector().detect(cloud)
-        self._progress(f"    → {len(beams)} palkkia")
+        self._progress(f"    -> {len(beams)} palkkia")
 
         self._progress("  Tilojen johtaminen…")
         partial = StructuralModel(walls=walls, slabs=slabs, columns=columns, beams=beams)
         spaces = derive_spaces(partial)
-        self._progress(f"    → {len(spaces)} tilaa")
+        self._progress(f"    -> {len(spaces)} tilaa")
 
         self._progress("  Krääsäanalyysi…")
         discarded = detect_clutter(cloud, partial)
-        self._progress(f"    → {discarded.clutter_cluster_count} klusteria merkitty krääsäksi")
+        self._progress(f"    -> {discarded.clutter_cluster_count} klusteria merkitty krääsäksi")
 
         return StructuralModel(
             walls=walls,
