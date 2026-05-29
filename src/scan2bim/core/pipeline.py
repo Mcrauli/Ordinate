@@ -76,13 +76,15 @@ class Pipeline:
         return preprocess(cloud, voxel_size=self.config.voxel_size)
 
     def _detect(self, cloud, source_path: Path) -> StructuralModel:
-        # M4: detektorit toteutetaan myöhemmin — palautetaan tyhjä malli
+        from scan2bim.core.segmentation.wall_detector import WallDetector
+        walls = WallDetector().detect(cloud)
         return StructuralModel(
+            walls=walls,
             metadata=Metadata(
                 source_file=source_path.name,
                 voxel_size=self.config.voxel_size,
                 detector_method=self.config.detector,
-            )
+            ),
         )
 
     def _write_ifc(self, model: StructuralModel, path: Path) -> None:
