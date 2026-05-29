@@ -2,6 +2,7 @@
 
 Hierarkia: IfcProject → IfcSite → IfcBuilding → IfcBuildingStorey
 Seinät:    IfcWall, axis-based + SweptSolid body (IfcRectangleProfileDef)
+Laatat:    IfcSlab, arbitrary closed profile + SweptSolid body
 Yksiköt:   mm (IfcSIUnit MILLI METRE)
 """
 from __future__ import annotations
@@ -13,7 +14,7 @@ import numpy as np
 import ifcopenshell
 import ifcopenshell.guid
 
-from scan2bim.schemas.model import StructuralModel, Wall
+from scan2bim.schemas.model import StructuralModel, Wall, Slab
 
 
 def write_ifc(model: StructuralModel, path: Path) -> None:
@@ -29,16 +30,21 @@ def write_ifc(model: StructuralModel, path: Path) -> None:
         if c.ContextIdentifier == "Axis"
     )
 
-    wall_entities = [
-        _create_wall(ifc, w, oh, body_ctx, axis_ctx)
-        for w in model.walls
-    ]
+    elements: list[ifcopenshell.entity_instance] = []
 
-    if wall_entities:
+    for w in model.walls:
+        elements.append(_create_wall(ifc, w, oh, body_ctx, axis_ctx))
+
+    for s in model.slabs:
+        e = _create_slab(ifc, s, oh, body_ctx)
+        if e is not None:
+            elements.append(e)
+
+    if elements:
         ifc.createIfcRelContainedInSpatialStructure(
             GlobalId=ifcopenshell.guid.new(),
             OwnerHistory=oh,
-            RelatedElements=wall_entities,
+            RelatedElements=elements,
             RelatingStructure=storey,
         )
 
@@ -220,6 +226,73 @@ def _create_wall(
         ObjectPlacement=placement,
         Representation=shape,
         PredefinedType="SOLIDWALL",
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Laatta-entiteetti
+# --------------------------------------------------------------------------- #
+
+def _create_slab(
+    ifc: ifcopenshell.file,
+    slab: Slab,
+    oh: ifcopenshell.entity_instance,
+    body_ctx: ifcopenshell.entity_instance,
+) -> ifcopenshell.entity_instance | None:
+    if len(slab.boundary) < 4:   # suljettu polygoni: vähintään 3 pistettä + sulkupiste
+        return None
+
+    # Placement: laatan yläpinnan z-tasolla
+    base_z = slab.elevation - slab.thickness   # laatta kasvaa ylöspäin kohti elevation
+    placement = _axis2placement(
+        ifc,
+        origin=[0.0, 0.0, float(base_z)],
+        x_dir=[1.0, 0.0, 0.0],
+    )
+
+    # Boundary-polygoni paikallisessa XY-tasossa (placement offset huomioitu)
+    pts_2d = [
+        ifc.createIfcCartesianPoint([float(xy[0]), float(xy[1])])
+        for xy in slab.boundary
+    ]
+    polyline = ifc.createIfcPolyline(pts_2d)
+    profile = ifc.createIfcArbitraryClosedProfileDef(
+        ProfileType="AREA",
+        OuterCurve=polyline,
+    )
+
+    extrusion_pos = ifc.createIfcAxis2Placement3D(
+        Location=ifc.createIfcCartesianPoint([0.0, 0.0, 0.0]),
+        Axis=ifc.createIfcDirection([0.0, 0.0, 1.0]),
+        RefDirection=ifc.createIfcDirection([1.0, 0.0, 0.0]),
+    )
+    solid = ifc.createIfcExtrudedAreaSolid(
+        SweptArea=profile,
+        Position=extrusion_pos,
+        ExtrudedDirection=ifc.createIfcDirection([0.0, 0.0, 1.0]),
+        Depth=float(slab.thickness),
+    )
+    body_repr = ifc.createIfcShapeRepresentation(
+        ContextOfItems=body_ctx,
+        RepresentationIdentifier="Body",
+        RepresentationType="SweptSolid",
+        Items=[solid],
+    )
+    shape = ifc.createIfcProductDefinitionShape(Representations=[body_repr])
+
+    ifc_type = {
+        "floor": "FLOOR",
+        "ceiling": "ROOF",
+        "roof": "ROOF",
+    }.get(slab.slab_type, "FLOOR")
+
+    return ifc.createIfcSlab(
+        GlobalId=ifcopenshell.guid.new(),
+        OwnerHistory=oh,
+        Name=f"Slab-{slab.id[:8]}",
+        ObjectPlacement=placement,
+        Representation=shape,
+        PredefinedType=ifc_type,
     )
 
 
