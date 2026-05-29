@@ -120,19 +120,31 @@ class Pipeline:
 
         self._progress("  Pilaridetektio (DBSCAN)…")
         from scan2bim.core.segmentation.column_detector import ColumnDetector
+        from scan2bim.core.segmentation.beam_detector import BeamDetector
+        from scan2bim.core.semantics.clutter import detect_clutter
         columns = ColumnDetector().detect(cloud)
         self._progress(f"    → {len(columns)} pilaria")
 
+        self._progress("  Palkkidetektio (katto-vyöhyke)…")
+        beams = BeamDetector().detect(cloud)
+        self._progress(f"    → {len(beams)} palkkia")
+
         self._progress("  Tilojen johtaminen…")
-        partial = StructuralModel(walls=walls, slabs=slabs)
+        partial = StructuralModel(walls=walls, slabs=slabs, columns=columns, beams=beams)
         spaces = derive_spaces(partial)
         self._progress(f"    → {len(spaces)} tilaa")
+
+        self._progress("  Krääsäanalyysi…")
+        discarded = detect_clutter(cloud, partial)
+        self._progress(f"    → {discarded.clutter_cluster_count} klusteria merkitty krääsäksi")
 
         return StructuralModel(
             walls=walls,
             slabs=slabs,
             columns=columns,
+            beams=beams,
             spaces=spaces,
+            discarded=discarded,
             metadata=Metadata(
                 source_file=source_path.name,
                 voxel_size=self.config.voxel_size,

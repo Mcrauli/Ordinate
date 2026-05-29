@@ -14,7 +14,7 @@ import numpy as np
 import ifcopenshell
 import ifcopenshell.guid
 
-from scan2bim.schemas.model import StructuralModel, Wall, Slab, Space, Column
+from scan2bim.schemas.model import StructuralModel, Wall, Slab, Space, Column, Beam
 
 
 def write_ifc(model: StructuralModel, path: Path) -> None:
@@ -34,6 +34,11 @@ def write_ifc(model: StructuralModel, path: Path) -> None:
 
     for w in model.walls:
         elements.append(_create_wall(ifc, w, oh, body_ctx, axis_ctx))
+
+    for b in model.beams:
+        e = _create_beam(ifc, b, oh, body_ctx)
+        if e is not None:
+            elements.append(e)
 
     for c in model.columns:
         e = _create_column(ifc, c, oh, body_ctx)
@@ -312,6 +317,69 @@ def _create_slab(
         ObjectPlacement=placement,
         Representation=shape,
         PredefinedType=ifc_type,
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Palkki-entiteetti (IfcBeam)
+# --------------------------------------------------------------------------- #
+
+def _create_beam(
+    ifc: ifcopenshell.file,
+    beam: Beam,
+    oh: ifcopenshell.entity_instance,
+    body_ctx: ifcopenshell.entity_instance,
+) -> ifcopenshell.entity_instance | None:
+    p0 = np.array(beam.axis[0], dtype=float)
+    p1 = np.array(beam.axis[1], dtype=float)
+    vec = p1 - p0
+    length = float(np.linalg.norm(vec))
+    if length < 1.0:
+        return None
+    vec_n = vec / length
+
+    mid = (p0 + p1) / 2.0
+    half = length / 2.0
+
+    # X-akseli palkin suuntaan, Z ylös
+    x_dir = [float(vec_n[0]), float(vec_n[1]), float(vec_n[2])]
+    placement = _axis2placement(
+        ifc,
+        origin=[float(mid[0]), float(mid[1]), float(mid[2])],
+        x_dir=x_dir,
+    )
+
+    profile = ifc.createIfcRectangleProfileDef(
+        ProfileType="AREA",
+        XDim=length,
+        YDim=float(beam.profile.width),
+    )
+    extrusion_pos = ifc.createIfcAxis2Placement3D(
+        Location=ifc.createIfcCartesianPoint([0.0, 0.0, -float(beam.profile.height) / 2.0]),
+        Axis=ifc.createIfcDirection([0.0, 0.0, 1.0]),
+        RefDirection=ifc.createIfcDirection([1.0, 0.0, 0.0]),
+    )
+    solid = ifc.createIfcExtrudedAreaSolid(
+        SweptArea=profile,
+        Position=extrusion_pos,
+        ExtrudedDirection=ifc.createIfcDirection([0.0, 0.0, 1.0]),
+        Depth=float(beam.profile.height),
+    )
+    body_repr = ifc.createIfcShapeRepresentation(
+        ContextOfItems=body_ctx,
+        RepresentationIdentifier="Body",
+        RepresentationType="SweptSolid",
+        Items=[solid],
+    )
+    shape = ifc.createIfcProductDefinitionShape(Representations=[body_repr])
+
+    return ifc.createIfcBeam(
+        GlobalId=ifcopenshell.guid.new(),
+        OwnerHistory=oh,
+        Name=f"Beam-{beam.id[:8]}",
+        ObjectPlacement=placement,
+        Representation=shape,
+        PredefinedType="BEAM",
     )
 
 
