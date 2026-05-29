@@ -1,6 +1,6 @@
 # scan2bim
 
-Pistepilvi → puhdas arkkitehtimalli. Irrottaa rakenteet (seinät, laatat, pilarit, palkit) ja tilat point cloudista, suodattaa pois kalusteet ja LVI. Exportoi IFC + DXF + AutoLISP.
+Pistepilvi → puhdas arkkitehtimalli. Tunnistaa rakenteet (seinät, lattia/katto, pilarit, palkit, tilat) pistepilvestä ja suodattaa pois kalusteet ja LVI. Exportoi IFC4 + DXF + AutoLISP.
 
 ## Quickstart
 
@@ -8,38 +8,56 @@ Pistepilvi → puhdas arkkitehtimalli. Irrottaa rakenteet (seinät, laatat, pila
 # Asenna Python 3.12, sitten:
 py -3.12 -m venv .venv
 .venv\Scripts\activate
-pip install -r requirements.txt
+pip install -e ".[gui,dev]"
 
-# Aja putki yhdellä komennolla:
-python scripts/run_pipeline.py data/raw/your_scan.e57
+# Synteettinen testipilvi (ei oikeaa dataa? luo tämä):
+python scripts/make_test_cloud.py --out data/raw/test_room.pts
 
-# Tulos:
-#   data/output/model.json   — sisäinen schema
-#   data/output/model.ifc    — IFC-malli (avaa Solibrissa)
-#   data/output/model.dxf    — DXF (AutoCAD)
-#   data/output/walls.lsp    — AutoLISP-skripti
+# CLI:
+scan2bim convert data/raw/test_room.pts data/output/test_room/
+
+# GUI:
+python -m scan2bim
+
+# Yksikkötestit:
+pytest tests/
 ```
+
+Tulokset kansiossa `data/output/test_room/`:
+- `model.json` — sisäinen schema (StructuralModel)
+- `model.ifc` — IFC4-malli (avaa Solibrissa / BIM Vision)
+- `model.dxf` — DXF (AutoCAD)
+- `walls.lsp` — AutoLISP-skripti
 
 ## Navigointi
 
-| Haluat tietää...                    | Lue tämä                         |
-|-------------------------------------|----------------------------------|
-| Miten putki toimii kokonaisuutena   | `docs/ARCHITECTURE.md`           |
-| Mikä moduuli tekee mitäkin          | `docs/module-map.md`             |
-| Sisäinen datarakenne                | `shared/schemas/`                |
-| Miten ajaa / kehittää               | `CLAUDE.md`                      |
-| Testit                              | `tests/`                         |
+| Haluat tietää...              | Lue tämä                    |
+|-------------------------------|-----------------------------|
+| Miten putki toimii            | `docs/ARCHITECTURE.md`      |
+| Mikä moduuli tekee mitäkin    | `docs/module-map.md`        |
+| Testidatan hankinta + validointi | `docs/testing.md`        |
+| Sisäinen datarakenne          | `src/scan2bim/schemas/model.py` |
+| Kehitysympäristö              | `CLAUDE.md`                 |
 
-## Arkkitehtuuri lyhyesti
+## Putki lyhyesti
 
 ```
-Point Cloud (E57/LAS/PTS)
-  ↓ backend/geometry    — lataus, normalisointi, downsample, kohinasuodatus
-  ↓ backend/segmentation — ElementDetector: seinät, laatat, pilarit, palkit
-  ↓ backend/semantics   — centerline, paksuus, korkeus, confidence, tilat
-  ↓ shared/schemas      — StructuralModel JSON (ydin — kaikki export tästä)
-  ↓ backend/ifc         — → IFC (ifcopenshell)
-  ↓ backend/export      — → DXF (ezdxf) + AutoLISP
+E57 / LAS/LAZ / PTS
+  -> geometry/loader.py     lataus + m->mm-automuunnos
+  -> geometry/preprocess.py voxel-downsample + kohinasuodatus
+  -> segmentation/          WallDetector | SlabDetector | ColumnDetector | BeamDetector
+  -> semantics/             derive_spaces | detect_clutter
+  -> schemas/model.py       StructuralModel JSON  (kaikki export tästä)
+  -> ifc/writer.py          -> IFC4 (IfcWall, IfcSlab, IfcColumn, IfcBeam, IfcSpace)
+  -> export/dxf.py          -> DXF
+  -> export/autolisp.py     -> AutoLISP
 ```
 
-Yksityiskohdat: `docs/ARCHITECTURE.md`
+## Build (.exe)
+
+```powershell
+.\build.ps1
+# -> dist\scan2bim\scan2bim.exe
+```
+
+Vaatii: `pip install pyinstaller` (ajetaan automaattisesti build.ps1:ssä).

@@ -17,7 +17,13 @@ scan2bim convert input.e57 output/   # CLI
 python -m scan2bim            # GUI
 ```
 
-Projektikansio: `C:/Users/lauri/scan2bim`
+Projektikansio: `C:/Users/LauriRekola/scan2bim`
+
+Synteettinen testipilvi (jos ei oikeaa dataa):
+```bash
+python scripts/make_test_cloud.py --out data/raw/test_room.pts
+scan2bim convert data/raw/test_room.pts data/output/test_room/
+```
 
 ## Navigoi tästä
 
@@ -25,6 +31,7 @@ Projektikansio: `C:/Users/lauri/scan2bim`
 |-----------------------------------|---------------------------------------|
 | Miten putki toimii                | `docs/ARCHITECTURE.md`                |
 | Mikä moduuli tekee mitäkin        | `docs/module-map.md`                  |
+| Testidatan hankinta + validointi  | `docs/testing.md`                     |
 | Sisäinen datarakenne              | `src/scan2bim/schemas/model.py`       |
 | GUI-rakenne                       | `src/scan2bim/gui/main_window.py`     |
 | Pipeline-orkestroija              | `src/scan2bim/core/pipeline.py`       |
