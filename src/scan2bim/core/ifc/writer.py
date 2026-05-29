@@ -14,7 +14,7 @@ import numpy as np
 import ifcopenshell
 import ifcopenshell.guid
 
-from scan2bim.schemas.model import StructuralModel, Wall, Slab, Space
+from scan2bim.schemas.model import StructuralModel, Wall, Slab, Space, Column
 
 
 def write_ifc(model: StructuralModel, path: Path) -> None:
@@ -34,6 +34,11 @@ def write_ifc(model: StructuralModel, path: Path) -> None:
 
     for w in model.walls:
         elements.append(_create_wall(ifc, w, oh, body_ctx, axis_ctx))
+
+    for c in model.columns:
+        e = _create_column(ifc, c, oh, body_ctx)
+        if e is not None:
+            elements.append(e)
 
     for s in model.slabs:
         e = _create_slab(ifc, s, oh, body_ctx)
@@ -307,6 +312,66 @@ def _create_slab(
         ObjectPlacement=placement,
         Representation=shape,
         PredefinedType=ifc_type,
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Pilari-entiteetti (IfcColumn)
+# --------------------------------------------------------------------------- #
+
+def _create_column(
+    ifc: ifcopenshell.file,
+    col: Column,
+    oh: ifcopenshell.entity_instance,
+    body_ctx: ifcopenshell.entity_instance,
+) -> ifcopenshell.entity_instance | None:
+    if col.height < 100:
+        return None
+
+    placement = _axis2placement(
+        ifc,
+        origin=[float(col.location[0]), float(col.location[1]), float(col.base_z)],
+        x_dir=[1.0, 0.0, 0.0],
+    )
+
+    if col.profile.shape == "circle":
+        profile = ifc.createIfcCircleProfileDef(
+            ProfileType="AREA",
+            Radius=float(col.profile.width) / 2.0,
+        )
+    else:
+        profile = ifc.createIfcRectangleProfileDef(
+            ProfileType="AREA",
+            XDim=float(col.profile.width),
+            YDim=float(col.profile.depth),
+        )
+
+    extrusion_pos = ifc.createIfcAxis2Placement3D(
+        Location=ifc.createIfcCartesianPoint([0.0, 0.0, 0.0]),
+        Axis=ifc.createIfcDirection([0.0, 0.0, 1.0]),
+        RefDirection=ifc.createIfcDirection([1.0, 0.0, 0.0]),
+    )
+    solid = ifc.createIfcExtrudedAreaSolid(
+        SweptArea=profile,
+        Position=extrusion_pos,
+        ExtrudedDirection=ifc.createIfcDirection([0.0, 0.0, 1.0]),
+        Depth=float(col.height),
+    )
+    body_repr = ifc.createIfcShapeRepresentation(
+        ContextOfItems=body_ctx,
+        RepresentationIdentifier="Body",
+        RepresentationType="SweptSolid",
+        Items=[solid],
+    )
+    shape = ifc.createIfcProductDefinitionShape(Representations=[body_repr])
+
+    return ifc.createIfcColumn(
+        GlobalId=ifcopenshell.guid.new(),
+        OwnerHistory=oh,
+        Name=f"Column-{col.id[:8]}",
+        ObjectPlacement=placement,
+        Representation=shape,
+        PredefinedType="COLUMN",
     )
 
 

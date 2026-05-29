@@ -118,6 +118,11 @@ class Pipeline:
         slabs = SlabDetector().detect(cloud)
         self._progress(f"    → {len(slabs)} laattaa")
 
+        self._progress("  Pilaridetektio (DBSCAN)…")
+        from scan2bim.core.segmentation.column_detector import ColumnDetector
+        columns = ColumnDetector().detect(cloud)
+        self._progress(f"    → {len(columns)} pilaria")
+
         self._progress("  Tilojen johtaminen…")
         partial = StructuralModel(walls=walls, slabs=slabs)
         spaces = derive_spaces(partial)
@@ -126,6 +131,7 @@ class Pipeline:
         return StructuralModel(
             walls=walls,
             slabs=slabs,
+            columns=columns,
             spaces=spaces,
             metadata=Metadata(
                 source_file=source_path.name,
