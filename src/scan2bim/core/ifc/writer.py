@@ -14,7 +14,7 @@ import numpy as np
 import ifcopenshell
 import ifcopenshell.guid
 
-from scan2bim.schemas.model import StructuralModel, Wall, Slab
+from scan2bim.schemas.model import StructuralModel, Wall, Slab, Space
 
 
 def write_ifc(model: StructuralModel, path: Path) -> None:
@@ -39,6 +39,20 @@ def write_ifc(model: StructuralModel, path: Path) -> None:
         e = _create_slab(ifc, s, oh, body_ctx)
         if e is not None:
             elements.append(e)
+
+    space_entities: list[ifcopenshell.entity_instance] = []
+    for sp in model.spaces:
+        e = _create_space(ifc, sp, oh, body_ctx)
+        if e is not None:
+            space_entities.append(e)
+
+    if space_entities:
+        ifc.createIfcRelContainedInSpatialStructure(
+            GlobalId=ifcopenshell.guid.new(),
+            OwnerHistory=oh,
+            RelatedElements=space_entities,
+            RelatingStructure=storey,
+        )
 
     if elements:
         ifc.createIfcRelContainedInSpatialStructure(
@@ -293,6 +307,67 @@ def _create_slab(
         ObjectPlacement=placement,
         Representation=shape,
         PredefinedType=ifc_type,
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Tila-entiteetti (IfcSpace)
+# --------------------------------------------------------------------------- #
+
+def _create_space(
+    ifc: ifcopenshell.file,
+    space: Space,
+    oh: ifcopenshell.entity_instance,
+    body_ctx: ifcopenshell.entity_instance,
+) -> ifcopenshell.entity_instance | None:
+    if len(space.boundary) < 4:
+        return None
+
+    height = float(space.ceiling_z - space.floor_z)
+    if height < 100:
+        return None
+
+    placement = _axis2placement(
+        ifc,
+        origin=[0.0, 0.0, float(space.floor_z)],
+        x_dir=[1.0, 0.0, 0.0],
+    )
+
+    pts_2d = [
+        ifc.createIfcCartesianPoint([float(xy[0]), float(xy[1])])
+        for xy in space.boundary
+    ]
+    polyline = ifc.createIfcPolyline(pts_2d)
+    profile = ifc.createIfcArbitraryClosedProfileDef(
+        ProfileType="AREA",
+        OuterCurve=polyline,
+    )
+    extrusion_pos = ifc.createIfcAxis2Placement3D(
+        Location=ifc.createIfcCartesianPoint([0.0, 0.0, 0.0]),
+        Axis=ifc.createIfcDirection([0.0, 0.0, 1.0]),
+        RefDirection=ifc.createIfcDirection([1.0, 0.0, 0.0]),
+    )
+    solid = ifc.createIfcExtrudedAreaSolid(
+        SweptArea=profile,
+        Position=extrusion_pos,
+        ExtrudedDirection=ifc.createIfcDirection([0.0, 0.0, 1.0]),
+        Depth=height,
+    )
+    body_repr = ifc.createIfcShapeRepresentation(
+        ContextOfItems=body_ctx,
+        RepresentationIdentifier="Body",
+        RepresentationType="SweptSolid",
+        Items=[solid],
+    )
+    shape = ifc.createIfcProductDefinitionShape(Representations=[body_repr])
+
+    return ifc.createIfcSpace(
+        GlobalId=ifcopenshell.guid.new(),
+        OwnerHistory=oh,
+        Name=f"Space-{space.id[:8]}",
+        ObjectPlacement=placement,
+        Representation=shape,
+        PredefinedType="SPACE",
     )
 
 

@@ -78,11 +78,15 @@ class Pipeline:
     def _detect(self, cloud, source_path: Path) -> StructuralModel:
         from scan2bim.core.segmentation.wall_detector import WallDetector
         from scan2bim.core.segmentation.slab_detector import SlabDetector
+        from scan2bim.core.semantics.spaces import derive_spaces
         walls = WallDetector().detect(cloud)
         slabs = SlabDetector().detect(cloud)
+        partial = StructuralModel(walls=walls, slabs=slabs)
+        spaces = derive_spaces(partial)
         return StructuralModel(
             walls=walls,
             slabs=slabs,
+            spaces=spaces,
             metadata=Metadata(
                 source_file=source_path.name,
                 voxel_size=self.config.voxel_size,
