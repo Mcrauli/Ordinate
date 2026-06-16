@@ -21,19 +21,19 @@ def logo_pixmap(size: int = 64) -> QtGui.QPixmap:
     p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
     m = size / 256.0
 
-    p.setPen(QtGui.QPen(_LIME, 12 * m))
+    p.setPen(QtGui.QPen(_LIME, 13 * m))
     p.setBrush(_BG)
-    p.drawRoundedRect(QtCore.QRectF(20 * m, 20 * m, 216 * m, 216 * m), 40 * m, 40 * m)
+    p.drawRoundedRect(QtCore.QRectF(22 * m, 22 * m, 212 * m, 212 * m), 42 * m, 42 * m)
 
     pen = QtGui.QPen(_CYAN, 12 * m)
     pen.setCapStyle(QtCore.Qt.PenCapStyle.RoundCap)
     p.setPen(pen)
-    p.drawLine(QtCore.QPointF(128 * m, 74 * m), QtCore.QPointF(128 * m, 182 * m))
-    p.drawLine(QtCore.QPointF(74 * m, 128 * m), QtCore.QPointF(182 * m, 128 * m))
+    p.drawLine(QtCore.QPointF(128 * m, 68 * m), QtCore.QPointF(128 * m, 188 * m))
+    p.drawLine(QtCore.QPointF(68 * m, 128 * m), QtCore.QPointF(188 * m, 128 * m))
 
     p.setPen(QtCore.Qt.PenStyle.NoPen)
     p.setBrush(_LIME)
-    p.drawEllipse(QtCore.QPointF(128 * m, 128 * m), 26 * m, 26 * m)
+    p.drawEllipse(QtCore.QPointF(128 * m, 128 * m), 21 * m, 21 * m)
     p.end()
     return px
 

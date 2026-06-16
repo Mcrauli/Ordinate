@@ -59,8 +59,7 @@ nav{
 }
 nav .wrap{display:flex;align-items:center;justify-content:space-between;height:66px}
 .brand{display:flex;align-items:center;gap:11px;font-family:"Bricolage Grotesque";font-weight:800;font-size:20px;letter-spacing:-.03em}
-.logo{width:30px;height:30px;border:1.5px solid var(--accent);border-radius:7px;display:grid;place-items:center;position:relative}
-.logo::before{content:"";width:7px;height:7px;background:var(--accent);border-radius:50%;box-shadow:9px 0 0 var(--accent-2),-9px 0 0 var(--muted),0 9px 0 var(--muted),0 -9px 0 var(--accent-2)}
+.logo{width:30px;height:30px;flex:none;display:block}
 .brand b{color:var(--accent)}
 .navlinks{display:flex;gap:30px;font-size:15px;color:var(--muted)}
 .navlinks a:hover{color:var(--ink)}
@@ -220,7 +219,7 @@ footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px}
 
 <nav>
   <div class="wrap">
-    <div class="brand"><span class="logo"></span>scan<b>2</b>bim</div>
+    <div class="brand"><svg class="logo" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><rect x="22" y="22" width="212" height="212" rx="42" fill="#0a0e14" stroke="#c6f24e" stroke-width="13"/><line x1="128" y1="68" x2="128" y2="188" stroke="#39d0d8" stroke-width="12" stroke-linecap="round"/><line x1="68" y1="128" x2="188" y2="128" stroke="#39d0d8" stroke-width="12" stroke-linecap="round"/><circle cx="128" cy="128" r="21" fill="#c6f24e"/></svg>scan<b>2</b>bim</div>
     <div class="navlinks" id="navlinks">
       <a href="#miksi">Miksi</a>
       <a href="#miten">Miten toimii</a>
@@ -320,47 +319,24 @@ footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px}
       <a href="https://github.com/Mcrauli/scan2bim-web/releases" class="btn btn-ghost">Kaikki versiot</a>
     </div>
 
-    <p class="lead" style="margin-top:8px">Kehittäjille: aja suoraan lähdekoodista:</p>
-
-    <div class="code reveal">
-      <div class="bar"><span></span><span></span><span></span><span class="ttl">asennus · PowerShell</span></div>
-<pre><span class="c"># Python 3.12 + virtuaaliympäristö</span>
-py -3.12 -m venv .venv
-.venv\Scripts\activate
-pip install -e <span class="a">".[gui,dev]"</span></pre>
-    </div>
-
-    <div class="usage">
+    <div class="usage" style="margin-top:8px">
       <div class="col">
-        <h3><span class="pill">GUI</span> Työpöytäsovellus</h3>
-        <div class="code">
-          <div class="bar"><span></span><span></span><span></span><span class="ttl">käynnistys</span></div>
-<pre>python <span class="p">-m</span> scan2bim</pre>
-        </div>
-        <p style="color:var(--muted);font-size:15px;margin-top:16px">Avaa ikkunan, jossa raahaat skannitiedostot sisään, säädät voxel-koon ja detektorin, ja näet tuloksen kolmella välilehdellä: <b style="color:var(--ink)">Loki</b>, <b style="color:var(--ink)">Pohja</b> (2D-pohjapiirros värikoodatulla confidencella) ja <b style="color:var(--ink)">QA</b> (poikkeamaraportti). ICP-rekisteröinti ja QA-toleranssi rastitettavissa.</p>
+        <h3>Asenna</h3>
+        <p style="color:var(--muted);font-size:16px;line-height:1.6;margin-top:12px">Tuplaklikkaa <span class="mono" style="color:var(--accent)">scan2bim-Setup.exe</span>. Per-käyttäjä-asennus, ei pääkäyttäjäoikeuksia, ei Pythonia. Työpöytäkuvake ja Käynnistä-valikon merkintä syntyvät automaattisesti, ja sovellus päivittää itsensä GitHubista.</p>
       </div>
-
       <div class="col">
-        <h3><span class="pill">CLI</span> Komentorivi</h3>
-        <div class="code">
-          <div class="bar"><span></span><span></span><span></span><span class="ttl">yksi skanni</span></div>
-<pre>scan2bim <span class="p">convert</span> scan.e57 output/
-
-<span class="c"># koko kansio kerralla</span>
-scan2bim <span class="p">batch</span> data/raw/ output/</pre>
-        </div>
-        <p style="color:var(--muted);font-size:15px;margin-top:16px">Tukee muotoja <span class="mono" style="color:var(--accent)">.ply .e57 .las .laz</span>. <span class="mono" style="color:var(--accent)">batch</span> kirjoittaa jokaiselle skannille oman alikansion ja raportoi onnistumiset lopuksi.</p>
+        <h3>Raahaa &amp; vie</h3>
+        <p style="color:var(--muted);font-size:16px;line-height:1.6;margin-top:12px">Avaa sovellus, raahaa skannitiedostot ikkunaan (<span class="mono" style="color:var(--accent)">.e57 .las .laz .ply</span>), säädä tarkkuus ja seinädetektori, ja vie IFC + DXF. Tulokset näkyvät kolmella välilehdellä: <b style="color:var(--ink)">Loki</b>, <b style="color:var(--ink)">Pohja</b> ja <b style="color:var(--ink)">QA</b>.</p>
       </div>
     </div>
 
-    <h3 style="font-size:24px;margin-top:56px;font-weight:600">Asetukset (<span class="mono" style="color:var(--accent);font-size:18px">convert</span> / <span class="mono" style="color:var(--accent);font-size:18px">batch</span>)</h3>
+    <h3 style="font-size:24px;margin-top:56px;font-weight:600">Asetukset sovelluksessa</h3>
     <table>
-      <thead><tr><th>Optio</th><th>Oletus</th><th>Selitys</th></tr></thead>
+      <thead><tr><th>Asetus</th><th>Oletus</th><th>Selitys</th></tr></thead>
       <tbody>
-        <tr><td><span class="mono">--voxel-size</span></td><td><span class="mono">20.0</span></td><td>Harvennusruudukon koko millimetreinä. Pienempi = tarkempi mutta hitaampi.</td></tr>
-        <tr><td><span class="mono">--detector</span></td><td><span class="mono">normals</span></td><td>Seinädetektori: <span class="mono">normals</span> · <span class="mono">ransac</span> · <span class="mono">density</span> · <span class="mono">floorplan</span>.</td></tr>
-        <tr><td><span class="mono">--no-ifc</span></td><td>–</td><td>Ohita IFC-vienti.</td></tr>
-        <tr><td><span class="mono">--no-dxf</span></td><td>–</td><td>Ohita DXF-vienti.</td></tr>
+        <tr><td>Voxel-koko</td><td><span class="mono">20 mm</span></td><td>Harvennusruudukon koko. Pienempi = tarkempi mutta hitaampi.</td></tr>
+        <tr><td>Seinädetektori</td><td><span class="mono">RANSAC</span></td><td>Tasopohjainen <span class="mono">RANSAC</span> tai 2D-<span class="mono">tiheys</span>.</td></tr>
+        <tr><td>Vienti</td><td><span class="mono">IFC + DXF</span></td><td>Rastita kumman muodon tuotat.</td></tr>
       </tbody>
     </table>
   </div>
@@ -408,7 +384,7 @@ scan2bim <span class="p">batch</span> data/raw/ output/</pre>
 
 <footer>
   <div class="wrap">
-    <div class="brand" style="font-size:17px"><span class="logo" style="width:24px;height:24px"></span>scan<b>2</b>bim</div>
+    <div class="brand" style="font-size:17px"><svg class="logo" style="width:24px;height:24px" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><rect x="22" y="22" width="212" height="212" rx="42" fill="#0a0e14" stroke="#c6f24e" stroke-width="13"/><line x1="128" y1="68" x2="128" y2="188" stroke="#39d0d8" stroke-width="12" stroke-linecap="round"/><line x1="68" y1="128" x2="188" y2="128" stroke="#39d0d8" stroke-width="12" stroke-linecap="round"/><circle cx="128" cy="128" r="21" fill="#c6f24e"/></svg>scan<b>2</b>bim</div>
     <div>Pistepilvi → puhdas arkkitehtimalli · IFC / DXF</div>
   </div>
 </footer>

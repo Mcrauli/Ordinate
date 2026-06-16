@@ -19,17 +19,23 @@ SUP = 4  # supersample factor for antialiasing
 
 
 def _draw() -> Image.Image:
-    s = 256 * SUP
     m = SUP
-    img = Image.new("RGBA", (s, s), (0, 0, 0, 0))
+    img = Image.new("RGBA", (256 * m, 256 * m), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
+    cw = 12 * m   # crosshair stroke width
     d.rounded_rectangle(
-        [20 * m, 20 * m, 236 * m, 236 * m],
-        radius=40 * m, fill=BG, outline=LIME, width=12 * m,
+        [22 * m, 22 * m, 234 * m, 234 * m],
+        radius=42 * m, fill=BG, outline=LIME, width=13 * m,
     )
-    d.line([128 * m, 74 * m, 128 * m, 182 * m], fill=CYAN, width=12 * m)
-    d.line([74 * m, 128 * m, 182 * m, 128 * m], fill=CYAN, width=12 * m)
-    r = 26 * m
+    # Crosshair: equal arms, round caps (drawn as line + end discs).
+    for a, b in (((128, 68), (128, 188)), ((68, 128), (188, 128))):
+        d.line([a[0] * m, a[1] * m, b[0] * m, b[1] * m], fill=CYAN, width=cw)
+        for px, py in (a, b):
+            d.ellipse(
+                [px * m - cw / 2, py * m - cw / 2, px * m + cw / 2, py * m + cw / 2],
+                fill=CYAN,
+            )
+    r = 21 * m
     d.ellipse([128 * m - r, 128 * m - r, 128 * m + r, 128 * m + r], fill=LIME)
     return img
 
