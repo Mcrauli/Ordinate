@@ -10,6 +10,8 @@ from scan2bim.core.pipeline import PipelineConfig
 from scan2bim.gui.file_panel import FilePanel
 from scan2bim.gui.log_panel import LogPanel
 from scan2bim.gui.process_worker import ProcessWorker
+from scan2bim.gui.update_banner import UpdateBanner, UpdateChecker, perform_update
+from scan2bim.core.updater import cleanup_old_exe
 
 
 class MainWindow(QtWidgets.QMainWindow):
@@ -41,6 +43,13 @@ class MainWindow(QtWidgets.QMainWindow):
         title_row.addWidget(sub)
         root.addLayout(title_row)
 
+        # Päivitysbanneri (näkyy vain kun uusi versio löytyy)
+        self._update_banner = UpdateBanner()
+        self._update_banner.update_requested.connect(
+            lambda info: perform_update(info, self)
+        )
+        root.addWidget(self._update_banner)
+
         # Splitter
         splitter = QtWidgets.QSplitter(QtCore.Qt.Orientation.Horizontal)
         splitter.setChildrenCollapsible(False)
@@ -68,6 +77,16 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self._log_panel.info(f"scan2bim {__version__} käynnistetty.")
         self._log_panel.info("Raahaa pistepilvi ikkunaan tai klikkaa drop-aluetta.")
+
+        # Siivoa edellisen päivityksen .old-exe ja tarkista uusi versio.
+        cleanup_old_exe()
+        self._update_checker = UpdateChecker(self)
+        self._update_checker.result.connect(self._on_update_check)
+        self._update_checker.start()
+
+    def _on_update_check(self, info: object) -> None:
+        if info is not None:
+            self._update_banner.show_for(info)
 
     def _on_convert(self, inp: Path, out: Path, cfg: PipelineConfig) -> None:
         self._log_panel.clear()

@@ -116,12 +116,9 @@ class FilePanel(QtWidgets.QWidget):
         self._ifc.setChecked(True)
         self._dxf = QtWidgets.QCheckBox("DXF")
         self._dxf.setChecked(True)
-        self._lsp = QtWidgets.QCheckBox("AutoLISP")
-        self._lsp.setChecked(True)
         ex_row = QtWidgets.QHBoxLayout()
         ex_row.addWidget(self._ifc)
         ex_row.addWidget(self._dxf)
-        ex_row.addWidget(self._lsp)
         ex_row.addStretch()
         form.addRow("Export:", ex_row)
 
@@ -154,7 +151,6 @@ class FilePanel(QtWidgets.QWidget):
             detector=self._detector.currentText(),
             export_ifc=self._ifc.isChecked(),
             export_dxf=self._dxf.isChecked(),
-            export_lsp=self._lsp.isChecked(),
         )
         self.convert_requested.emit(
             self._input_path,

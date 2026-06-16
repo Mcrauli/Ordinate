@@ -28,7 +28,6 @@ def main() -> None:
 )
 @click.option("--no-ifc", is_flag=True, help="Älä tuota IFC")
 @click.option("--no-dxf", is_flag=True, help="Älä tuota DXF")
-@click.option("--no-lsp", is_flag=True, help="Älä tuota AutoLISP")
 def convert(
     input_file: Path,
     output_dir: Path,
@@ -36,7 +35,6 @@ def convert(
     detector: str,
     no_ifc: bool,
     no_dxf: bool,
-    no_lsp: bool,
 ) -> None:
     """Konvertoi pistepilvi arkkitehtimalliksi."""
     import logging
@@ -49,7 +47,6 @@ def convert(
         detector=detector,
         export_ifc=not no_ifc,
         export_dxf=not no_dxf,
-        export_lsp=not no_lsp,
     )
 
     def log(msg: str) -> None:

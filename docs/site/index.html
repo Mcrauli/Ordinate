@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="fi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>scan2bim · pistepilvi puhtaaksi arkkitehtimalliksi</title>
+<meta name="description" content="scan2bim muuntaa laserkeilatun pistepilven puhtaaksi IFC- ja DXF-malliksi. Seinät, laatat, pilarit, ovet ja ikkunat automaattisesti; kalusteet ja LVI pois.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=Spline+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0a0e14;
+  --bg-2:#0f1620;
+  --panel:#121a26;
+  --line:#1e2a3a;
+  --ink:#e6edf5;
+  --muted:#8194a8;
+  --dim:#7589a0;
+  --accent:#c6f24e;      /* keilaus-lime */
+  --accent-2:#39d0d8;    /* point-cloud cyan */
+  --warn:#ffb454;
+  --r:14px;
+  --maxw:1120px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+body{
+  background:var(--bg);
+  color:var(--ink);
+  font-family:"Spline Sans",sans-serif;
+  font-size:17px;
+  line-height:1.65;
+  -webkit-font-smoothing:antialiased;
+  overflow-x:hidden;
+}
+/* point-cloud texture overlay */
+body::before{
+  content:"";position:fixed;inset:0;z-index:0;pointer-events:none;
+  background-image:radial-gradient(var(--line) 1px,transparent 1.4px);
+  background-size:26px 26px;
+  opacity:.35;
+  mask-image:radial-gradient(ellipse 80% 60% at 50% 0%,#000 30%,transparent 75%);
+}
+h1,h2,h3,.display{font-family:"Bricolage Grotesque",sans-serif;line-height:1.04;letter-spacing:-.02em;text-wrap:balance}
+.mono{font-family:"JetBrains Mono",monospace}
+a{color:inherit;text-decoration:none}
+:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:5px}
+section[id]{scroll-margin-top:84px}
+.wrap{max-width:var(--maxw);margin:0 auto;padding:0 26px;position:relative;z-index:1}
+
+/* NAV */
+nav{
+  position:sticky;top:0;z-index:50;
+  backdrop-filter:blur(14px);
+  background:rgba(10,14,20,.72);
+  border-bottom:1px solid var(--line);
+}
+nav .wrap{display:flex;align-items:center;justify-content:space-between;height:66px}
+.brand{display:flex;align-items:center;gap:11px;font-family:"Bricolage Grotesque";font-weight:800;font-size:20px;letter-spacing:-.03em}
+.logo{width:30px;height:30px;border:1.5px solid var(--accent);border-radius:7px;display:grid;place-items:center;position:relative}
+.logo::before{content:"";width:7px;height:7px;background:var(--accent);border-radius:50%;box-shadow:9px 0 0 var(--accent-2),-9px 0 0 var(--muted),0 9px 0 var(--muted),0 -9px 0 var(--accent-2)}
+.brand b{color:var(--accent)}
+.navlinks{display:flex;gap:30px;font-size:15px;color:var(--muted)}
+.navlinks a:hover{color:var(--ink)}
+.navlinks .mono{font-size:13px}
+.navtoggle{display:none;background:none;border:1px solid var(--line);color:var(--ink);width:44px;height:40px;border-radius:9px;font-size:17px;cursor:pointer}
+.navtoggle:hover{border-color:var(--accent);color:var(--accent)}
+@media(max-width:760px){
+  .navtoggle{display:block}
+  .navlinks{display:none}
+  .navlinks.open{
+    display:flex;flex-direction:column;gap:18px;
+    position:absolute;top:66px;left:0;right:0;
+    background:rgba(10,14,20,.97);backdrop-filter:blur(14px);
+    border-bottom:1px solid var(--line);padding:18px 26px
+  }
+}
+
+/* HERO */
+header{padding:96px 0 70px;position:relative}
+.tag{
+  display:inline-flex;align-items:center;gap:9px;
+  font-family:"JetBrains Mono";font-size:12.5px;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--accent);border:1px solid var(--line);background:var(--bg-2);
+  padding:7px 14px;border-radius:100px;margin-bottom:30px
+}
+.tag::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 10px var(--accent)}
+header h1{font-size:clamp(46px,8.2vw,94px);font-weight:800;max-width:13ch;letter-spacing:-.035em}
+header h1 em{font-style:normal;color:var(--accent);position:relative}
+.sub{margin-top:26px;font-size:clamp(18px,2.3vw,22px);color:var(--muted);max-width:56ch}
+.cta{display:flex;gap:14px;margin-top:40px;flex-wrap:wrap}
+.btn{
+  font-family:"Bricolage Grotesque";font-weight:600;font-size:16px;
+  padding:14px 26px;border-radius:11px;border:1px solid transparent;
+  transition:transform .15s ease,background .2s ease,border-color .2s;cursor:pointer
+}
+.btn-primary{background:var(--accent);color:#0a0e14}
+.btn-primary:hover{transform:translateY(-2px)}
+.btn-ghost{border-color:var(--line);color:var(--ink);background:var(--bg-2)}
+.btn-ghost:hover{border-color:var(--accent);color:var(--accent)}
+.btn:active{transform:translateY(0)}
+
+/* pipeline overview strip in hero: at-a-glance shape; detail lives in "Miten" */
+.flow{
+  margin-top:56px;display:flex;flex-wrap:wrap;align-items:center;gap:12px 16px;
+  border:1px solid var(--line);border-radius:var(--r);background:var(--bg-2);padding:20px 24px
+}
+.flow .stage{font-family:"Bricolage Grotesque";font-weight:600;font-size:17px}
+.flow .arr{color:var(--accent);font-size:14px}
+@media(max-width:560px){.flow{gap:10px 12px;padding:18px}.flow .stage{font-size:15px}}
+
+/* SECTIONS */
+section{padding:84px 0;position:relative}
+section.alt{background:var(--bg-2);border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.h2{font-size:clamp(32px,4.6vw,52px);font-weight:800;max-width:18ch}
+.lead{color:var(--muted);font-size:19px;max-width:62ch;margin-top:18px}
+
+/* why: editorial rows, not a card grid */
+.why{margin-top:56px}
+.why-item{
+  padding:38px 0;border-top:1px solid var(--line);
+  display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:48px;align-items:baseline
+}
+.why-item:last-child{border-bottom:1px solid var(--line)}
+.why-item h3{font-size:clamp(27px,3.6vw,42px);font-weight:800;letter-spacing:-.025em;line-height:1.05}
+.why-item h3 em{font-style:normal;color:var(--accent)}
+.why-item p{color:var(--muted);font-size:16.5px;line-height:1.6;max-width:58ch;text-wrap:pretty}
+@media(max-width:760px){.why-item{grid-template-columns:1fr;gap:12px;padding:28px 0}}
+
+/* numbered step sequence (how-it-works) */
+.steps{margin-top:48px}
+.step-row{display:grid;grid-template-columns:auto 1fr;gap:28px;padding:30px 0;border-top:1px solid var(--line);align-items:start}
+.step-row:last-child{border-bottom:1px solid var(--line)}
+.step-row .num{font-family:"Bricolage Grotesque";font-weight:800;font-size:44px;color:var(--accent);line-height:.9;font-variant-numeric:tabular-nums}
+.step-row .tag-mono{font-family:"JetBrains Mono";font-size:12px;color:var(--accent-2);letter-spacing:.06em}
+.step-row h3{font-size:23px;font-weight:600;margin-top:5px}
+.step-row p{color:var(--muted);font-size:15.5px;margin-top:9px;max-width:68ch;text-wrap:pretty}
+@media(max-width:620px){.step-row{grid-template-columns:1fr;gap:6px;padding:24px 0}.step-row .num{font-size:32px}}
+
+/* before/after */
+.ba{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:48px}
+@media(max-width:760px){.ba{grid-template-columns:1fr}}
+.ba .pane{border:1px solid var(--line);border-radius:var(--r);padding:30px;background:var(--panel)}
+.ba .pane.in{border-style:dashed}
+.ba .label{font-family:"JetBrains Mono";font-size:12px;letter-spacing:.1em;text-transform:uppercase;margin-bottom:16px}
+.ba .in .label{color:var(--dim)}
+.ba .out .label{color:var(--accent)}
+.ba .out{border-color:rgba(198,242,78,.5);box-shadow:0 24px 64px -30px rgba(198,242,78,.28)}
+.ba ul{list-style:none}
+.ba li{padding:9px 0;border-bottom:1px solid var(--line);font-size:15.5px;display:flex;gap:10px;align-items:baseline}
+.ba li:last-child{border-bottom:none}
+.ba .in li{color:var(--muted)}
+.ba .in li::before{content:"≈";color:var(--dim);font-family:"JetBrains Mono"}
+.ba .out li::before{content:"✓";color:var(--accent);font-family:"JetBrains Mono"}
+
+/* code blocks */
+.code{
+  background:#070a0f;border:1px solid var(--line);border-radius:var(--r);
+  font-family:"JetBrains Mono";font-size:14px;line-height:1.75;
+  overflow:hidden;margin-top:18px
+}
+.code .bar{display:flex;align-items:center;gap:8px;padding:11px 16px;border-bottom:1px solid var(--line);background:var(--bg-2)}
+.code .bar span{width:11px;height:11px;border-radius:50%;background:var(--line)}
+.code .bar .ttl{margin-left:8px;font-size:12px;color:var(--dim);letter-spacing:.04em}
+.code pre{padding:20px 18px;overflow-x:auto;color:#cfe0d0}
+.code .c{color:var(--dim)}
+.code .p{color:var(--accent)}
+.code .a{color:var(--accent-2)}
+.code .o{color:var(--warn)}
+
+/* usage two-up */
+.usage{display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-top:48px}
+@media(max-width:860px){.usage{grid-template-columns:1fr}}
+.usage .col h3{font-size:24px;display:flex;align-items:center;gap:12px}
+.usage .pill{font-family:"JetBrains Mono";font-size:11px;color:var(--accent-2);border:1px solid var(--line);padding:3px 9px;border-radius:100px;letter-spacing:.06em}
+
+/* options table */
+table{width:100%;border-collapse:collapse;margin-top:24px;font-size:15px}
+th,td{text-align:left;padding:13px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-family:"JetBrains Mono";font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent-2)}
+td .mono{color:var(--accent);font-size:13.5px}
+td:first-child{white-space:nowrap}
+
+/* outputs */
+.outs{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-top:48px}
+@media(max-width:860px){.outs{grid-template-columns:1fr 1fr}}
+@media(max-width:520px){.outs{grid-template-columns:1fr}}
+.out-card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:24px;position:relative;overflow:hidden}
+.out-card .ext{font-family:"Bricolage Grotesque";font-weight:800;font-size:30px;color:var(--accent)}
+.out-card h4{font-size:17px;margin-top:6px}
+.out-card p{font-size:14px;color:var(--muted);margin-top:8px}
+
+/* FAQ */
+details{border:1px solid var(--line);border-radius:var(--r);background:var(--panel);margin-top:14px;overflow:hidden}
+details summary{padding:22px 24px;cursor:pointer;font-family:"Bricolage Grotesque";font-weight:600;font-size:19px;list-style:none;display:flex;justify-content:space-between;align-items:center;gap:16px}
+details summary::-webkit-details-marker{display:none}
+details summary::after{content:"+";color:var(--accent);font-size:24px;transition:transform .2s}
+details[open] summary::after{transform:rotate(45deg)}
+details .body{padding:0 24px 24px;color:var(--muted);font-size:16px}
+
+/* CTA band */
+.band{text-align:center;padding:96px 0}
+.band h2{font-size:clamp(34px,5vw,60px);font-weight:800}
+.band .lead{margin:18px auto 0}
+
+footer{border-top:1px solid var(--line);padding:40px 0;color:var(--dim);font-size:14px}
+footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px}
+
+/* Reveal enhances an already-visible default: content shows without JS;
+   the entrance only arms once JS adds .js to <html>. */
+.reveal{opacity:1;transform:none}
+.js .reveal{opacity:0;transform:translateY(24px);transition:opacity .7s ease,transform .7s ease}
+.js .reveal.show{opacity:1;transform:none}
+@media(prefers-reduced-motion:reduce){.js .reveal{opacity:1;transform:none;transition:none}}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <div class="brand"><span class="logo"></span>scan<b>2</b>bim</div>
+    <div class="navlinks" id="navlinks">
+      <a href="#miksi">Miksi</a>
+      <a href="#miten">Miten toimii</a>
+      <a href="#kaytto">Käyttö</a>
+      <a href="#tulokset">Tulokset</a>
+      <a href="#faq">FAQ</a>
+      <a href="https://github.com/Mcrauli/scan2bim-web/releases/latest/download/scan2bim-Setup.exe">Lataa</a>
+    </div>
+    <button class="navtoggle" aria-label="Avaa valikko" aria-expanded="false" aria-controls="navlinks">☰</button>
+  </div>
+</nav>
+
+<header>
+  <div class="wrap">
+    <span class="tag">Pistepilvi → BIM · IFC / DXF</span>
+    <h1>Laserkeilaus sisään.<br><em>Puhdas malli</em> ulos.</h1>
+    <p class="sub">scan2bim lukee miljoonien pisteiden keilausdatan ja tuottaa siitä siistin, mitattavan arkkitehtimallin: seinät, laatat, pilarit, ovet ja ikkunat tunnistettuna. Kalusteet, LVI ja kohina suodatetaan pois.</p>
+    <div class="cta">
+      <a href="https://github.com/Mcrauli/scan2bim-web/releases/latest/download/scan2bim-Setup.exe" class="btn btn-primary">Lataa Windowsille ↓</a>
+      <a href="#miten" class="btn btn-ghost">Katso miten se toimii</a>
+    </div>
+
+    <div class="flow reveal">
+      <span class="stage">Lataus</span><span class="arr">→</span>
+      <span class="stage">Segmentointi</span><span class="arr">→</span>
+      <span class="stage">Semantiikka</span><span class="arr">→</span>
+      <span class="stage">Malli</span><span class="arr">→</span>
+      <span class="stage">Export</span>
+    </div>
+  </div>
+</header>
+
+<section id="miksi">
+  <div class="wrap">
+    <h2 class="h2">Keilausdata on raakaa. Mallin pitää olla puhdas.</h2>
+    <p class="lead">Laserkeilain antaa kymmeniä miljoonia pisteitä, kaiken mitä huoneessa sattui olemaan. Mallintaja käyttää tuntikausia piirtäessään käsin seiniä pistesumun päälle. scan2bim hoitaa raskaan osan automaattisesti.</p>
+
+    <div class="why">
+      <article class="why-item reveal">
+        <h3>Tunnit <em>minuuteiksi</em></h3>
+        <p>Käsin jäljittämisen sijaan ajat yhden komennon. Geometria johdetaan suoraan datasta, toistettavasti ja deterministisesti.</p>
+      </article>
+      <article class="why-item reveal">
+        <h3>Mitattu, <em>ei arvattu</em></h3>
+        <p>Seinän paksuus, korkeus ja sijainti tulevat itse pisteistä. Jokainen elementti kantaa confidence-arvon, ja poikkeama-analyysi kertoo kuinka hyvin malli istuu pilveen.</p>
+      </article>
+      <article class="why-item reveal">
+        <h3>Suoraan <em>työkaluihisi</em></h3>
+        <p>IFC2X3 avautuu Solibrissa ja Revitissä, DXF AutoCADissa. Ovet ja ikkunat ovat oikeita IfcDoor/IfcWindow-objekteja, eivät pelkkiä reikiä.</p>
+      </article>
+    </div>
+
+    <div class="ba reveal">
+      <div class="pane in">
+        <div class="label">Sisään · raaka pistepilvi</div>
+        <ul>
+          <li>30 M pistettä, kohinaa ja varjoja</li>
+          <li>Kalusteet, johdot, LVI sekaisin rakenteissa</li>
+          <li>Ei geometriaa, ei semantiikkaa</li>
+          <li>Ei mitattavissa suoraan</li>
+        </ul>
+      </div>
+      <div class="pane out">
+        <div class="label">Ulos · StructuralModel</div>
+        <ul>
+          <li>Seinät centerlinellä + paksuudella</li>
+          <li>Laatat, pilarit, ovet, ikkunat, tilat</li>
+          <li>IfcWall / Slab / Column / Door / Window / Space</li>
+          <li>QA-raportti: poikkeama pilveen mm-tasolla</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="miten" class="alt">
+  <div class="wrap">
+    <h2 class="h2">Viisi vaihetta, yksi totuus.</h2>
+    <p class="lead">Jokainen vaihe lukee ja kirjoittaa samaa <span class="mono" style="color:var(--accent)">StructuralModel</span>-objektia. Ei globaaleja muuttujia, ei piilotettuja riippuvuuksia; kaikki export tehdään samasta lähteestä, joten tulos on jäljitettävissä.</p>
+
+    <div class="steps">
+      <div class="step-row reveal"><div class="num">01</div><div><span class="tag-mono">geometry</span><h3>Lataus &amp; esikäsittely</h3><p>E57/LAS/LAZ/PTS sisään. Koordinaatit normalisoidaan, pilvi harvennetaan voxel-ruudukolla ja kohina suodatetaan (statistical outlier + radius). Monen skannin yhdistys ICP-rekisteröinnillä, pisteet linjataan toisiinsa automaattisesti.</p></div></div>
+      <div class="step-row reveal"><div class="num">02</div><div><span class="tag-mono">segmentation</span><h3>Elementtien tunnistus</h3><p>ElementDetector-rajapinta: WallDetector, SlabDetector, ColumnDetector, BeamDetector. Seinät tasodetektiolla ja 2D-tiheydellä, oviaukot seinäpinnan reikinä, varjot eroteltu skannerin sädetestillä.</p></div></div>
+      <div class="step-row reveal"><div class="num">03</div><div><span class="tag-mono">semantics</span><h3>Merkitys &amp; laatu</h3><p>Keskilinja, robusti paksuus (IRLS), korkeus, tilojen johtaminen ja confidence-pisteytys. Kalusteet ja LVI suodatetaan rakenteista pois, jää pelkkä runko.</p></div></div>
+      <div class="step-row reveal"><div class="num">04</div><div><span class="tag-mono">ifc · export</span><h3>Vienti</h3><p>StructuralModelista kirjoitetaan IFC (ifcopenshell) ja DXF (ezdxf). Materiaalit, psetit ja monikerroksinen spatiaalihierarkia mukana. IFC avautuu suoraan Revitiin ja ArchiCADiin muokattavaksi.</p></div></div>
+    </div>
+  </div>
+</section>
+
+<section id="kaytto">
+  <div class="wrap">
+    <h2 class="h2">Asenna ja aja, ei Pythonia tarvita.</h2>
+    <p class="lead">Helpoin tapa: lataa Windows-asennusohjelma. Tuplaklikkaa, ja sovellus on valmis. Päivitykset tulevat automaattisesti: kun uusi versio julkaistaan, sovellus tarjoaa sen käynnistyessä.</p>
+
+    <div class="cta reveal" style="margin:0 0 40px">
+      <a href="https://github.com/Mcrauli/scan2bim-web/releases/latest/download/scan2bim-Setup.exe" class="btn btn-primary">Lataa Windows-asennusohjelma ↓</a>
+      <a href="https://github.com/Mcrauli/scan2bim-web/releases" class="btn btn-ghost">Kaikki versiot</a>
+    </div>
+
+    <p class="lead" style="margin-top:8px">Kehittäjille: aja suoraan lähdekoodista:</p>
+
+    <div class="code reveal">
+      <div class="bar"><span></span><span></span><span></span><span class="ttl">asennus · PowerShell</span></div>
+<pre><span class="c"># Python 3.12 + virtuaaliympäristö</span>
+py -3.12 -m venv .venv
+.venv\Scripts\activate
+pip install -e <span class="a">".[gui,dev]"</span></pre>
+    </div>
+
+    <div class="usage">
+      <div class="col">
+        <h3><span class="pill">GUI</span> Työpöytäsovellus</h3>
+        <div class="code">
+          <div class="bar"><span></span><span></span><span></span><span class="ttl">käynnistys</span></div>
+<pre>python <span class="p">-m</span> scan2bim</pre>
+        </div>
+        <p style="color:var(--muted);font-size:15px;margin-top:16px">Avaa ikkunan, jossa raahaat skannitiedostot sisään, säädät voxel-koon ja detektorin, ja näet tuloksen kolmella välilehdellä: <b style="color:var(--ink)">Loki</b>, <b style="color:var(--ink)">Pohja</b> (2D-pohjapiirros värikoodatulla confidencella) ja <b style="color:var(--ink)">QA</b> (poikkeamaraportti). ICP-rekisteröinti ja QA-toleranssi rastitettavissa.</p>
+      </div>
+
+      <div class="col">
+        <h3><span class="pill">CLI</span> Komentorivi</h3>
+        <div class="code">
+          <div class="bar"><span></span><span></span><span></span><span class="ttl">yksi skanni</span></div>
+<pre>scan2bim <span class="p">convert</span> scan.e57 output/
+
+<span class="c"># koko kansio kerralla</span>
+scan2bim <span class="p">batch</span> data/raw/ output/</pre>
+        </div>
+        <p style="color:var(--muted);font-size:15px;margin-top:16px">Tukee muotoja <span class="mono" style="color:var(--accent)">.ply .e57 .las .laz</span>. <span class="mono" style="color:var(--accent)">batch</span> kirjoittaa jokaiselle skannille oman alikansion ja raportoi onnistumiset lopuksi.</p>
+      </div>
+    </div>
+
+    <h3 style="font-size:24px;margin-top:56px;font-weight:600">Asetukset (<span class="mono" style="color:var(--accent);font-size:18px">convert</span> / <span class="mono" style="color:var(--accent);font-size:18px">batch</span>)</h3>
+    <table>
+      <thead><tr><th>Optio</th><th>Oletus</th><th>Selitys</th></tr></thead>
+      <tbody>
+        <tr><td><span class="mono">--voxel-size</span></td><td><span class="mono">20.0</span></td><td>Harvennusruudukon koko millimetreinä. Pienempi = tarkempi mutta hitaampi.</td></tr>
+        <tr><td><span class="mono">--detector</span></td><td><span class="mono">normals</span></td><td>Seinädetektori: <span class="mono">normals</span> · <span class="mono">ransac</span> · <span class="mono">density</span> · <span class="mono">floorplan</span>.</td></tr>
+        <tr><td><span class="mono">--no-ifc</span></td><td>–</td><td>Ohita IFC-vienti.</td></tr>
+        <tr><td><span class="mono">--no-dxf</span></td><td>–</td><td>Ohita DXF-vienti.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="tulokset" class="alt">
+  <div class="wrap">
+    <h2 class="h2">Kolme tiedostoa, suoraan tuotantoon.</h2>
+    <p class="lead">Yksi ajo tuottaa koko paketin. Sisäinen JSON jää debuggausta varten, loput menevät suoraan suunnittelutyökaluihin.</p>
+
+    <div class="outs" style="grid-template-columns:repeat(3,1fr)">
+      <div class="out-card reveal"><div class="ext">.ifc</div><h4>IFC-malli</h4><p>IFC2X3, avautuu Solibrissa, Revitissä ja ArchiCADissa muokattavaksi. Walls/Slabs/Columns/Doors/Windows/Spaces materiaaleineen.</p></div>
+      <div class="out-card reveal"><div class="ext">.dxf</div><h4>DXF-piirustus</h4><p>2D/3D AutoCADiin (ezdxf). Pohjapiirros suoraan jatkomallinnukseen.</p></div>
+      <div class="out-card reveal"><div class="ext">.json</div><h4>StructuralModel</h4><p>Sisäinen schema + QA-raportti. Kaikki export tästä, täysin jäljitettävä.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="faq">
+  <div class="wrap" style="max-width:820px">
+    <h2 class="h2">Usein kysyttyä</h2>
+
+    <details class="reveal"><summary>Tunnistaako se oikeasti ovet ja ikkunat automaattisesti?</summary><div class="body">Kyllä. Aukot löydetään 2D-yhtenäiskomponenteilla seinäpinnoista, ja sill-korkeus erottaa oven ikkunasta. Ne kirjoitetaan oikeina IfcDoor/IfcWindow-objekteina; psetit, mitat ja materiaalit mukana, eli Solibrissa näkyy tietoa eikä pelkkää reikää.</div></details>
+
+    <details class="reveal"><summary>Toimiiko IFC Revitissä?</summary><div class="body">Toimii. Tuotettu IFC on schema-validi IFC2X3 täydellä spatiaalihierarkialla, oikeilla yksiköillä (mm) ja ilman orpoja elementtejä. Huom: oikean keilausdatan koordinaatit voivat olla kaukana origosta, jolloin Revit voi varoittaa "far from origin", ja tähän voi lisätä nollauspisteen vähennyksen vientiin.</div></details>
+
+    <details class="reveal"><summary>Kuinka tarkka malli on?</summary><div class="body">Geometria johdetaan suoraan pisteistä robustilla sovituksella (IRLS), ja malli on tyypillisesti alle millimetrin tarkkuudella keskimäärin. Per-piste-poikkeama vastaa pääosin keilaimen omaa kohinaa, ei mallin virhettä. QA-raportti antaa poikkeamajakauman valitulla toleranssilla (esim. 2.5 mm).</div></details>
+
+    <details class="reveal"><summary>Mitä tiedostomuotoja syötteeksi kelpaa?</summary><div class="body">E57, LAS, LAZ ja PTS, sekä PLY testaukseen. E57:stä luetaan myös skannerin sijainnit, mitä käytetään varjojen ja aukkojen erottamiseen.</div></details>
+
+    <details class="reveal"><summary>Miten useampi skanni yhdistetään?</summary><div class="body">Kerros käsitellään viipale kerrallaan, ja skannit kohdistetaan toisiinsa ICP-rekisteröinnillä (point-to-plane). Muisti pysyy kurissa: huippukäyttö = yksi tiedosto kerrallaan.</div></details>
+
+    <details class="reveal"><summary>Onko se valmis kaupalliseen käyttöön?</summary><div class="body">Riippuvuudet sallivat kaupallisen käytön (ifcopenshell LGPL pip-asennuksena, ezdxf MIT). Sovellus paketoidaan PyInstallerilla .exe:ksi, sama pohja kuin dwg2ifc-tuotteessa.</div></details>
+  </div>
+</section>
+
+<div class="band wrap">
+  <h2>Anna keilaimen mitata.<br>Anna scan2bimin <span style="color:var(--accent)">mallintaa</span>.</h2>
+  <p class="lead">Yksi komento pistepilvestä valmiiseen IFC-malliin.</p>
+  <div class="cta" style="justify-content:center">
+    <a href="#kaytto" class="btn btn-primary">Aloita käyttö →</a>
+    <a href="#miten" class="btn btn-ghost">Lue arkkitehtuuri</a>
+  </div>
+</div>
+
+<footer>
+  <div class="wrap">
+    <div class="brand" style="font-size:17px"><span class="logo" style="width:24px;height:24px"></span>scan<b>2</b>bim</div>
+    <div>Pistepilvi → puhdas arkkitehtimalli · IFC / DXF</div>
+  </div>
+</footer>
+
+<script>
+// Arm reveal animations only when JS runs; content is visible by default.
+document.documentElement.classList.add('js');
+const io=new IntersectionObserver((es)=>{es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('show');io.unobserve(e.target)}})},{threshold:.15});
+document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
+
+// Mobile nav toggle.
+const tog=document.querySelector('.navtoggle'),links=document.getElementById('navlinks');
+tog.addEventListener('click',()=>{const open=links.classList.toggle('open');tog.setAttribute('aria-expanded',open)});
+links.querySelectorAll('a').forEach(a=>a.addEventListener('click',()=>{links.classList.remove('open');tog.setAttribute('aria-expanded','false')}));
+</script>
+</body>
+</html>

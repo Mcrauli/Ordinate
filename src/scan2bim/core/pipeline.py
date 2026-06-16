@@ -26,7 +26,6 @@ class PipelineConfig:
     detector: Literal["ransac", "density"] = "ransac"
     export_ifc: bool = True
     export_dxf: bool = True
-    export_lsp: bool = True
     save_intermediate: bool = True
 
 
@@ -86,10 +85,6 @@ class Pipeline:
         if self.config.export_dxf:
             self._progress("Kirjoitetaan DXF…")
             self._write_dxf(model, output_dir / "model.dxf")
-
-        if self.config.export_lsp:
-            self._progress("Kirjoitetaan AutoLISP…")
-            self._write_lsp(model, output_dir / "walls.lsp")
 
         elapsed = time.monotonic() - t0
         self._progress(f"Valmis {elapsed:.1f} s — tulokset: {output_dir.resolve()}")
@@ -167,10 +162,6 @@ class Pipeline:
     def _write_dxf(self, model: StructuralModel, path: Path) -> None:
         from scan2bim.core.export.dxf import write_dxf
         write_dxf(model, path)
-
-    def _write_lsp(self, model: StructuralModel, path: Path) -> None:
-        from scan2bim.core.export.autolisp import write_lsp
-        write_lsp(model, path)
 
     @staticmethod
     def _save_cloud(cloud, path: Path) -> None:

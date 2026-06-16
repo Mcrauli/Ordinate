@@ -1,0 +1,84 @@
+name: release
+
+# Tag a release to build + publish the Windows exe and installer:
+#   git tag v0.1.0 && git push origin v0.1.0
+# The GUI's auto-update banner (scan2bim.core.updater) picks up the new
+# release automatically on next launch.
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    name: Windows release build
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Create venv and install
+        shell: pwsh
+        run: |
+          py -3.12 -m venv .venv
+          .\.venv\Scripts\python -m pip install --upgrade pip
+          .\.venv\Scripts\python -m pip install -e ".[gui,build]"
+
+      - name: Build scan2bim.exe
+        shell: pwsh
+        run: .\scripts\build_exe.ps1
+
+      - name: Smoke check exe
+        shell: pwsh
+        run: |
+          # Windowed exe (console=False) cannot write to stdout reliably,
+          # so smoke = artifact exists + plausible size (open3d bundle is large).
+          $exe = Get-ChildItem dist/scan2bim-*.exe | Where-Object { $_.Name -notmatch '\.sha256$' } | Select-Object -First 1
+          if (-not $exe) { throw "No scan2bim-*.exe in dist/" }
+          if ($exe.Length -lt 80MB) { throw "exe smaller than 80 MB: $($exe.Length)" }
+          Write-Host "Smoke OK: $($exe.Name) ($([int]($exe.Length/1MB)) MB)"
+
+      - name: Build installer
+        shell: pwsh
+        run: .\scripts\build_installer.ps1
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: scan2bim-windows-release
+          path: |
+            dist/scan2bim-*.exe
+            dist/scan2bim-*.exe.sha256
+            dist/scan2bim-Setup-*.exe
+            dist/scan2bim-Setup-*.exe.sha256
+            dist/LICENSES.md
+          if-no-files-found: error
+
+      - name: Publish GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = "${env:GITHUB_REF_NAME}"
+          $assets = @(
+            (Get-ChildItem dist/scan2bim-Setup-*.exe | Where-Object { $_.Name -notmatch '\.sha256$' }).FullName,
+            (Get-ChildItem dist/scan2bim-Setup-*.exe.sha256).FullName,
+            (Get-ChildItem dist/scan2bim-*.exe | Where-Object { $_.Name -notmatch 'Setup' -and $_.Name -notmatch '\.sha256$' }).FullName,
+            (Get-ChildItem dist/scan2bim-*.exe.sha256 | Where-Object { $_.Name -notmatch 'Setup' }).FullName,
+            "dist/LICENSES.md"
+          )
+          $existing = gh release view $tag --repo $env:GITHUB_REPOSITORY 2>&1
+          if ($LASTEXITCODE -eq 0) {
+            gh release delete $tag --repo $env:GITHUB_REPOSITORY --yes --cleanup-tag=false
+          }
+          $notes = if (Test-Path CHANGELOG.md) { "--notes-file", "CHANGELOG.md" } else { "--notes", "scan2bim $tag" }
+          gh release create $tag @assets --title $tag @notes --prerelease

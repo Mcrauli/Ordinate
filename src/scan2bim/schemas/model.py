@@ -1,6 +1,6 @@
 """
 StructuralModel — sisäinen schema josta kaikki export johdetaan.
-Jokainen putken vaihe lukee/kirjoittaa tätä: pistepilvi → elementit → IFC/DXF/LSP.
+Jokainen putken vaihe lukee/kirjoittaa tätä: pistepilvi → elementit → IFC/DXF.
 """
 from __future__ import annotations
 
