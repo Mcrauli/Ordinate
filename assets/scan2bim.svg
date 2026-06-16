@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <!-- scan2bim brand mark: "The Scan Bay" registration target -->
+  <rect x="20" y="20" width="216" height="216" rx="40" fill="#0a0e14" stroke="#c6f24e" stroke-width="12"/>
+  <line x1="128" y1="74" x2="128" y2="182" stroke="#39d0d8" stroke-width="12" stroke-linecap="round"/>
+  <line x1="74" y1="128" x2="182" y2="128" stroke="#39d0d8" stroke-width="12" stroke-linecap="round"/>
+  <circle cx="128" cy="128" r="26" fill="#c6f24e"/>
+</svg>

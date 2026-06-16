@@ -11,6 +11,7 @@ from scan2bim.gui.file_panel import FilePanel
 from scan2bim.gui.log_panel import LogPanel
 from scan2bim.gui.process_worker import ProcessWorker
 from scan2bim.gui.update_banner import UpdateBanner, UpdateChecker, perform_update
+from scan2bim.gui.brand import app_icon, logo_pixmap
 from scan2bim.core.updater import cleanup_old_exe
 
 
@@ -18,6 +19,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
         super().__init__(parent)
         self.setWindowTitle(f"scan2bim  v{__version__}")
+        self.setWindowIcon(app_icon())
         self.resize(1100, 700)
         self.setMinimumSize(800, 500)
 
@@ -34,6 +36,11 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Otsikkorivi
         title_row = QtWidgets.QHBoxLayout()
+        logo = QtWidgets.QLabel()
+        logo.setPixmap(logo_pixmap(28))
+        logo.setFixedSize(28, 28)
+        title_row.addWidget(logo)
+        title_row.addSpacing(10)
         title = QtWidgets.QLabel("scan2bim")
         title.setObjectName("title")
         title_row.addWidget(title)
