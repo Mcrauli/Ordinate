@@ -75,6 +75,85 @@ def write_ifc(model: StructuralModel, path: Path) -> None:
     ifc.write(str(path))
 
 
+def _floor_elevation(model: StructuralModel) -> float:
+    """Kerroksen korkeus: alin lattialaatta, muuten 0."""
+    floor_slabs = [s.elevation for s in model.slabs if getattr(s, "slab_type", "") == "floor"]
+    return float(min(floor_slabs)) if floor_slabs else 0.0
+
+
+def write_building_ifc(models: list[StructuralModel], path: Path) -> None:
+    """Yksi IFC, jossa kaikki kerrokset omina IfcBuildingStorey-tasoinaan.
+    Käyttää samaa elementtikirjoitusta kuin write_ifc — koko talomalli Solibriin."""
+    models = [m for m in models if m is not None]
+    if not models:
+        return
+    models = sorted(models, key=lambda m: (m.metadata.floor_index or 0))
+
+    ifc = _build_project_skeleton()
+    oh = ifc.by_type("IfcOwnerHistory")[0]
+    building = ifc.by_type("IfcBuilding")[0]
+    base_storey = ifc.by_type("IfcBuildingStorey")[0]
+    body_ctx = next(
+        c for c in ifc.by_type("IfcGeometricRepresentationSubContext")
+        if c.ContextIdentifier == "Body"
+    )
+    axis_ctx = next(
+        c for c in ifc.by_type("IfcGeometricRepresentationSubContext")
+        if c.ContextIdentifier == "Axis"
+    )
+
+    for i, model in enumerate(models):
+        if i == 0:
+            storey = base_storey
+        else:
+            storey = ifc.createIfcBuildingStorey(
+                GlobalId=ifcopenshell.guid.new(), OwnerHistory=oh,
+                CompositionType="ELEMENT",
+            )
+            ifc.createIfcRelAggregates(
+                GlobalId=ifcopenshell.guid.new(), OwnerHistory=oh,
+                RelatingObject=building, RelatedObjects=[storey],
+            )
+        idx = model.metadata.floor_index if model.metadata.floor_index is not None else i
+        storey.Name = f"Kerros {idx + 1}"
+        storey.Elevation = _floor_elevation(model)
+
+        elements: list[ifcopenshell.entity_instance] = []
+        for w in model.walls:
+            elements.append(_create_wall(ifc, w, oh, body_ctx, axis_ctx))
+        for b in model.beams:
+            e = _create_beam(ifc, b, oh, body_ctx)
+            if e is not None:
+                elements.append(e)
+        for c in model.columns:
+            e = _create_column(ifc, c, oh, body_ctx)
+            if e is not None:
+                elements.append(e)
+        for s in model.slabs:
+            e = _create_slab(ifc, s, oh, body_ctx)
+            if e is not None:
+                elements.append(e)
+
+        spaces: list[ifcopenshell.entity_instance] = []
+        for sp in model.spaces:
+            e = _create_space(ifc, sp, oh, body_ctx)
+            if e is not None:
+                spaces.append(e)
+
+        if spaces:
+            ifc.createIfcRelContainedInSpatialStructure(
+                GlobalId=ifcopenshell.guid.new(), OwnerHistory=oh,
+                RelatedElements=spaces, RelatingStructure=storey,
+            )
+        if elements:
+            ifc.createIfcRelContainedInSpatialStructure(
+                GlobalId=ifcopenshell.guid.new(), OwnerHistory=oh,
+                RelatedElements=elements, RelatingStructure=storey,
+            )
+
+    ifc.write(str(path))
+
+
 # --------------------------------------------------------------------------- #
 # Projekti-skeleton
 # --------------------------------------------------------------------------- #

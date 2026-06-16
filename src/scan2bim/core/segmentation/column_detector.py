@@ -46,10 +46,18 @@ class ColumnDetector(ElementDetector):
         if len(pts) < self.min_points:
             return [], cloud
 
-        pts_xy = pts.copy()
-        pts_xy[:, 2] = 0.0
+        # Isolla pilvellä DBSCAN on hidas: pilarit ovat isoja piirteitä, joten
+        # klusterointi tehdään karkeasti harvennetusta kopiosta (~40 mm).
+        if len(pts) > 80_000:
+            work = cloud.voxel_down_sample(max(self.eps_mm * 0.5, 40.0))
+            wpts = np.asarray(work.points)
+        else:
+            wpts = pts
+
+        wpts_xy = wpts.copy()
+        wpts_xy[:, 2] = 0.0
         cloud_2d = o3d.geometry.PointCloud()
-        cloud_2d.points = o3d.utility.Vector3dVector(pts_xy)
+        cloud_2d.points = o3d.utility.Vector3dVector(wpts_xy)
         labels = np.asarray(cloud_2d.cluster_dbscan(
             eps=self.eps_mm,
             min_points=self.min_points,
@@ -57,25 +65,33 @@ class ColumnDetector(ElementDetector):
         ))
 
         columns: list[Column] = []
-        column_labels: set[int] = set()
+        footprints: list[tuple[float, float, float]] = []  # cx, cy, puolikas-leveys
         unique = set(labels.tolist())
         unique.discard(-1)
 
         for label in unique:
-            mask = labels == label
-            cluster = pts[mask]
+            cluster = wpts[labels == label]
             col = self._cluster_to_column(cluster, label)
             if col is not None:
                 columns.append(col)
-                column_labels.add(label)
+                half = max(col.profile.width, col.profile.depth) / 2.0 + self.eps_mm
+                footprints.append((col.location[0], col.location[1], half))
 
-        # Poista pilariinlierit — jätä noise (-1) ja ei-pilari-klusterit
-        keep = np.array([labels[i] not in column_labels for i in range(len(pts))])
+        # Poista pilari-inlierit täysresoluutiosta XY-footprintilla (vektoroitu).
+        if footprints:
+            keep = np.ones(len(pts), dtype=bool)
+            for cx, cy, half in footprints:
+                inside = (np.abs(pts[:, 0] - cx) <= half) & (np.abs(pts[:, 1] - cy) <= half)
+                keep &= ~inside
+            remaining_pts = pts[keep]
+        else:
+            remaining_pts = pts
+
         remaining = o3d.geometry.PointCloud()
-        remaining.points = o3d.utility.Vector3dVector(pts[keep])
+        remaining.points = o3d.utility.Vector3dVector(remaining_pts)
 
         log.info("ColumnDetector: %d pilaria, %d pistettä jäljellä",
-                 len(columns), int(keep.sum()))
+                 len(columns), len(remaining_pts))
         return columns, remaining
 
     # ------------------------------------------------------------------ #

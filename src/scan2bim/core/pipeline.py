@@ -26,6 +26,8 @@ class PipelineConfig:
     detector: Literal["ransac", "density"] = "ransac"
     export_ifc: bool = True
     export_dxf: bool = True
+    export_qa: bool = True            # monikerrosajossa: kirjoita qa_report.txt
+    qa_tolerance: float = 2.5         # mm
     save_intermediate: bool = True
 
 
@@ -129,10 +131,29 @@ class Pipeline:
             model.save(floor_dir / "model.json")
             if self.config.export_ifc:
                 self._write_ifc(model, floor_dir / "model.ifc")
+                if self.config.export_qa:
+                    try:
+                        from scan2bim.core.qa.deviation import write_qa_report
+                        res = write_qa_report(
+                            model, cloud, floor_dir / "model.ifc",
+                            floor_dir / "qa_report.txt", tol=self.config.qa_tolerance,
+                        )
+                        ov = res["deviation"].get("overall") or {}
+                        self._progress(
+                            f"  QA: {ov.get('within_tol_pct', '?')} % <= "
+                            f"{self.config.qa_tolerance} mm, {len(res['flags'])} tarkistettavaa"
+                        )
+                    except Exception as e:
+                        self._progress(f"  QA ohitettu: {e}")
             if self.config.export_dxf:
                 self._write_dxf(model, floor_dir / "model.dxf")
             self._progress(f"  {model.summary()}")
             models.append(model)
+
+        if models and self.config.export_ifc:
+            from scan2bim.core.ifc.writer import write_building_ifc
+            write_building_ifc(models, output_dir / "building.ifc")
+            self._progress(f"Koko talo: {output_dir / 'building.ifc'}")
 
         self._progress(f"Valmis. {len(models)} kerrosta käsitelty.")
         return models
