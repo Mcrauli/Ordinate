@@ -16,17 +16,17 @@ class ProcessWorker(QtCore.QThread):
 
     def __init__(self, parent: QtCore.QObject | None = None) -> None:
         super().__init__(parent)
-        self._input: Path | None = None
+        self._inputs: list[Path] = []
         self._output: Path | None = None
         self._config: PipelineConfig = PipelineConfig()
 
     def start_job(
         self,
-        input_path: Path,
+        inputs: list[Path],
         output_dir: Path,
         config: PipelineConfig,
     ) -> None:
-        self._input = input_path
+        self._inputs = list(inputs)
         self._output = output_dir
         self._config = config
         self.start()
@@ -34,7 +34,11 @@ class ProcessWorker(QtCore.QThread):
     def run(self) -> None:
         try:
             pipeline = Pipeline(self._config, progress=self.progress.emit)
-            model = pipeline.run(self._input, self._output)
-            self.finished.emit(model)
+            if len(self._inputs) > 1:
+                # Monta skannia → monikerros/multiscan-putki
+                result = pipeline.run_floors(self._inputs, self._output)
+            else:
+                result = pipeline.run(self._inputs[0], self._output)
+            self.finished.emit(result)
         except Exception as exc:  # noqa: BLE001
             self.failed.emit(str(exc))

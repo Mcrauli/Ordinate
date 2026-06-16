@@ -102,6 +102,8 @@ class Metadata(BaseModel):
     source_file: str = ""
     voxel_size: float = 20.0         # mm
     detector_method: str = ""
+    floor_index: int | None = None   # monikerrosajossa: kerroksen indeksi
+    floor_count: int | None = None   # monikerrosajossa: kerrosten määrä
 
 
 class StructuralModel(BaseModel):

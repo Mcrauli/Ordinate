@@ -9,9 +9,12 @@ from scan2bim.core.pipeline import PipelineConfig
 from scan2bim.gui.theme import ACCENT, BG_WIDGET, TEXT_DIM
 
 
+_EXTS = {".e57", ".las", ".laz", ".pts", ".ply"}
+
+
 class DropZone(QtWidgets.QLabel):
-    """Raahaa tiedosto tähän -alue."""
-    file_dropped = QtCore.Signal(Path)
+    """Raahaa tiedosto(t) tähän -alue. Tukee montaa skannia (monikerros)."""
+    files_dropped = QtCore.Signal(list)   # list[Path]
 
     def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
         super().__init__(parent)
@@ -25,10 +28,13 @@ class DropZone(QtWidgets.QLabel):
         )
 
     def _set_empty(self) -> None:
-        self.setText("Raahaa pistepilvi tähän\n(E57 · LAS/LAZ · PTS)")
+        self.setText("Raahaa pistepilvi(t) tähän\n(E57 · LAS/LAZ · PTS · PLY)")
 
-    def set_file(self, path: Path) -> None:
-        self.setText(f"📁  {path.name}")
+    def set_files(self, paths: list[Path]) -> None:
+        if len(paths) == 1:
+            self.setText(f"📁  {paths[0].name}")
+        else:
+            self.setText(f"📁  {len(paths)} skannia (monikerros)")
         self.setStyleSheet(
             f"border: 2px solid {ACCENT}; border-radius: 8px;"
             f"color: #f1f5f9; background: {BG_WIDGET};"
@@ -39,33 +45,34 @@ class DropZone(QtWidgets.QLabel):
             event.acceptProposedAction()
 
     def dropEvent(self, event: QtGui.QDropEvent) -> None:
-        urls = event.mimeData().urls()
-        if urls:
-            p = Path(urls[0].toLocalFile())
-            if p.suffix.lower() in {".e57", ".las", ".laz", ".pts", ".ply"}:
-                self.set_file(p)
-                self.file_dropped.emit(p)
+        paths = [
+            p for u in event.mimeData().urls()
+            if (p := Path(u.toLocalFile())).suffix.lower() in _EXTS
+        ]
+        if paths:
+            self.set_files(paths)
+            self.files_dropped.emit(paths)
 
     def mousePressEvent(self, event: QtGui.QMouseEvent) -> None:
-        path, _ = QtWidgets.QFileDialog.getOpenFileName(
+        files, _ = QtWidgets.QFileDialog.getOpenFileNames(
             self,
-            "Avaa pistepilvi",
+            "Avaa pistepilvi(t)",
             "",
             "Point cloud (*.e57 *.las *.laz *.pts *.ply)",
         )
-        if path:
-            p = Path(path)
-            self.set_file(p)
-            self.file_dropped.emit(p)
+        if files:
+            paths = [Path(f) for f in files]
+            self.set_files(paths)
+            self.files_dropped.emit(paths)
 
 
 class FilePanel(QtWidgets.QWidget):
     """Vasen ohjauspaneeli."""
-    convert_requested = QtCore.Signal(Path, Path, PipelineConfig)
+    convert_requested = QtCore.Signal(object, Path, PipelineConfig)   # list[Path], out, cfg
 
     def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
         super().__init__(parent)
-        self._input_path: Path | None = None
+        self._input_paths: list[Path] = []
 
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -77,7 +84,7 @@ class FilePanel(QtWidgets.QWidget):
         layout.addWidget(in_label)
 
         self._drop = DropZone()
-        self._drop.file_dropped.connect(self._on_file)
+        self._drop.files_dropped.connect(self._on_files)
         layout.addWidget(self._drop)
 
         # Kansio
@@ -132,11 +139,12 @@ class FilePanel(QtWidgets.QWidget):
         self._btn.clicked.connect(self._on_convert)
         layout.addWidget(self._btn)
 
-    def _on_file(self, path: Path) -> None:
-        self._input_path = path
-        self._btn.setEnabled(True)
-        # Ehdota tuloskansio syötteen viereen
-        self._out_edit.setText(str(path.parent / "output"))
+    def _on_files(self, paths: list[Path]) -> None:
+        self._input_paths = paths
+        self._btn.setEnabled(bool(paths))
+        if paths:
+            # Ehdota tuloskansio ensimmäisen syötteen viereen
+            self._out_edit.setText(str(paths[0].parent / "output"))
 
     def _browse_out(self) -> None:
         d = QtWidgets.QFileDialog.getExistingDirectory(self, "Tuloskansio")
@@ -144,7 +152,7 @@ class FilePanel(QtWidgets.QWidget):
             self._out_edit.setText(d)
 
     def _on_convert(self) -> None:
-        if not self._input_path:
+        if not self._input_paths:
             return
         cfg = PipelineConfig(
             voxel_size=self._voxel.value(),
@@ -153,7 +161,7 @@ class FilePanel(QtWidgets.QWidget):
             export_dxf=self._dxf.isChecked(),
         )
         self.convert_requested.emit(
-            self._input_path,
+            self._input_paths,
             Path(self._out_edit.text()),
             cfg,
         )

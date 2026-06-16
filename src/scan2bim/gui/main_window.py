@@ -95,23 +95,29 @@ class MainWindow(QtWidgets.QMainWindow):
         if info is not None:
             self._update_banner.show_for(info)
 
-    def _on_convert(self, inp: Path, out: Path, cfg: PipelineConfig) -> None:
+    def _on_convert(self, inputs: list, out: Path, cfg: PipelineConfig) -> None:
         self._log_panel.clear()
-        self._log_panel.info(f"Aloitetaan: {inp.name}")
+        label = inputs[0].name if len(inputs) == 1 else f"{len(inputs)} skannia"
+        self._log_panel.info(f"Aloitetaan: {label}")
         self._file_panel.set_busy(True)
         self._progress_bar.setVisible(True)
         self.statusBar().showMessage("Käsitellään…")
-        self._worker.start_job(inp, out, cfg)
+        self._worker.start_job(inputs, out, cfg)
 
     def _on_progress(self, msg: str) -> None:
         self._log_panel.info(msg)
         self.statusBar().showMessage(msg)
 
-    def _on_finished(self, model: object) -> None:
+    def _on_finished(self, result: object) -> None:
         self._file_panel.set_busy(False)
         self._progress_bar.setVisible(False)
         self._log_panel.success("✓ Valmis!")
-        self._log_panel.set_results(model.summary())
+        if isinstance(result, list):
+            lines = [f"{len(result)} kerrosta käsitelty:"]
+            lines += [f"  kerros {i}: {m.summary()}" for i, m in enumerate(result)]
+            self._log_panel.set_results("\n".join(lines))
+        else:
+            self._log_panel.set_results(result.summary())
         self.statusBar().showMessage("Valmis")
 
     def _on_failed(self, error: str) -> None:

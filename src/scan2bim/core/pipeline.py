@@ -90,6 +90,53 @@ class Pipeline:
         self._progress(f"Valmis {elapsed:.1f} s — tulokset: {output_dir.resolve()}")
         return model
 
+    def run_floors(self, paths: list[Path], output_dir: Path) -> list[StructuralModel]:
+        """Monikerros/multiscan: havaitsee kerrokset Z-histogrammista ja käsittelee
+        yhden kerroksen kerrallaan (muistitehokas). Per kerros: floor_NN/model.{json,ifc,dxf}."""
+        output_dir.mkdir(parents=True, exist_ok=True)
+        self._progress(f"Skannaustiedostoja: {len(paths)}")
+        self._progress("Havaitaan kerroksia Z-histogrammista…")
+
+        from scan2bim.core.geometry.floor_splitter import detect_floors_from_files
+        from scan2bim.core.geometry.streaming import load_floor_slice
+
+        sample = max(1, len(paths) // 20)
+        floors = detect_floors_from_files(paths, sample_step=sample)
+        self._progress(f"Löydettiin {len(floors)} kerros(ta).")
+
+        source = paths[0]
+        models: list[StructuralModel] = []
+        for i, (z_lo, z_hi) in enumerate(floors):
+            self._progress(f"Kerros {i + 1}/{len(floors)}  (Z {z_lo/1000:.2f}–{z_hi/1000:.2f} m)…")
+            cloud = load_floor_slice(
+                paths, z_lo, z_hi,
+                voxel_size=self.config.voxel_size,
+                progress_cb=self._progress,
+            )
+            if len(cloud.points) < 500:
+                self._progress(f"  Liian vähän pisteitä ({len(cloud.points)}), ohitetaan.")
+                continue
+
+            self._progress(f"  Pisteitä: {len(cloud.points):,} — kohinasuodatus…")
+            cloud, _ = cloud.remove_statistical_outlier(nb_neighbors=20, std_ratio=2.0)
+
+            model = self._detect(cloud, source)
+            model.metadata.floor_index = i
+            model.metadata.floor_count = len(floors)
+
+            floor_dir = output_dir / f"floor_{i:02d}"
+            floor_dir.mkdir(exist_ok=True)
+            model.save(floor_dir / "model.json")
+            if self.config.export_ifc:
+                self._write_ifc(model, floor_dir / "model.ifc")
+            if self.config.export_dxf:
+                self._write_dxf(model, floor_dir / "model.dxf")
+            self._progress(f"  {model.summary()}")
+            models.append(model)
+
+        self._progress(f"Valmis. {len(models)} kerrosta käsitelty.")
+        return models
+
     # ------------------------------------------------------------------ #
 
     def _load(self, path: Path):
