@@ -49,6 +49,8 @@ _THICKNESS_MIN_MM = 50.0
 _THICKNESS_MAX_MM = 900.0
 _PARALLEL_CROSS_MAX = 0.10
 _DEFAULT_THICKNESS_MM = 200.0
+_WALL_BIN_MM = 150.0          # seinäakselin segmentoinnin rasterointi
+_WALL_GAP_MM = 800.0          # tätä pidempi tyhjä jakso katkaisee seinän
 
 
 class WallDetector(ElementDetector):
@@ -88,9 +90,7 @@ class WallDetector(ElementDetector):
             partner_idx, thickness = self._find_partner(i, vertical)
             if partner_idx is not None:
                 used.add(partner_idx)
-            wall = self._plane_to_wall(plane, thickness, paired=(partner_idx is not None))
-            if wall is not None:
-                walls.append(wall)
+            walls.extend(self._plane_to_walls(plane, thickness, paired=(partner_idx is not None)))
 
         # Poista VAIN vertikaaliset (seinä)tasot — lattia/katto jätetään
         remaining = self._subtract_planes(cloud, vertical)
@@ -165,35 +165,80 @@ class WallDetector(ElementDetector):
                 best_idx = j
         return best_idx, (best_dist if best_dist is not None else _DEFAULT_THICKNESS_MM)
 
-    def _plane_to_wall(self, plane: dict, thickness: float, paired: bool) -> Wall | None:
+    def _plane_to_walls(self, plane: dict, thickness: float, paired: bool) -> list[Wall]:
+        """Pilko taso todellisiksi seinänpätkiksi.
+
+        Yksi RANSAC-taso on ääretön — sen inlierit voivat osua useaan erilliseen
+        seinään tai sisältää pitkiä tyhjiä jaksoja (taso leikkaa tilaa). Projisoidaan
+        inlierit tason vaakasuuntaiselle akselille, etsitään tiheät yhtenäiset
+        jaksot (>_WALL_GAP_MM tyhjä katkaisee) ja tehdään jokaisesta oma seinä.
+        Näin 70 m "seinä" hajoaa oikeiksi seiniksi."""
         pts = np.asarray(plane["cloud"].points)
         if len(pts) < _MIN_INLIERS:
-            return None
+            return []
         xy = pts[:, :2]
         center_xy = xy.mean(axis=0)
         cov = np.cov((xy - center_xy).T)
         _, eigvecs = np.linalg.eigh(cov)
         axis_dir = eigvecs[:, -1]
         proj = (xy - center_xy) @ axis_dir
-        p0_xy = center_xy + proj.min() * axis_dir
-        p1_xy = center_xy + proj.max() * axis_dir
-        length = float(np.linalg.norm(p1_xy - p0_xy))
-        if length < _MIN_LENGTH_MM:
-            return None
-        height = float(pts[:, 2].max() - pts[:, 2].min())
-        if height < _MIN_HEIGHT_MM:
-            return None
-        raw_conf = min(1.0, len(pts) / 8000.0)
-        confidence = round(raw_conf * (0.95 if paired else 0.65), 3)
-        # "measured" → RANSAC löysi parin; "default" → ei paria, käytetään oletusta
+
+        lo, hi = float(proj.min()), float(proj.max())
+        nb = max(int((hi - lo) / _WALL_BIN_MM) + 1, 1)
+        counts, edges = np.histogram(proj, bins=nb, range=(lo, hi))
+        nz = counts[counts > 0]
+        if len(nz) == 0:
+            return []
+        occ_thr = max(2.0, 0.12 * float(np.median(nz)))
+        occ = counts >= occ_thr
+
         notes = "thickness_measured" if paired else "thickness_default"
-        return Wall(
-            id=str(uuid.uuid4()),
-            confidence=confidence,
-            source=ElementSource(method="ransac", plane_ids=[plane["id"]], notes=notes),
-            axis=[[float(p0_xy[0]), float(p0_xy[1])],
-                  [float(p1_xy[0]), float(p1_xy[1])]],
-            height=round(height, 1),
-            thickness=round(thickness, 1),
-            z_min=round(float(pts[:, 2].min()), 1),
-        )
+        gap_bins = max(int(_WALL_GAP_MM / _WALL_BIN_MM), 1)
+
+        walls: list[Wall] = []
+        i = 0
+        while i < nb:
+            if not occ[i]:
+                i += 1
+                continue
+            j = i
+            gap = 0
+            last = i
+            while j < nb:
+                if occ[j]:
+                    last = j
+                    gap = 0
+                else:
+                    gap += 1
+                    if gap > gap_bins:
+                        break
+                j += 1
+            a = float(edges[i])
+            b = float(edges[last + 1])
+            i = j
+
+            seg_mask = (proj >= a) & (proj <= b)
+            seg = pts[seg_mask]
+            if len(seg) < _MIN_INLIERS:
+                continue
+            length = b - a
+            if length < _MIN_LENGTH_MM:
+                continue
+            height = float(seg[:, 2].max() - seg[:, 2].min())
+            if height < _MIN_HEIGHT_MM:
+                continue
+            p0_xy = center_xy + a * axis_dir
+            p1_xy = center_xy + b * axis_dir
+            raw_conf = min(1.0, len(seg) / 4000.0)
+            confidence = round(raw_conf * (0.95 if paired else 0.65), 3)
+            walls.append(Wall(
+                id=str(uuid.uuid4()),
+                confidence=confidence,
+                source=ElementSource(method="ransac", plane_ids=[plane["id"]], notes=notes),
+                axis=[[float(p0_xy[0]), float(p0_xy[1])],
+                      [float(p1_xy[0]), float(p1_xy[1])]],
+                height=round(height, 1),
+                thickness=round(thickness, 1),
+                z_min=round(float(seg[:, 2].min()), 1),
+            ))
+        return walls
