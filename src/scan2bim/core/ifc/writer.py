@@ -282,10 +282,12 @@ def _create_wall(
     mid = (p0 + p1) / 2.0
     half = length / 2.0
 
-    # Placement: origin at midpoint, X along wall axis
+    # Placement: origin at midpoint + seinän todellinen alakorkeus (z_min).
+    # Ilman z_min:iä seinät jäisivät z=0:aan ja erkanisivat laatoista/pilareista
+    # (jotka sijoitetaan oikeaan korkeuteensa) — varsinkin oikeilla koordinaateilla.
     placement = _axis2placement(
         ifc,
-        origin=[float(mid[0]), float(mid[1]), 0.0],
+        origin=[float(mid[0]), float(mid[1]), float(wall.z_min)],
         x_dir=[float(vec[0]), float(vec[1]), 0.0],
     )
 
