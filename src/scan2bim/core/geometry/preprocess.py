@@ -7,24 +7,9 @@ import open3d as o3d
 
 def preprocess(
     cloud: o3d.geometry.PointCloud,
-    voxel_size: float = 20.0,      # mm
-    nb_neighbors: int = 20,
-    std_ratio: float = 2.0,
+    voxel_size: float = 1.0,       # mm
 ) -> o3d.geometry.PointCloud:
-    """Normalisoi → downsample → poista kohina."""
-    cloud = _normalize(cloud)
+    """Downsample + statistical outlier removal."""
     cloud = cloud.voxel_down_sample(voxel_size=voxel_size)
-    cloud, _ = cloud.remove_statistical_outlier(
-        nb_neighbors=nb_neighbors, std_ratio=std_ratio
-    )
-    return cloud
-
-
-def _normalize(cloud: o3d.geometry.PointCloud) -> o3d.geometry.PointCloud:
-    """Siirtää pilven origoon (min xyz = 0)."""
-    pts = np.asarray(cloud.points)
-    if len(pts) == 0:
-        return cloud
-    pts -= pts.min(axis=0)
-    cloud.points = o3d.utility.Vector3dVector(pts)
+    cloud, _ = cloud.remove_statistical_outlier(nb_neighbors=20, std_ratio=2.0)
     return cloud

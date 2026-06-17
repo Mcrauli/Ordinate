@@ -1,34 +1,19 @@
-"""ElementDetector — rajapinta kaikille segmentointimoduuleille."""
+"""ElementDetector-rajapinta + DetectorRegistry. Sisään: o3d.PointCloud → ulos: StructuralModel."""
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
 import open3d as o3d
 
-from scan2bim.schemas.model import Element
+from scan2bim.schemas.model import StructuralModel
+
+_REGISTRY: dict[str, type[ElementDetector]] = {}
 
 
 class ElementDetector(ABC):
     @abstractmethod
-    def detect(
-        self,
-        cloud: o3d.geometry.PointCloud,
-    ):
-        """Tunnistaa elementit pistepilvestä.
-
-        Palauttaa joko:
-            (elementit, jäljellä_oleva_pilvi)  — inlier-subtraktiopohjaiset detektorit
-        tai:
-            StructuralModel                     — rekisteröidyt koko-pilvi-detektorit
-        """
+    def detect(self, cloud: o3d.geometry.PointCloud) -> StructuralModel:
         ...
-
-
-# --------------------------------------------------------------------------- #
-# Rekisteri vaihtoehtoisille seinästrategioille (normals / density / floorplan)
-# --------------------------------------------------------------------------- #
-
-_REGISTRY: dict[str, type[ElementDetector]] = {}
 
 
 class DetectorRegistry:

@@ -1,63 +1,83 @@
-"""Pistepilvi-loaderi: E57 / LAS/LAZ / PTS / PLY → open3d.PointCloud (mm).
-
-Automaattinen yksikkömuunnos: jos pistedata vaikuttaa olevan metreissä
-(bounding box max < 500), skaalataan × 1000 → millimetreiksi.
-Kynnys 500 m = realistinen yläraja rakennukselle metreissä.
-"""
+"""Pistepilvi-loaderi: E57 / LAS/LAZ / PTS / PLY → open3d.PointCloud."""
 from __future__ import annotations
 
-import logging
 from pathlib import Path
 
 import numpy as np
 import open3d as o3d
 
-log = logging.getLogger(__name__)
 
-# Alle tämän max-dimension → todennäköisesti metrissä → skaala × 1000
-_METER_SCALE_THRESHOLD = 500.0
-
-
-def load_point_cloud(path: Path) -> o3d.geometry.PointCloud:
-    """Lataa pistepilvi tiedostosta formaatista riippumatta. Palauttaa mm-koordinaatit."""
-    suffix = path.suffix.lower()
-
-    if suffix == ".e57":
-        cloud = _load_e57(path)
-    elif suffix in {".las", ".laz"}:
-        cloud = _load_las(path)
-    elif suffix in {".pts", ".xyz"}:
-        cloud = _load_pts_xyz(path)
-    elif suffix in {".ply", ".pcd"}:
-        cloud = o3d.io.read_point_cloud(str(path))
-    else:
-        raise ValueError(f"Tuntematon formaatti: {suffix}")
-
-    return _ensure_mm(cloud)
-
-
-def _ensure_mm(cloud: o3d.geometry.PointCloud) -> o3d.geometry.PointCloud:
-    """Skaalaa metrinen pistepilvi millimetreiksi heuristiikalla."""
+def _autoscale(cloud: o3d.geometry.PointCloud) -> o3d.geometry.PointCloud:
+    """Jos pilvi on metreissä (max laajuus < 200), skaalaa → mm."""
     pts = np.asarray(cloud.points)
     if len(pts) == 0:
         return cloud
-    max_dim = float(np.ptp(pts, axis=0).max())   # suurin vaihteluväli
-    if max_dim < _METER_SCALE_THRESHOLD:
-        log.info(
-            "Yksikkömuunnos: max dimension %.2f → näyttää metriltä, skaala × 1000", max_dim
-        )
+    span = pts.max(axis=0) - pts.min(axis=0)
+    if span.max() < 200.0:
         cloud.points = o3d.utility.Vector3dVector(pts * 1000.0)
     return cloud
+
+
+def load_and_merge(paths: list[Path]) -> o3d.geometry.PointCloud:
+    """Lataa useita pistepilviä ja yhdistää ne yhdeksi."""
+    merged = o3d.geometry.PointCloud()
+    for p in paths:
+        merged += load_point_cloud(p)
+    return merged
+
+
+def load_point_cloud(path: Path) -> o3d.geometry.PointCloud:
+    """Lataa pistepilvi tiedostosta formaatista riippumatta."""
+    suffix = path.suffix.lower()
+
+    if suffix == ".e57":
+        return _autoscale(_load_e57(path))
+    if suffix in {".las", ".laz"}:
+        return _autoscale(_load_las(path))
+    if suffix in {".pts", ".xyz"}:
+        return _autoscale(_load_pts_xyz(path))
+    if suffix in {".ply", ".pcd"}:
+        return _autoscale(o3d.io.read_point_cloud(str(path)))
+
+    raise ValueError(f"Tuntematon formaatti: {suffix}")
 
 
 def _load_e57(path: Path) -> o3d.geometry.PointCloud:
     import pye57
     e57 = pye57.E57(str(path))
-    data = e57.read_scan(0, ignore_missing_fields=True)
-    xyz = np.column_stack([data["cartesianX"], data["cartesianY"], data["cartesianZ"]])
-    cloud = o3d.geometry.PointCloud()
-    cloud.points = o3d.utility.Vector3dVector(xyz.astype(np.float64))
-    return cloud
+    merged = o3d.geometry.PointCloud()
+    for i in range(e57.scan_count):
+        try:
+            data = e57.read_scan(i, transform=True, ignore_missing_fields=True)
+        except Exception:
+            data = e57.read_scan(i, ignore_missing_fields=True)
+        xyz = np.column_stack([data["cartesianX"], data["cartesianY"], data["cartesianZ"]])
+        cloud = o3d.geometry.PointCloud()
+        cloud.points = o3d.utility.Vector3dVector(xyz.astype(np.float64))
+        merged += cloud
+    return merged
+
+
+def scanner_origins(path: Path) -> list[np.ndarray]:
+    """E57:n skannerien origot (mm). Muut formaatit → tyhjä (ei pose-tietoa)."""
+    if path.suffix.lower() != ".e57":
+        return []
+    try:
+        import pye57
+        e57 = pye57.E57(str(path))
+    except Exception:
+        return []
+    origins: list[np.ndarray] = []
+    for i in range(e57.scan_count):
+        try:
+            header = e57.get_header(i)
+            t = np.asarray(header.translation, dtype=float)
+            if np.linalg.norm(t) < 200.0:   # metreissä → mm
+                t = t * 1000.0
+            origins.append(t)
+        except Exception:
+            continue
+    return origins
 
 
 def _load_pts_xyz(path: Path) -> o3d.geometry.PointCloud:

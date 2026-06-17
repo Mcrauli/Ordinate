@@ -120,7 +120,7 @@ class FilePanel(QtWidgets.QWidget):
         form.setSpacing(8)
 
         self._detector = QtWidgets.QComboBox()
-        self._detector.addItems(["ransac", "normals", "density", "floorplan"])
+        self._detector.addItems(["normals", "ransac", "density", "floorplan"])
         form.addRow("Detektori:", self._detector)
 
         self._voxel = QtWidgets.QDoubleSpinBox()

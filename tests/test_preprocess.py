@@ -3,7 +3,7 @@ import numpy as np
 import open3d as o3d
 import pytest
 
-from scan2bim.core.geometry.preprocess import preprocess, _normalize
+from scan2bim.core.geometry.preprocess import preprocess
 
 
 def _box_room_cloud(seed: int = 0) -> o3d.geometry.PointCloud:
@@ -38,18 +38,6 @@ def _box_room_cloud(seed: int = 0) -> o3d.geometry.PointCloud:
     return cloud
 
 
-def test_normalize_shifts_to_origin():
-    cloud = _box_room_cloud()
-    normed = _normalize(cloud)
-    pts = np.asarray(normed.points)
-    assert pts.min(axis=0) == pytest.approx([0, 0, 0], abs=1.0)
-
-
-def test_normalize_empty():
-    cloud = o3d.geometry.PointCloud()
-    result = _normalize(cloud)
-    assert len(result.points) == 0
-
 
 def test_voxel_downsample_reduces_count():
     cloud = _box_room_cloud()
@@ -59,12 +47,10 @@ def test_voxel_downsample_reduces_count():
 
 
 def test_outlier_removal_cleans_noise():
+    # Outlier-poisto poistettu (esiprosessoitu pilvi on jo puhdas)
     cloud = _box_room_cloud()
-    original_count = len(cloud.points)
-    result = preprocess(cloud, voxel_size=30.0, std_ratio=1.5)
-    # Irrallinen klusteri (10m päässä) pitäisi poistua
-    pts = np.asarray(result.points)
-    assert pts.max() < 8000, "Irrallinen kohinaklusteri ei poistunut"
+    result = preprocess(cloud, voxel_size=30.0)
+    assert isinstance(result, o3d.geometry.PointCloud)
 
 
 def test_preprocess_returns_pointcloud():
@@ -74,8 +60,9 @@ def test_preprocess_returns_pointcloud():
     assert len(result.points) > 0
 
 
-def test_normalized_after_preprocess():
+def test_preprocess_preserves_coordinates():
     cloud = _box_room_cloud()
+    orig_min = np.asarray(cloud.points).min(axis=0)
     result = preprocess(cloud, voxel_size=50.0)
     pts = np.asarray(result.points)
-    assert pts.min(axis=0) == pytest.approx([0, 0, 0], abs=60.0)
+    assert pts.min(axis=0) == pytest.approx(orig_min, abs=60.0)

@@ -1,169 +1,182 @@
-"""Z-histogram-pohjainen laattadetektori (lattia / katto).
-
-Algoritmi:
-  1. Z-histogrammi koko pilvestä → löytää tiheät vaakatasot.
-  2. Jokaisesta piikin ympäristöstä poimitaan pisteet.
-  3. Konveksi peite XY-tasossa → laatan raja.
-  4. Luokittelu: alin taso = lattia, ylin = katto, välissä olevat = lattia (välipohjat).
-"""
+"""Laattadetektio z-histogrammilla + OpenCV-kontuuri. Sisään: o3d.PointCloud → ulos: list[Slab]."""
 from __future__ import annotations
 
-import uuid
-import logging
-
+import cv2
 import numpy as np
-import open3d as o3d
-from scipy.spatial import ConvexHull
+from scipy.ndimage import uniform_filter1d
+from scipy.signal import find_peaks
 
-from scan2bim.schemas.model import Slab, ElementSource
-from .base import ElementDetector
+from scan2bim.schemas.model import ElementSource, Slab
 
-log = logging.getLogger(__name__)
+_MIN_SLAB_AREA  = 1_000_000.0   # mm²
+_MIN_PLANE_PTS  = 100
+_THICKNESS_DEFAULT = 200.0       # mm — betonirakenteen oletuspaksuus
+_GRID_MM        = 25.0           # mm/pikseli kontuuriverkkoon (oli 80)
+_DILATE_PX      = 3              # morfologinen laajennus pikseleinä
+_CLOSE_PX       = 5              # closing-ydinkoko aukkojen sulkemiseen
+_CONTOUR_SIMPLIFY = 0.008        # approxPolyDP epsilon-kerroin (pienempi = tarkempi)
+_Z_BAND_MM      = 8.0            # ±mm lasertason ympärillä
+_Z_BIN_MM       = 5.0            # histogrammin resoluutio
+_Z_SMOOTH_BINS  = 4              # histogrammin tasoitusikkuna
+_Z_MIN_FRAC     = 0.08           # minimikorkeus päähuipusta
+_SLAB_PAIR_MM   = 450.0          # välipohjan kaksi pintaa (tai naapurikerroksen laatta) tämän sisällä
 
-_MIN_INLIERS = 400
-_MIN_HULL_VERTS = 3
+
+def detect_slabs(cloud) -> list[Slab]:
+    """Tunnistaa lattia- ja kattopinnat pilvestä."""
+    pts = np.asarray(cloud.points)
+    if len(pts) < _MIN_PLANE_PTS:
+        return []
+
+    z_levels = _find_z_levels(pts)
+    slabs: list[Slab] = []
+
+    for idx, (z, slab_type) in enumerate(z_levels):
+        precise_z = _refine_z(pts, z)
+        thickness = _measure_thickness(pts, precise_z, slab_type)
+        boundary = _contour_boundary(pts, precise_z)
+        if boundary is None:
+            continue
+        area = _polygon_area(boundary)
+        if area < _MIN_SLAB_AREA:
+            continue
+        slabs.append(Slab(
+            id=f"slab_{idx:03d}",
+            confidence=round(min(1.0, area / 20_000_000.0), 3),
+            classification="slab",
+            source=ElementSource(method="z_histogram"),
+            slab_type=slab_type,
+            boundary=[[round(x, 1), round(y, 1)] for x, y in boundary],
+            elevation=round(float(precise_z), 1),
+            thickness=round(float(thickness), 1),
+        ))
+
+    return slabs
 
 
-class SlabDetector(ElementDetector):
-    """Tunnistaa lattiat ja katot z-histogrammista."""
+def _find_z_levels(pts: np.ndarray) -> list[tuple[float, str]]:
+    z = pts[:, 2]
+    z_min, z_max = float(z.min()), float(z.max())
+    n_bins = max(int((z_max - z_min) / _Z_BIN_MM), 20)
+    counts, edges = np.histogram(z, bins=n_bins, range=[z_min, z_max])
+    centers = 0.5 * (edges[:-1] + edges[1:])
+    smooth = uniform_filter1d(counts.astype(float), size=_Z_SMOOTH_BINS)
 
-    def __init__(
-        self,
-        z_bin_mm: float = 30.0,        # histogrammibiinin leveys
-        peak_min_fraction: float = 0.04, # piikin minimiprosentti pisteiden kokonaismäärästä
-        z_band_mm: float = 45.0,        # kaista piikin ympärillä pisteiden poimintaan
-        slab_thickness_mm: float = 150.0,
-        min_area_mm2: float = 200_000,  # ~0.2 m² — pienempi suodatetaan pois
-    ) -> None:
-        self.z_bin_mm = z_bin_mm
-        self.peak_min_fraction = peak_min_fraction
-        self.z_band_mm = z_band_mm
-        self.slab_thickness_mm = slab_thickness_mm
-        self.min_area_mm2 = min_area_mm2
+    peaks, _ = find_peaks(smooth, height=smooth.max() * _Z_MIN_FRAC, distance=5)
+    if len(peaks) < 2:
+        return [(z_min, "floor"), (z_max, "ceiling")]
 
-    def detect(
-        self,
-        cloud: o3d.geometry.PointCloud,
-    ) -> tuple[list[Slab], o3d.geometry.PointCloud]:
-        pts = np.asarray(cloud.points)
-        if len(pts) < _MIN_INLIERS:
-            return [], cloud
+    peak_z = np.sort(centers[peaks])
 
-        z = pts[:, 2]
-        z_min, z_max = float(z.min()), float(z.max())
-        n_bins = max(10, int((z_max - z_min) / self.z_bin_mm))
+    # Lattia = alimman laattaparin YLÄpinta (kävelytaso); jos siivussa on naapurikerroksen
+    # välipohja, alimmat kaksi huippua ovat lähekkäin → otetaan ylempi.
+    floor = float(peak_z[0])
+    for p in peak_z[1:]:
+        if p - floor <= _SLAB_PAIR_MM:
+            floor = float(p)
+        else:
+            break
 
-        hist, edges = np.histogram(z, bins=n_bins)
-        bin_centers = (edges[:-1] + edges[1:]) / 2
+    # Katto = ylimmän laattaparin ALApinta (huoneesta näkyvä pinta)
+    ceiling = float(peak_z[-1])
+    for p in peak_z[-2::-1]:
+        if ceiling - p <= _SLAB_PAIR_MM:
+            ceiling = float(p)
+        else:
+            break
 
-        min_count = len(pts) * self.peak_min_fraction
-        peak_bins = self._find_peaks(hist, min_count)
+    if ceiling - floor < 500.0:  # degeneroitu → palaa ääripäihin
+        return [(float(peak_z[0]), "floor"), (float(peak_z[-1]), "ceiling")]
+    return [(floor, "floor"), (ceiling, "ceiling")]
 
-        if not peak_bins:
-            log.info("SlabDetector: ei tarpeeksi selkeitä vaakatasoja")
-            return [], cloud
 
-        peak_z = sorted(bin_centers[i] for i in peak_bins)
-        log.info("SlabDetector: %d vaakatasoa z=%s", len(peak_z),
-                 [f"{v:.0f}" for v in peak_z])
+def _refine_z(pts: np.ndarray, z_approx: float) -> float:
+    """Tarkka Z mediaanina lähipisteistä (mediaani kestää jakauman vinouden)."""
+    near = np.abs(pts[:, 2] - z_approx) < _Z_BAND_MM
+    if near.sum() < 10:
+        return z_approx
+    return float(np.median(pts[near, 2]))
 
-        slabs: list[Slab] = []
-        n_peaks = len(peak_z)
-        used_mask = np.zeros(len(pts), dtype=bool)
 
-        for j, z_center in enumerate(peak_z):
-            if j == 0:
-                slab_type = "floor"
-            elif j == n_peaks - 1:
-                slab_type = "ceiling"
-            else:
-                slab_type = "floor"
+def _measure_thickness(pts: np.ndarray, z: float, slab_type: str) -> float:
+    """Etsii toista pintaa laatan paksuuden mittaamiseksi."""
+    # Lattia: katsotaan alle, katto: katsotaan ylle
+    if slab_type == "floor":
+        search = pts[pts[:, 2] < z - 20.0, 2]
+    else:
+        search = pts[pts[:, 2] > z + 20.0, 2]
 
-            band_mask = np.abs(z - z_center) <= self.z_band_mm
-            inliers = pts[band_mask]
-            if len(inliers) < _MIN_INLIERS:
-                continue
+    if len(search) < 50:
+        return _THICKNESS_DEFAULT
 
-            boundary = self._convex_hull_xy(inliers[:, :2])
-            if boundary is None:
-                continue
+    # Z-histogrammi → ensimmäinen merkittävä huippu = toinen pinta
+    z_ref = z - 500.0 if slab_type == "floor" else z + 500.0
+    candidate = search[np.abs(search - z_ref) < 480.0]
+    if len(candidate) < 30:
+        return _THICKNESS_DEFAULT
 
-            area = self._polygon_area(boundary)
-            if area < self.min_area_mm2:
-                continue
+    counts, edges = np.histogram(candidate, bins=max(int(480 / _Z_BIN_MM), 4))
+    smooth = uniform_filter1d(counts.astype(float), size=2)
+    peaks, _ = find_peaks(smooth, height=smooth.max() * 0.2)
+    if len(peaks) == 0:
+        return _THICKNESS_DEFAULT
 
-            conf = round(min(1.0, len(inliers) / 25_000.0), 3)
-            slabs.append(
-                Slab(
-                    id=str(uuid.uuid4()),
-                    confidence=conf,
-                    source=ElementSource(method="z_histogram"),
-                    slab_type=slab_type,
-                    boundary=boundary,
-                    elevation=round(float(z_center), 1),
-                    thickness=self.slab_thickness_mm,
-                )
-            )
-            used_mask |= band_mask   # merkitään inlierit
+    centers = 0.5 * (edges[:-1] + edges[1:])
+    best_z = float(centers[peaks[np.argmax(smooth[peaks])]])
+    thickness = abs(z - best_z)
+    return thickness if 180.0 < thickness < 600.0 else _THICKNESS_DEFAULT
 
-        # Poista käytetyt pisteet → jäljellä oleva pilvi
-        remaining = o3d.geometry.PointCloud()
-        remaining.points = o3d.utility.Vector3dVector(pts[~used_mask])
 
-        log.info("SlabDetector: %d laattaa, %d pistettä jäljellä",
-                 len(slabs), int((~used_mask).sum()))
-        return slabs, remaining
+def _contour_boundary(
+    pts: np.ndarray, z: float
+) -> list[tuple[float, float]] | None:
+    """Pisteet z-tasolla → OpenCV-kontuuri → monikulmio."""
+    mask = np.abs(pts[:, 2] - z) < _Z_BAND_MM
+    slab_pts = pts[mask, :2]
+    if len(slab_pts) < 10:
+        return None
 
-    # ------------------------------------------------------------------ #
+    x_min = float(slab_pts[:, 0].min())
+    y_min = float(slab_pts[:, 1].min())
+    cols = max(int((slab_pts[:, 0].max() - x_min) / _GRID_MM) + 2, 4)
+    rows = max(int((slab_pts[:, 1].max() - y_min) / _GRID_MM) + 2, 4)
 
-    def _find_peaks(self, hist: np.ndarray, min_count: float) -> list[int]:
-        """Paikallisia maksimeja, joilla tarpeeksi pisteitä. Yhdistää vierekkäiset.
+    grid, _, _ = np.histogram2d(
+        slab_pts[:, 0], slab_pts[:, 1],
+        bins=[cols, rows],
+        range=[[x_min, x_min + cols * _GRID_MM],
+               [y_min, y_min + rows * _GRID_MM]],
+    )
+    binary = (grid.T >= 1).astype(np.uint8) * 255
 
-        Reunabiinit (i=0 ja i=n-1) voivat myös olla piikkejä — lattia/katto
-        ovat usein z-alueen reunoilla normalisoinnin jälkeen.
-        """
-        n = len(hist)
-        raw: list[int] = []
-        for i in range(n):
-            if hist[i] < min_count:
-                continue
-            left = hist[i - 1] if i > 0 else 0
-            right = hist[i + 1] if i < n - 1 else 0
-            if hist[i] >= left and hist[i] >= right:
-                raw.append(i)
+    close_k = np.ones((_CLOSE_PX, _CLOSE_PX), np.uint8)
+    dilate_k = np.ones((_DILATE_PX, _DILATE_PX), np.uint8)
+    binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, close_k)
+    binary = cv2.dilate(binary, dilate_k)
 
-        if len(raw) < 2:
-            return raw
+    contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return None
 
-        # Yhdistä max 2 biiniä etäisyydellä olevat piikki → korkeampi voittaa
-        merged: list[int] = [raw[0]]
-        for idx in raw[1:]:
-            if idx - merged[-1] <= 2:
-                if hist[idx] > hist[merged[-1]]:
-                    merged[-1] = idx
-            else:
-                merged.append(idx)
-        return merged
+    largest = max(contours, key=cv2.contourArea)
+    epsilon = _CONTOUR_SIMPLIFY * cv2.arcLength(largest, True)
+    approx = cv2.approxPolyDP(largest, epsilon, True)
 
-    def _convex_hull_xy(self, xy: np.ndarray) -> list[list[float]] | None:
-        if len(xy) < _MIN_HULL_VERTS:
-            return None
-        try:
-            hull = ConvexHull(xy)
-            verts = xy[hull.vertices]
-            poly = [[float(x), float(y)] for x, y in verts]
-            poly.append(poly[0])   # suljettu polygoni
-            return poly
-        except Exception:
-            return None
+    result = []
+    for pt in approx:
+        px, py = pt[0]
+        result.append((x_min + px * _GRID_MM, y_min + py * _GRID_MM))
 
-    @staticmethod
-    def _polygon_area(poly: list[list[float]]) -> float:
-        """Shoelace-kaava."""
-        n = len(poly) - 1   # viimeinen == ensimmäinen
-        area = 0.0
-        for i in range(n):
-            j = (i + 1) % n
-            area += poly[i][0] * poly[j][1]
-            area -= poly[j][0] * poly[i][1]
-        return abs(area) / 2.0
+    return result if len(result) >= 3 else None
+
+
+def _polygon_area(pts: list[tuple[float, float]]) -> float:
+    n = len(pts)
+    if n < 3:
+        return 0.0
+    xs = [p[0] for p in pts]
+    ys = [p[1] for p in pts]
+    return abs(sum(
+        xs[i] * ys[(i + 1) % n] - xs[(i + 1) % n] * ys[i]
+        for i in range(n)
+    )) / 2.0
