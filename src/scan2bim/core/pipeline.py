@@ -20,9 +20,30 @@ from scan2bim.schemas.model import StructuralModel, Metadata
 log = logging.getLogger(__name__)
 
 
+_AUTO_TARGET_POINTS = 4_000_000   # auto-voxelin tavoitepistemäärä työpilvelle
+_AUTO_VOXEL_MIN = 6.0             # mm — hienoin (tarkin) johon auto menee
+_AUTO_VOXEL_MAX = 25.0            # mm — karkein
+
+
+def _auto_voxel(cloud, target: int = _AUTO_TARGET_POINTS) -> float:
+    """Valitse voxelikoko niin, että työpilvi on ~target pistettä.
+
+    Tarkkuus skaalautuu datan mukaan: harva/pieni skanni saa hienomman voxelin,
+    tiheä/iso karkeamman — robusti ilman 1mm-räjähdystä. Arvio yhdellä halvalla
+    referenssiharvennuksella (pintapisteet skaalautuvat ~1/voxel²)."""
+    import numpy as np
+    ref = 20.0
+    n_ref = len(cloud.voxel_down_sample(ref).points)
+    if n_ref <= target:
+        return _AUTO_VOXEL_MIN
+    v = ref * float(np.sqrt(n_ref / target))
+    return round(min(max(v, _AUTO_VOXEL_MIN), _AUTO_VOXEL_MAX), 1)
+
+
 @dataclass
 class PipelineConfig:
-    voxel_size: float = 12.0                           # mm
+    voxel_size: float = 12.0                           # mm (käytetään kun auto_voxel=False)
+    auto_voxel: bool = False          # True: valitse voxelikoko automaattisesti datasta
     detector: Literal["ransac", "density", "normals", "floorplan"] = "ransac"
     export_ifc: bool = True
     export_dxf: bool = True
@@ -58,6 +79,10 @@ class Pipeline:
 
         if self.config.save_intermediate:
             self._save_cloud(cloud, inter / "01_loaded.ply")
+
+        if self.config.auto_voxel:
+            self.config.voxel_size = _auto_voxel(cloud)
+            self._progress(f"  Auto-voxel: {self.config.voxel_size:.1f} mm")
 
         # 2. Esikäsittely
         self._progress(f"Esikäsittely (voxel {self.config.voxel_size:.0f} mm)…")
@@ -107,6 +132,12 @@ class Pipeline:
         floors = detect_floors_from_files(paths, sample_step=sample)
         self._progress(f"Löydettiin {len(floors)} kerros(ta).")
 
+        # Auto-voxel: lataa kerrossiivut hyvällä tarkkuudella (8 mm) ja katkaise
+        # työpilvi tavoitepistemäärään — tarkka mutta robusti, ilman 1mm-räjähdystä.
+        if self.config.auto_voxel:
+            self.config.voxel_size = 8.0
+            self._progress(f"  Auto-voxel: {self.config.voxel_size:.1f} mm (katkaisu {_AUTO_TARGET_POINTS:,} pist.)")
+
         source = paths[0]
         models: list[StructuralModel] = []
         for i, (z_lo, z_hi) in enumerate(floors):
@@ -120,6 +151,10 @@ class Pipeline:
             if len(cloud.points) < 500:
                 self._progress(f"  Liian vähän pisteitä ({len(cloud.points)}), ohitetaan.")
                 continue
+
+            if self.config.auto_voxel and len(cloud.points) > _AUTO_TARGET_POINTS:
+                from scan2bim.core.segmentation.wall_detector import _downsample_to_target
+                cloud = _downsample_to_target(cloud, target=_AUTO_TARGET_POINTS, start_voxel=self.config.voxel_size)
 
             # Tilastollinen kohinasuodatus on O(n·k) KD-puuhaku — jättipilvellä
             # minuuttien stalli. Voxelointi on jo poistanut harvan kohinan, joten

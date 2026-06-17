@@ -128,7 +128,16 @@ class FilePanel(QtWidgets.QWidget):
         self._voxel.setSingleStep(0.5)
         self._voxel.setValue(12.0)
         self._voxel.setSuffix(" mm")
-        form.addRow("Voxel-koko:", self._voxel)
+
+        self._auto_voxel = QtWidgets.QCheckBox("Automaattinen (suositeltu)")
+        self._auto_voxel.setChecked(True)
+        self._auto_voxel.toggled.connect(lambda on: self._voxel.setEnabled(not on))
+        self._voxel.setEnabled(False)
+        vx_row = QtWidgets.QVBoxLayout()
+        vx_row.setSpacing(4)
+        vx_row.addWidget(self._auto_voxel)
+        vx_row.addWidget(self._voxel)
+        form.addRow("Voxel-koko:", vx_row)
 
         self._icp = QtWidgets.QCheckBox("ICP-hienorekisteröinti (monikerros)")
         self._icp.setChecked(False)
@@ -185,6 +194,7 @@ class FilePanel(QtWidgets.QWidget):
             return
         cfg = PipelineConfig(
             voxel_size=self._voxel.value(),
+            auto_voxel=self._auto_voxel.isChecked(),
             detector=self._detector.currentText(),
             export_ifc=self._ifc.isChecked(),
             export_dxf=self._dxf.isChecked(),
