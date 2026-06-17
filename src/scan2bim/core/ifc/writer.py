@@ -37,7 +37,7 @@ def write_ifc(model: StructuralModel, path: Path) -> None:
         wall_ent = _create_wall(ifc, w, oh, body_ctx, axis_ctx)
         elements.append(wall_ent)
         for op in openings_by_wall.get(w.id, []):
-            elements.append(_create_opening(ifc, wall_ent, w, op, oh, body_ctx))
+            elements.extend(_create_opening(ifc, wall_ent, w, op, oh, body_ctx))
 
     for b in model.beams:
         e = _create_beam(ifc, b, oh, body_ctx)
@@ -128,7 +128,7 @@ def write_building_ifc(models: list[StructuralModel], path: Path) -> None:
             wall_ent = _create_wall(ifc, w, oh, body_ctx, axis_ctx)
             elements.append(wall_ent)
             for op in openings_by_wall.get(w.id, []):
-                elements.append(_create_opening(ifc, wall_ent, w, op, oh, body_ctx))
+                elements.extend(_create_opening(ifc, wall_ent, w, op, oh, body_ctx))
         for b in model.beams:
             e = _create_beam(ifc, b, oh, body_ctx)
             if e is not None:
@@ -418,7 +418,55 @@ def _create_opening(
         RelatingBuildingElement=wall_ent,
         RelatedOpeningElement=opening_ent,
     )
-    return opening_ent
+
+    # Täyte: oikea IfcDoor/IfcWindow ohuena paneelina aukossa (ei pelkkä reikä).
+    is_window = op.opening_type == "window"
+    panel_depth = min(float(wall.thickness), 60.0)
+    fill_profile = ifc.createIfcRectangleProfileDef(
+        ProfileType="AREA", XDim=float(op.width), YDim=panel_depth,
+    )
+    fill_solid = ifc.createIfcExtrudedAreaSolid(
+        SweptArea=fill_profile,
+        Position=ifc.createIfcAxis2Placement3D(
+            Location=ifc.createIfcCartesianPoint([0.0, 0.0, 0.0]),
+            Axis=ifc.createIfcDirection([0.0, 0.0, 1.0]),
+            RefDirection=ifc.createIfcDirection([1.0, 0.0, 0.0]),
+        ),
+        ExtrudedDirection=ifc.createIfcDirection([0.0, 0.0, 1.0]),
+        Depth=float(op.opening_height),
+    )
+    fill_repr = ifc.createIfcShapeRepresentation(
+        ContextOfItems=body_ctx, RepresentationIdentifier="Body",
+        RepresentationType="SweptSolid", Items=[fill_solid],
+    )
+    fill_shape = ifc.createIfcProductDefinitionShape(Representations=[fill_repr])
+    fill_placement = ifc.createIfcLocalPlacement(
+        PlacementRelTo=wall_ent.ObjectPlacement,
+        RelativePlacement=ifc.createIfcAxis2Placement3D(
+            Location=ifc.createIfcCartesianPoint([float(cx), 0.0, float(op.sill_height)]),
+            Axis=ifc.createIfcDirection([0.0, 0.0, 1.0]),
+            RefDirection=ifc.createIfcDirection([1.0, 0.0, 0.0]),
+        ),
+    )
+    if is_window:
+        fill_ent = ifc.createIfcWindow(
+            GlobalId=ifcopenshell.guid.new(), OwnerHistory=oh, Name=f"Ikkuna-{op.id}",
+            ObjectPlacement=fill_placement, Representation=fill_shape,
+            OverallHeight=float(op.opening_height), OverallWidth=float(op.width),
+            PredefinedType="WINDOW",
+        )
+    else:
+        fill_ent = ifc.createIfcDoor(
+            GlobalId=ifcopenshell.guid.new(), OwnerHistory=oh, Name=f"Ovi-{op.id}",
+            ObjectPlacement=fill_placement, Representation=fill_shape,
+            OverallHeight=float(op.opening_height), OverallWidth=float(op.width),
+            PredefinedType="DOOR",
+        )
+    ifc.createIfcRelFillsElement(
+        GlobalId=ifcopenshell.guid.new(), OwnerHistory=oh,
+        RelatingOpeningElement=opening_ent, RelatedBuildingElement=fill_ent,
+    )
+    return [opening_ent, fill_ent]
 
 
 # --------------------------------------------------------------------------- #

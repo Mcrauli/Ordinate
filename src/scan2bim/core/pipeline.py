@@ -278,11 +278,10 @@ class Pipeline:
                 self._progress(f"  Liian vähän pisteitä ({len(cloud.points)}), ohitetaan.")
                 continue
 
-            if len(cloud.points) <= 1_500_000:
-                self._progress(f"  Pisteitä: {len(cloud.points):,} — kohinasuodatus…")
-                cloud, _ = cloud.remove_statistical_outlier(nb_neighbors=20, std_ratio=2.0)
-            else:
-                self._progress(f"  Pisteitä: {len(cloud.points):,} — kohinasuodatus ohitettu (iso pilvi)")
+            # Kohinasuodatus aina: voxelointi ei poista harhapisteitä, ja ne
+            # sotkevat seinien koordinaatit + tuottavat valehavaintoja. Tarkkuus > nopeus.
+            self._progress(f"  Pisteitä: {len(cloud.points):,} — kohinasuodatus…")
+            cloud, _ = cloud.remove_statistical_outlier(nb_neighbors=20, std_ratio=2.0)
 
             from scan2bim.core.geometry.loader import scanner_origins
             origins: list = []
