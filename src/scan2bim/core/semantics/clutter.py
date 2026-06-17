@@ -33,14 +33,17 @@ def detect_clutter(
     min_points: int = 30,
 ) -> Discarded:
     """Klusteroi jäljellä olevat pisteet, laskee krääsäklusterit."""
-    pts = np.asarray(cloud.points)
-    if len(pts) == 0:
+    if len(cloud.points) == 0:
         return Discarded()
 
-    # Kaikki "käytetyt" pisteet ovat jo seinissä/latoissa/pilareissa.
-    # Yksinkertainen aprox: jätä pois pisteet jotka ovat lähellä seinäakseleita
-    # tai laatta/tilan tasoa. Tässä versiossa käytämme vain heuristiikkaa:
-    # DBSCAN koko pilvellä → klusterit joiden ulottuvuus on kaluste-kokoinen.
+    # DBSCAN koko jäljellä olevalla pilvellä kaataa muistin isoilla skanneilla.
+    # Krääsälaskenta on best-effort läpinäkyvyyttä varten → riittää karkeasti
+    # harvennettu kopio (~120k pistettä).
+    from scan2bim.core.segmentation.wall_detector import _downsample_to_target
+    work = _downsample_to_target(cloud, target=120_000, start_voxel=max(eps_mm * 0.5, 50.0))
+    pts = np.asarray(work.points)
+    if len(pts) == 0:
+        return Discarded()
 
     pts_2d = pts.copy()
     pts_2d[:, 2] = 0.0

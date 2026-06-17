@@ -58,7 +58,21 @@ class BeamDetector(ElementDetector):
         if len(zone_pts) < self.min_points:
             return [], cloud
 
-        zone_2d = zone_pts.copy()
+        # Iso kattovyöhyke kaataisi DBSCANin — harvennetaan klusterointiin.
+        # Harvennettaessa luovutaan tarkasta inlier-poistosta (palkkeja on vähän;
+        # niiden pisteet jäävät krääsälaskentaan, mikä on vaaratonta).
+        downsampled = len(zone_pts) > 120_000
+        if downsampled:
+            from .wall_detector import _downsample_to_target
+            zc = o3d.geometry.PointCloud()
+            zc.points = o3d.utility.Vector3dVector(zone_pts)
+            cluster_src = np.asarray(
+                _downsample_to_target(zc, target=120_000, start_voxel=max(self.eps_mm * 0.7, 50.0)).points
+            )
+        else:
+            cluster_src = zone_pts
+
+        zone_2d = cluster_src.copy()
         zone_2d[:, 2] = 0.0
         cloud_2d = o3d.geometry.PointCloud()
         cloud_2d.points = o3d.utility.Vector3dVector(zone_2d)
@@ -74,11 +88,15 @@ class BeamDetector(ElementDetector):
         for label in set(labels.tolist()):
             if label == -1:
                 continue
-            cluster = zone_pts[labels == label]
+            cluster = cluster_src[labels == label]
             beam = self._cluster_to_beam(cluster, label)
             if beam is not None:
                 beams.append(beam)
                 beam_labels.add(label)
+
+        if downsampled:
+            # Indeksit eivät vastaa täyttä pilveä → ei tarkkaa poistoa
+            return beams, cloud
 
         # Poista palkki-inlierit alkuperäisestä pilvestä
         beam_zone_inlier_idx = zone_idx[np.isin(labels, list(beam_labels))]
