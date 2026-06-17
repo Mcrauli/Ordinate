@@ -35,6 +35,8 @@ _DIST_BIN_MM = 1.0           # seinäpinnan paikkatarkkuus mm
 _DIST_SMOOTH_BINS = 3
 _DIST_MIN_PEAK_MM = 40.0     # min etäisyys huippujen välillä
 _PLANE_DIST_MM = 3.0         # inlier-toleranssi seinäpinnalta
+_RUN_BIN_MM = 150.0          # seinänpätkien segmentoinnin rasterointi akselilla
+_RUN_GAP_MM = 600.0          # tätä pidempi tyhjä jakso katkaisee seinän
 
 _Z_SKIP_FRAC = 0.07
 
@@ -249,29 +251,58 @@ def _walls_for_direction(wall_pts: np.ndarray, angle_deg: float, id_offset: int)
         if not (_MIN_THICKNESS <= thickness <= _MAX_THICKNESS):
             continue
 
+        # Pilko suunta todellisiksi seinänpätkiksi: yksi (suunta, etäisyyspari) voi
+        # osua moneen erilliseen seinään / ylittää tyhjää. Histogrammi akselilla,
+        # tiheät yhtenäiset jaksot = seinät (>_RUN_GAP_MM tyhjä katkaisee).
         proj_a_svd = inlier_pts[:, :2] @ along_svd
-        lo = float(np.percentile(proj_a_svd, 1))
-        hi = float(np.percentile(proj_a_svd, 99))
-        length = hi - lo
-        if length < _MIN_WALL_LENGTH:
+        a_lo, a_hi = float(proj_a_svd.min()), float(proj_a_svd.max())
+        nb = max(int((a_hi - a_lo) / _RUN_BIN_MM) + 1, 1)
+        counts, edges = np.histogram(proj_a_svd, bins=nb, range=(a_lo, a_hi))
+        nz = counts[counts > 0]
+        if len(nz) == 0:
             continue
+        occ = counts >= max(2.0, 0.12 * float(np.median(nz)))
+        gap_bins = max(int(_RUN_GAP_MM / _RUN_BIN_MM), 1)
 
-        mid = (lo + hi) / 2.0
-        p0 = (mid - length / 2.0) * along_svd + center_d * pn_xy
-        p1 = (mid + length / 2.0) * along_svd + center_d * pn_xy
-
-        wall_id = f"wall_{id_offset + len(walls_out):03d}"
-        w = Wall(
-            id=wall_id,
-            confidence=round(min(1.0, len(inlier_pts) / max(len(wall_pts) * 0.04, 1)), 3),
-            classification="wall",
-            source=ElementSource(method="normals"),
-            axis=[[round(float(p0[0]), 1), round(float(p0[1]), 1)],
-                  [round(float(p1[0]), 1), round(float(p1[1]), 1)]],
-            height=round(float(z_extent), 1),
-            thickness=round(float(thickness), 1),
-            z_min=round(float(inlier_pts[:, 2].min()), 1),
-        )
-        walls_out.append(w)
+        bi = 0
+        while bi < nb:
+            if not occ[bi]:
+                bi += 1
+                continue
+            last = bi
+            gap = 0
+            bj = bi
+            while bj < nb:
+                if occ[bj]:
+                    last = bj
+                    gap = 0
+                else:
+                    gap += 1
+                    if gap > gap_bins:
+                        break
+                bj += 1
+            a = float(edges[bi])
+            b = float(edges[last + 1])
+            bi = bj
+            seg_len = b - a
+            if seg_len < _MIN_WALL_LENGTH:
+                continue
+            nseg = int(((proj_a_svd >= a) & (proj_a_svd <= b)).sum())
+            if nseg < _MIN_INLIERS // 2:
+                continue
+            mid = (a + b) / 2.0
+            p0 = (mid - seg_len / 2.0) * along_svd + center_d * pn_xy
+            p1 = (mid + seg_len / 2.0) * along_svd + center_d * pn_xy
+            walls_out.append(Wall(
+                id=f"wall_{id_offset + len(walls_out):03d}",
+                confidence=round(min(1.0, nseg / max(len(wall_pts) * 0.04, 1)), 3),
+                classification="wall",
+                source=ElementSource(method="normals"),
+                axis=[[round(float(p0[0]), 1), round(float(p0[1]), 1)],
+                      [round(float(p1[0]), 1), round(float(p1[1]), 1)]],
+                height=round(float(z_extent), 1),
+                thickness=round(float(thickness), 1),
+                z_min=round(float(inlier_pts[:, 2].min()), 1),
+            ))
 
     return walls_out
