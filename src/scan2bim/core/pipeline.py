@@ -22,12 +22,13 @@ log = logging.getLogger(__name__)
 
 @dataclass
 class PipelineConfig:
-    voxel_size: float = 20.0                           # mm
-    detector: Literal["ransac", "density"] = "ransac"
+    voxel_size: float = 12.0                           # mm
+    detector: Literal["ransac", "density", "normals", "floorplan"] = "ransac"
     export_ifc: bool = True
     export_dxf: bool = True
     export_qa: bool = True            # monikerrosajossa: kirjoita qa_report.txt
     qa_tolerance: float = 2.5         # mm
+    icp_refine: bool = False          # monikerros: kohdista siivut ICP:llä
     save_intermediate: bool = True
 
 
@@ -114,6 +115,7 @@ class Pipeline:
                 paths, z_lo, z_hi,
                 voxel_size=self.config.voxel_size,
                 progress_cb=self._progress,
+                icp_refine=self.config.icp_refine,
             )
             if len(cloud.points) < 500:
                 self._progress(f"  Liian vähän pisteitä ({len(cloud.points)}), ohitetaan.")
@@ -178,15 +180,27 @@ class Pipeline:
         from scan2bim.core.semantics.clutter import detect_clutter
         from scan2bim.core.semantics.wall_pairing import refine_wall_thicknesses
 
-        # Ketjutettu inlier-subtraktio: jokainen detektori poistaa omat pisteensä
-        self._progress("  Seinädetektio (RANSAC)…")
-        walls_raw, cloud1 = WallDetector().detect(cloud)
-        self._progress(f"    -> {len(walls_raw)} seinää  ({len(cloud1.points):,} pt jäljellä)")
+        det = self.config.detector
+        if det == "ransac":
+            # Ketjutettu inlier-subtraktio: jokainen detektori poistaa omat pisteensä
+            self._progress("  Seinädetektio (RANSAC)…")
+            walls_raw, cloud1 = WallDetector().detect(cloud)
+            self._progress(f"    -> {len(walls_raw)} seinää  ({len(cloud1.points):,} pt jäljellä)")
 
-        self._progress("  Seinäpaksuuden tarkennus…")
-        walls = refine_wall_thicknesses(walls_raw)
-        thick_ok = sum(1 for w in walls if w.thickness >= 50)
-        self._progress(f"    -> {thick_ok}/{len(walls)} seinällä mitattu/arvioitu paksuus")
+            self._progress("  Seinäpaksuuden tarkennus…")
+            walls = refine_wall_thicknesses(walls_raw)
+            thick_ok = sum(1 for w in walls if w.thickness >= 50)
+            self._progress(f"    -> {thick_ok}/{len(walls)} seinällä mitattu/arvioitu paksuus")
+        else:
+            # Vaihtoehtoinen koko-pilvi-detektori (normals / density / floorplan)
+            from scan2bim.core.segmentation.base import DetectorRegistry
+            import scan2bim.core.segmentation.wall_normals  # noqa: F401
+            import scan2bim.core.segmentation.wall_density   # noqa: F401
+            import scan2bim.core.floorplan.detector           # noqa: F401
+            self._progress(f"  Seinädetektio ({det})…")
+            walls = DetectorRegistry.get(det)().detect(cloud).walls
+            cloud1 = cloud   # ei inlier-subtraktiota
+            self._progress(f"    -> {len(walls)} seinää")
 
         self._progress("  Laattadetektio (z-histogram)…")
         slabs, cloud2 = SlabDetector().detect(cloud1)
@@ -209,9 +223,24 @@ class Pipeline:
         discarded = detect_clutter(cloud4, partial)
         self._progress(f"    -> {discarded.clutter_cluster_count} klusteria merkitty krääsäksi")
 
+        self._progress("  Aukkodetektio (ovet/ikkunat)…")
+        openings = []
+        try:
+            from scan2bim.core.segmentation.opening_detector import detect_openings
+            floor_z = min((w.z_min for w in walls), default=0.0)
+            openings = detect_openings(walls, cloud, floor_z)
+            self._progress(
+                f"    -> {len(openings)} aukkoa "
+                f"({sum(1 for o in openings if o.opening_type == 'door')} ovea, "
+                f"{sum(1 for o in openings if o.opening_type == 'window')} ikkunaa)"
+            )
+        except Exception as e:
+            self._progress(f"    Aukkodetektio ohitettu: {e}")
+
         return StructuralModel(
             walls=walls,
             slabs=slabs,
+            openings=openings,
             columns=columns,
             beams=beams,
             spaces=spaces,

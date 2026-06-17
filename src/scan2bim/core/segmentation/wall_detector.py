@@ -172,4 +172,5 @@ class WallDetector(ElementDetector):
                   [float(p1_xy[0]), float(p1_xy[1])]],
             height=round(height, 1),
             thickness=round(thickness, 1),
+            z_min=round(float(pts[:, 2].min()), 1),
         )

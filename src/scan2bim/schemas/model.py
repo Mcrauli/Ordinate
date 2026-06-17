@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 # ---------------------------------------------------------------------------
 
 class ElementSource(BaseModel):
-    method: Literal["ransac", "density", "z_histogram", "cluster", "manual"]
+    method: Literal["ransac", "density", "z_histogram", "cluster", "manual", "normals", "floorplan", "opening"]
     plane_ids: list[int] = Field(default_factory=list)
     notes: str = ""
 
@@ -37,6 +37,7 @@ class Wall(Element):
     axis: list[list[float]]          # [[x0,y0], [x1,y1]] mm
     height: float                    # mm
     thickness: float                 # mm
+    z_min: float = 0.0               # mm — seinän alin piste (lattiaan vertailua varten)
 
 
 class Slab(Element):
@@ -75,6 +76,17 @@ class Beam(Element):
     profile: BeamProfile
 
 
+class Opening(Element):
+    """Aukko (ovi tai ikkuna) seinässä."""
+    classification: str = "opening"
+    opening_type: Literal["door", "window", "unknown"]
+    wall_id: str
+    position_along: float            # mm — sijainti seinän p0:sta
+    width: float                     # mm
+    sill_height: float               # mm lattian yläpuolella
+    opening_height: float            # mm
+
+
 class Space(Element):
     """Tila (IfcSpace) — johdettu seinä/laattarajoista."""
     classification: str = "space"
@@ -109,6 +121,7 @@ class Metadata(BaseModel):
 class StructuralModel(BaseModel):
     walls: list[Wall] = Field(default_factory=list)
     slabs: list[Slab] = Field(default_factory=list)
+    openings: list[Opening] = Field(default_factory=list)
     columns: list[Column] = Field(default_factory=list)
     beams: list[Beam] = Field(default_factory=list)
     spaces: list[Space] = Field(default_factory=list)
@@ -125,6 +138,9 @@ class StructuralModel(BaseModel):
     def summary(self) -> str:
         return (
             f"StructuralModel: {len(self.walls)} walls, {len(self.slabs)} slabs, "
+            f"{len(self.openings)} openings "
+            f"({sum(1 for o in self.openings if o.opening_type == 'door')} doors, "
+            f"{sum(1 for o in self.openings if o.opening_type == 'window')} windows), "
             f"{len(self.columns)} columns, {len(self.beams)} beams, "
             f"{len(self.spaces)} spaces | discarded={self.discarded.clutter_cluster_count} clusters"
         )

@@ -22,7 +22,7 @@ $preBuildMtime = if (Test-Path $source) { (Get-Item $source).LastWriteTime } els
 & $py -m pip install -e "$root[gui,build]" --quiet
 if ($LASTEXITCODE -ne 0) { throw "pip install failed (exit $LASTEXITCODE)" }
 
-& $py -m PyInstaller "$root\build\scan2bim.spec" --clean --noconfirm
+& $py -m PyInstaller "$root\build\scan2bim.spec" --clean --noconfirm --distpath "$root\dist" --workpath "$root\build"
 if ($LASTEXITCODE -ne 0) { throw "pyinstaller failed (exit $LASTEXITCODE)" }
 
 if (-not (Test-Path $source)) { throw "PyInstaller did not produce $source" }

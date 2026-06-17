@@ -46,10 +46,11 @@ class ColumnDetector(ElementDetector):
         if len(pts) < self.min_points:
             return [], cloud
 
-        # Isolla pilvellä DBSCAN on hidas: pilarit ovat isoja piirteitä, joten
-        # klusterointi tehdään karkeasti harvennetusta kopiosta (~40 mm).
-        if len(pts) > 80_000:
-            work = cloud.voxel_down_sample(max(self.eps_mm * 0.5, 40.0))
+        # Isolla pilvellä DBSCAN on hidas: pilarit ovat isoja pintapiirteitä, joten
+        # klusterointi tehdään karkeasti harvennetusta kopiosta. Harvennus säilyttää
+        # pilarin pinnat (kymmeniä pisteitä) mutta romahduttaa DBSCAN-kustannuksen.
+        if len(pts) > 50_000:
+            work = cloud.voxel_down_sample(max(self.eps_mm * 0.7, 50.0))
             wpts = np.asarray(work.points)
         else:
             wpts = pts

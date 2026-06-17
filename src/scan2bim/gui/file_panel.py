@@ -12,6 +12,18 @@ from scan2bim.gui.theme import ACCENT, BG_WIDGET, TEXT_DIM
 _EXTS = {".e57", ".las", ".laz", ".pts", ".ply"}
 
 
+def _collect_scan_files(paths: list[Path]) -> list[Path]:
+    """Kerää skannaukset: tiedostot suoraan tai kaikki tiedostot kansiosta."""
+    result: list[Path] = []
+    for p in paths:
+        if p.is_dir():
+            for ext in _EXTS:
+                result.extend(sorted(p.glob(f"*{ext}")))
+        elif p.suffix.lower() in _EXTS:
+            result.append(p)
+    return result
+
+
 class DropZone(QtWidgets.QLabel):
     """Raahaa tiedosto(t) tähän -alue. Tukee montaa skannia (monikerros)."""
     files_dropped = QtCore.Signal(list)   # list[Path]
@@ -28,7 +40,7 @@ class DropZone(QtWidgets.QLabel):
         )
 
     def _set_empty(self) -> None:
-        self.setText("Raahaa pistepilvi(t) tähän\n(E57 · LAS/LAZ · PTS · PLY)")
+        self.setText("Raahaa pistepilviä tai kansio tähän\n(E57 · LAS/LAZ · PTS · PLY)")
 
     def set_files(self, paths: list[Path]) -> None:
         if len(paths) == 1:
@@ -45,10 +57,8 @@ class DropZone(QtWidgets.QLabel):
             event.acceptProposedAction()
 
     def dropEvent(self, event: QtGui.QDropEvent) -> None:
-        paths = [
-            p for u in event.mimeData().urls()
-            if (p := Path(u.toLocalFile())).suffix.lower() in _EXTS
-        ]
+        raw = [Path(u.toLocalFile()) for u in event.mimeData().urls()]
+        paths = _collect_scan_files(raw)
         if paths:
             self.set_files(paths)
             self.files_dropped.emit(paths)
@@ -110,14 +120,33 @@ class FilePanel(QtWidgets.QWidget):
         form.setSpacing(8)
 
         self._detector = QtWidgets.QComboBox()
-        self._detector.addItems(["ransac", "density"])
+        self._detector.addItems(["ransac", "normals", "density", "floorplan"])
         form.addRow("Detektori:", self._detector)
 
         self._voxel = QtWidgets.QDoubleSpinBox()
-        self._voxel.setRange(5, 100)
-        self._voxel.setValue(20)
+        self._voxel.setRange(0.5, 50.0)
+        self._voxel.setSingleStep(0.5)
+        self._voxel.setValue(12.0)
         self._voxel.setSuffix(" mm")
         form.addRow("Voxel-koko:", self._voxel)
+
+        self._icp = QtWidgets.QCheckBox("ICP-hienorekisteröinti (monikerros)")
+        self._icp.setChecked(False)
+        form.addRow("Rekisteröinti:", self._icp)
+
+        self._qa = QtWidgets.QCheckBox("QA/LOA-raportti")
+        self._qa.setChecked(True)
+        self._qa_tol = QtWidgets.QDoubleSpinBox()
+        self._qa_tol.setRange(0.5, 25.0)
+        self._qa_tol.setSingleStep(0.5)
+        self._qa_tol.setValue(2.5)
+        self._qa_tol.setSuffix(" mm")
+        qa_row = QtWidgets.QHBoxLayout()
+        qa_row.addWidget(self._qa)
+        qa_row.addWidget(QtWidgets.QLabel("tol:"))
+        qa_row.addWidget(self._qa_tol)
+        qa_row.addStretch()
+        form.addRow("Tarkkuus:", qa_row)
 
         self._ifc = QtWidgets.QCheckBox("IFC")
         self._ifc.setChecked(True)
@@ -159,6 +188,9 @@ class FilePanel(QtWidgets.QWidget):
             detector=self._detector.currentText(),
             export_ifc=self._ifc.isChecked(),
             export_dxf=self._dxf.isChecked(),
+            export_qa=self._qa.isChecked(),
+            qa_tolerance=self._qa_tol.value(),
+            icp_refine=self._icp.isChecked(),
         )
         self.convert_requested.emit(
             self._input_paths,

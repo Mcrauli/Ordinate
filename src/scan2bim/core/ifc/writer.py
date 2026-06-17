@@ -14,7 +14,7 @@ import numpy as np
 import ifcopenshell
 import ifcopenshell.guid
 
-from scan2bim.schemas.model import StructuralModel, Wall, Slab, Space, Column, Beam
+from scan2bim.schemas.model import StructuralModel, Wall, Slab, Space, Column, Beam, Opening
 
 
 def write_ifc(model: StructuralModel, path: Path) -> None:
@@ -32,8 +32,12 @@ def write_ifc(model: StructuralModel, path: Path) -> None:
 
     elements: list[ifcopenshell.entity_instance] = []
 
+    openings_by_wall = _openings_by_wall(model)
     for w in model.walls:
-        elements.append(_create_wall(ifc, w, oh, body_ctx, axis_ctx))
+        wall_ent = _create_wall(ifc, w, oh, body_ctx, axis_ctx)
+        elements.append(wall_ent)
+        for op in openings_by_wall.get(w.id, []):
+            elements.append(_create_opening(ifc, wall_ent, w, op, oh, body_ctx))
 
     for b in model.beams:
         e = _create_beam(ifc, b, oh, body_ctx)
@@ -119,8 +123,12 @@ def write_building_ifc(models: list[StructuralModel], path: Path) -> None:
         storey.Elevation = _floor_elevation(model)
 
         elements: list[ifcopenshell.entity_instance] = []
+        openings_by_wall = _openings_by_wall(model)
         for w in model.walls:
-            elements.append(_create_wall(ifc, w, oh, body_ctx, axis_ctx))
+            wall_ent = _create_wall(ifc, w, oh, body_ctx, axis_ctx)
+            elements.append(wall_ent)
+            for op in openings_by_wall.get(w.id, []):
+                elements.append(_create_opening(ifc, wall_ent, w, op, oh, body_ctx))
         for b in model.beams:
             e = _create_beam(ifc, b, oh, body_ctx)
             if e is not None:
@@ -330,6 +338,85 @@ def _create_wall(
         Representation=shape,
         PredefinedType="SOLIDWALL",
     )
+
+
+# --------------------------------------------------------------------------- #
+# Aukko-entiteetti (IfcOpeningElement + IfcRelVoidsElement)
+# --------------------------------------------------------------------------- #
+
+def _openings_by_wall(model: StructuralModel) -> dict[str, list[Opening]]:
+    out: dict[str, list[Opening]] = {}
+    for op in model.openings:
+        out.setdefault(op.wall_id, []).append(op)
+    return out
+
+
+def _create_opening(
+    ifc: ifcopenshell.file,
+    wall_ent: ifcopenshell.entity_instance,
+    wall: Wall,
+    op: Opening,
+    oh: ifcopenshell.entity_instance,
+    body_ctx: ifcopenshell.entity_instance,
+) -> ifcopenshell.entity_instance:
+    """Aukko seinän paikallisessa koordinaatistossa: leikkaa seinään reiän.
+    Seinä on sijoitettu keskipisteeseen, X akselia pitkin → paikallinen
+    x ∈ [-length/2, length/2], y koko paksuus, z ∈ [0, height]."""
+    p0 = np.array(wall.axis[0], dtype=float)
+    p1 = np.array(wall.axis[1], dtype=float)
+    length = float(np.linalg.norm(p1 - p0)) or 1.0
+
+    cx = op.position_along + op.width / 2.0 - length / 2.0   # aukon keskikohta seinäakselilla
+    cut_thickness = float(wall.thickness) * 1.4              # ylileveä → varma läpileikkaus
+
+    # Aukon placement seinän placementiin nähden (paikallinen X-siirto)
+    rel = ifc.createIfcAxis2Placement3D(
+        Location=ifc.createIfcCartesianPoint([float(cx), 0.0, float(op.sill_height)]),
+        Axis=ifc.createIfcDirection([0.0, 0.0, 1.0]),
+        RefDirection=ifc.createIfcDirection([1.0, 0.0, 0.0]),
+    )
+    placement = ifc.createIfcLocalPlacement(
+        PlacementRelTo=wall_ent.ObjectPlacement,
+        RelativePlacement=rel,
+    )
+
+    profile = ifc.createIfcRectangleProfileDef(
+        ProfileType="AREA", XDim=float(op.width), YDim=cut_thickness,
+    )
+    extrusion_pos = ifc.createIfcAxis2Placement3D(
+        Location=ifc.createIfcCartesianPoint([0.0, 0.0, 0.0]),
+        Axis=ifc.createIfcDirection([0.0, 0.0, 1.0]),
+        RefDirection=ifc.createIfcDirection([1.0, 0.0, 0.0]),
+    )
+    solid = ifc.createIfcExtrudedAreaSolid(
+        SweptArea=profile, Position=extrusion_pos,
+        ExtrudedDirection=ifc.createIfcDirection([0.0, 0.0, 1.0]),
+        Depth=float(op.opening_height),
+    )
+    body_repr = ifc.createIfcShapeRepresentation(
+        ContextOfItems=body_ctx,
+        RepresentationIdentifier="Body",
+        RepresentationType="SweptSolid",
+        Items=[solid],
+    )
+    shape = ifc.createIfcProductDefinitionShape(Representations=[body_repr])
+
+    label = {"door": "Ovi", "window": "Ikkuna"}.get(op.opening_type, "Aukko")
+    opening_ent = ifc.createIfcOpeningElement(
+        GlobalId=ifcopenshell.guid.new(),
+        OwnerHistory=oh,
+        Name=f"{label}-{op.id}",
+        ObjectPlacement=placement,
+        Representation=shape,
+        PredefinedType="OPENING",
+    )
+    ifc.createIfcRelVoidsElement(
+        GlobalId=ifcopenshell.guid.new(),
+        OwnerHistory=oh,
+        RelatingBuildingElement=wall_ent,
+        RelatedOpeningElement=opening_ent,
+    )
+    return opening_ent
 
 
 # --------------------------------------------------------------------------- #
