@@ -246,7 +246,10 @@ class Pipeline:
         self._progress("Havaitaan kerroksia Z-histogrammista…")
 
         from scan2bim.core.geometry.floor_splitter import detect_floors_from_files
-        sample = max(1, len(paths) // 20)  # max 20 tiedostoa ensimmäiseen passiin
+        import math
+        # Kerrosjako tarvitsee vain Z-jakauman → riittää ~4 hajautettua tiedostoa
+        # (kattaa kerrokset), ei kaikkien lukua. Säästää I/O:ta isolla setillä.
+        sample = max(1, math.ceil(len(paths) / 4))
         floors = detect_floors_from_files(paths, sample_step=sample)
         self._progress(f"Löydettiin {len(floors)} kerros(ta).")
 
@@ -275,8 +278,11 @@ class Pipeline:
                 self._progress(f"  Liian vähän pisteitä ({len(cloud.points)}), ohitetaan.")
                 continue
 
-            self._progress(f"  Pisteitä: {len(cloud.points):,} — kohinasuodatus…")
-            cloud, _ = cloud.remove_statistical_outlier(nb_neighbors=20, std_ratio=2.0)
+            if len(cloud.points) <= 1_500_000:
+                self._progress(f"  Pisteitä: {len(cloud.points):,} — kohinasuodatus…")
+                cloud, _ = cloud.remove_statistical_outlier(nb_neighbors=20, std_ratio=2.0)
+            else:
+                self._progress(f"  Pisteitä: {len(cloud.points):,} — kohinasuodatus ohitettu (iso pilvi)")
 
             from scan2bim.core.geometry.loader import scanner_origins
             origins: list = []

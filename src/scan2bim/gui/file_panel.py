@@ -119,10 +119,6 @@ class FilePanel(QtWidgets.QWidget):
         form = QtWidgets.QFormLayout()
         form.setSpacing(8)
 
-        self._detector = QtWidgets.QComboBox()
-        self._detector.addItems(["normals", "ransac", "density", "floorplan"])
-        form.addRow("Detektori:", self._detector)
-
         self._voxel = QtWidgets.QDoubleSpinBox()
         self._voxel.setRange(0.5, 50.0)
         self._voxel.setSingleStep(0.5)
@@ -195,7 +191,7 @@ class FilePanel(QtWidgets.QWidget):
         cfg = PipelineConfig(
             voxel_size=self._voxel.value(),
             auto_voxel=self._auto_voxel.isChecked(),
-            detector=self._detector.currentText(),
+            detector="normals",
             export_ifc=self._ifc.isChecked(),
             export_dxf=self._dxf.isChecked(),
             export_qa=self._qa.isChecked(),

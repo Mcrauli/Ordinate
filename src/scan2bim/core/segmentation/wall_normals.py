@@ -44,7 +44,18 @@ class NormalAssistedDetector(ElementDetector):
     """Hough-muunnosperustainen deterministinen seinädetektori."""
 
     def detect(self, cloud: o3d.geometry.PointCloud) -> StructuralModel:
-        pts_all = np.asarray(cloud.points)
+        # Suunta- ja pintahaku ovat robusteja harvennukselle, ja seinät tarkennetaan
+        # silti täydestä pilvestä (recenter/trim pipelinessä). Iso pilvi tekee Hough-
+        # hausta hitaan (90 kulmaa × N), joten kapataan ~800k pisteeseen.
+        if len(cloud.points) > 800_000:
+            voxel = 20.0
+            work = cloud.voxel_down_sample(voxel)
+            while len(work.points) > 800_000 and voxel < 120.0:
+                voxel *= 1.4
+                work = cloud.voxel_down_sample(voxel)
+            pts_all = np.asarray(work.points)
+        else:
+            pts_all = np.asarray(cloud.points)
         if len(pts_all) < 500:
             return StructuralModel()
 
