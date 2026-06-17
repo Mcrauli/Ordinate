@@ -121,8 +121,14 @@ class Pipeline:
                 self._progress(f"  Liian vähän pisteitä ({len(cloud.points)}), ohitetaan.")
                 continue
 
-            self._progress(f"  Pisteitä: {len(cloud.points):,} — kohinasuodatus…")
-            cloud, _ = cloud.remove_statistical_outlier(nb_neighbors=20, std_ratio=2.0)
+            # Tilastollinen kohinasuodatus on O(n·k) KD-puuhaku — jättipilvellä
+            # minuuttien stalli. Voxelointi on jo poistanut harvan kohinan, joten
+            # ajetaan suodatus vain järkevän kokoiselle pilvelle.
+            if len(cloud.points) <= 1_500_000:
+                self._progress(f"  Pisteitä: {len(cloud.points):,} — kohinasuodatus…")
+                cloud, _ = cloud.remove_statistical_outlier(nb_neighbors=20, std_ratio=2.0)
+            else:
+                self._progress(f"  Pisteitä: {len(cloud.points):,} — kohinasuodatus ohitettu (iso pilvi)")
 
             model = self._detect(cloud, source)
             model.metadata.floor_index = i

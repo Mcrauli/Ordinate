@@ -22,6 +22,25 @@ from .base import ElementDetector
 
 log = logging.getLogger(__name__)
 
+
+def _downsample_to_target(
+    cloud: o3d.geometry.PointCloud,
+    target: int,
+    start_voxel: float,
+    max_voxel: float = 250.0,
+) -> o3d.geometry.PointCloud:
+    """Harvenna pilvi karkeasti ~target pisteeseen (kasvattaen voxelia).
+    Käytetään raskaisiin geometriavaiheisiin; täysi pilvi säilyy kutsujalla."""
+    if len(cloud.points) <= target:
+        return cloud
+    voxel = start_voxel
+    work = cloud.voxel_down_sample(voxel)
+    while len(work.points) > target and voxel < max_voxel:
+        voxel *= 1.5
+        work = cloud.voxel_down_sample(voxel)
+    return work
+
+
 _VERTICAL_NORMAL_Z_MAX = 0.20
 _MIN_INLIERS = 300
 _MIN_LENGTH_MM = 200.0
@@ -51,7 +70,11 @@ class WallDetector(ElementDetector):
         self,
         cloud: o3d.geometry.PointCloud,
     ) -> tuple[list[Wall], o3d.geometry.PointCloud]:
-        planes = self._extract_planes(cloud)
+        # Tasogeometria ei tarvitse täyttä resoluutiota: iso pilvi tekee
+        # RANSACista (30 × segment_plane) minuuttien mittaisen. Haetaan tasot
+        # harvennetusta kopiosta ja vähennetään inlierit silti TÄYDESTÄ pilvestä.
+        work = _downsample_to_target(cloud, target=400_000, start_voxel=30.0)
+        planes = self._extract_planes(work)
 
         vertical = [p for p in planes if abs(p["normal"][2]) < _VERTICAL_NORMAL_Z_MAX]
         log.info("Löytyi %d tasoa, vertikaalia: %d", len(planes), len(vertical))
