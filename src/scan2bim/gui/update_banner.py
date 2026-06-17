@@ -19,10 +19,12 @@ from PySide6 import QtCore, QtWidgets
 from scan2bim.core.updater import (
     DEFAULT_REPO,
     UpdateInfo,
+    asset_is_installer,
     check_for_update,
     download_asset,
     fetch_expected_sha256,
     is_running_bundled,
+    launch_installer,
     replace_exe,
 )
 
@@ -183,10 +185,34 @@ def perform_update(info: UpdateInfo, parent: QtWidgets.QWidget | None = None) ->
     dialog = UpdateProgressDialog(info, parent)
 
     def on_ok(downloaded_path: Path) -> None:
-        dialog.setLabelText("Asennetaan päivitys…")
+        dialog.setLabelText("Käynnistetään asennusohjelma…")
         dialog.setCancelButton(None)
         dialog.setRange(0, 0)
         QtWidgets.QApplication.processEvents()
+
+        if asset_is_installer(info.download_url):
+            # Installeri elevoituu itse (UAC) ja korvaa Program Files -exen.
+            try:
+                launch_installer(downloaded_path)
+            except Exception as exc:
+                dialog.close()
+                QtWidgets.QMessageBox.critical(
+                    parent,
+                    "Päivitys epäonnistui",
+                    f"Asennusohjelman käynnistys ei onnistunut: {type(exc).__name__}: {exc}\n"
+                    f"Lataa manuaalisesti: {info.release_url}",
+                )
+                return
+            dialog.close()
+            QtWidgets.QMessageBox.information(
+                parent,
+                "Päivitys käynnistyy",
+                f"scan2bim {info.tag} -asennusohjelma avautuu (vahvista UAC-kysely).\n\n"
+                f"scan2bim sulkeutuu nyt, jotta päivitys voidaan asentaa.",
+            )
+            os._exit(0)
+
+        # Raaka exe-asset (ei installeri): vanha in-place-vaihto.
         try:
             replace_exe(downloaded_path)
         except Exception as exc:

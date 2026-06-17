@@ -232,6 +232,30 @@ def download_asset(
     part_path.rename(target_path)
 
 
+def asset_is_installer(url_or_name: str) -> bool:
+    """True jos asset on Inno Setup -installeri (``*Setup*.exe``)."""
+    return "setup" in url_or_name.lower()
+
+
+def launch_installer(installer_path: Path) -> None:
+    """Käynnistä ladattu Inno Setup -installeri ja palaa heti.
+
+    Installeri hoitaa oman elevaationsa (UAC), joten se voi kirjoittaa
+    Program Filesiin vaikka sovellus itse ei ole elevoitu. Kutsujan on
+    suljettava sovellus heti tämän jälkeen, jotta installeri voi korvata
+    käynnissä olevan exen. ``/CLOSEAPPLICATIONS /RESTARTAPPLICATIONS``:
+    Restart Manager sulkee ja avaa scan2bimin asennuksen ympäriltä.
+    """
+    import subprocess
+
+    if not installer_path.exists():
+        raise FileNotFoundError(f"installer not found: {installer_path}")
+    subprocess.Popen(
+        [str(installer_path), "/CLOSEAPPLICATIONS", "/RESTARTAPPLICATIONS"],
+        close_fds=True,
+    )
+
+
 def _old_path_for(exe_path: Path) -> Path:
     return exe_path.with_suffix(exe_path.suffix + ".old")
 
