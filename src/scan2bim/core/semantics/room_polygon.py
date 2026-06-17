@@ -60,9 +60,15 @@ def build_room_polygon(walls: list[Wall]) -> list[list[float]] | None:
         return None
 
     arr = np.array(corners)
-    centre = arr.mean(axis=0)
-    angles = np.arctan2(arr[:, 1] - centre[1], arr[:, 0] - centre[0])
-    poly = arr[np.argsort(angles)]
+    # Konveksi kuori: ei itseleikkaa (toisin kuin kulmajärjestys keskipisteen ympäri),
+    # ja sisäseinien päätepisteet jäävät automaattisesti kuoren sisälle → ulkoraja.
+    try:
+        from scipy.spatial import ConvexHull
+        poly = arr[ConvexHull(arr).vertices]
+    except Exception:
+        centre = arr.mean(axis=0)
+        angles = np.arctan2(arr[:, 1] - centre[1], arr[:, 0] - centre[0])
+        poly = arr[np.argsort(angles)]
     poly = _remove_collinear(poly, tol_deg=4.0)
 
     if len(poly) < 3:

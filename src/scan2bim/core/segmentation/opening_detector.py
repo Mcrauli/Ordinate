@@ -244,8 +244,13 @@ def _find_openings(
         if not (left_ok and right_ok):
             continue
 
+        # Hylkää leveät+matalat haamut (esim. 2.3m × 0.7m harva katto-/lattiakaista)
+        if width > 2.0 * height:
+            continue
         sill_h = max(z_start - floor_z, 0.0)
         otype = _classify(sill_h, width, height)
+        if otype == "unknown":
+            continue   # vain varmat ovet/ikkunat → vähemmän virhehavaintoja
         openings.append(Opening(
             id=f"opening_{start_idx + len(openings):03d}",
             confidence=round(min(1.0, (width / 900.0) * (height / 2000.0)), 3),
