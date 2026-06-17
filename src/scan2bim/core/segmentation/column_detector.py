@@ -46,6 +46,11 @@ def detect_columns(cloud, walls: list[Wall], floor_z: float, ceiling_z: float) -
 
     sub = o3d.geometry.PointCloud()
     sub.points = o3d.utility.Vector3dVector(free)
+    # DBSCAN miljoonilla pisteillä syö kymmeniä GB → harvennetaan klusterointiin
+    # (~150k). Pilarit ovat isoja pintapiirteitä, säilyvät harvennuksessa.
+    if len(free) > 150_000:
+        sub = sub.voxel_down_sample(max(_DBSCAN_EPS * 0.4, 40.0))
+        free = np.asarray(sub.points)
     labels = np.asarray(sub.cluster_dbscan(eps=_DBSCAN_EPS, min_points=_DBSCAN_MIN_PTS))
 
     columns: list[Column] = []
