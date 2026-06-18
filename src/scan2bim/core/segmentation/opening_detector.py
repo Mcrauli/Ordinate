@@ -115,15 +115,22 @@ def _wall_openings(
     normal = np.array([-along[1], along[0]])
     plane_D = float(np.dot(normal, p0))
 
-    dist_to_plane = np.abs(pts[:, :2] @ normal - plane_D)
+    signed_dist = pts[:, :2] @ normal - plane_D   # negatiivinen tai positiivinen
+    dist_to_plane = np.abs(signed_dist)
     proj_along = (pts[:, :2] - p0) @ along
     z_lo = wall.z_min - 100.0
     z_hi = wall.z_min + wall.height + 100.0
 
-    # Kohdistutaan seinän pintoihin: dist ≈ T/2 (pariksi yhdistetty seinä)
-    # tai dist ≈ 0 (paritomaton seinä jonka akseli on pinnalla)
+    # Käytetään vain YHTÄ seinäpintaa (sisäpinta = se jolla on enemmän pisteitä).
+    # Kahden pinnan käyttö täyttää aukot ulkopuolelta läpi näkyvillä pisteillä
+    # (esim. ulkoseinässä ikkunan läpi näkyy ulkopinta) → ikkunat katoavat.
     half_t = wall.thickness / 2.0
-    near_face = np.abs(dist_to_plane - half_t) < _FACE_TOL
+    pos_face_count = int((np.abs(signed_dist - half_t) < _FACE_TOL).sum())
+    neg_face_count = int((np.abs(signed_dist + half_t) < _FACE_TOL).sum())
+    if pos_face_count >= neg_face_count:
+        near_face = np.abs(signed_dist - half_t) < _FACE_TOL
+    else:
+        near_face = np.abs(signed_dist + half_t) < _FACE_TOL
     near_center = dist_to_plane < _FACE_TOL
     on_wall_plane = near_face | near_center
 

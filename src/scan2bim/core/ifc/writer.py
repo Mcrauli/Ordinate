@@ -482,8 +482,12 @@ def _create_slab(
     if len(slab.boundary) < 4:   # suljettu polygoni: vähintään 3 pistettä + sulkupiste
         return None
 
-    # Placement: laatan yläpinnan z-tasolla
-    base_z = slab.elevation - slab.thickness   # laatta kasvaa ylöspäin kohti elevation
+    # Lattia: elevation = yläpinta, extrusointi alaspäin (base = elevation - thickness)
+    # Katto: elevation = alapinta (näkyvä), extrusointi ylöspäin (base = elevation)
+    if getattr(slab, "slab_type", "floor") == "ceiling":
+        base_z = slab.elevation
+    else:
+        base_z = slab.elevation - slab.thickness
     placement = _axis2placement(
         ifc,
         origin=[0.0, 0.0, float(base_z)],

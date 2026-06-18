@@ -100,11 +100,11 @@ def _refine_z(pts: np.ndarray, z_approx: float) -> float:
 
 def _measure_thickness(pts: np.ndarray, z: float, slab_type: str) -> float:
     """Etsii toista pintaa laatan paksuuden mittaamiseksi."""
-    # Lattia: katsotaan alle, katto: katsotaan ylle
-    if slab_type == "floor":
-        search = pts[pts[:, 2] < z - 20.0, 2]
-    else:
-        search = pts[pts[:, 2] > z + 20.0, 2]
+    # Katon yläpinta ei näy sisäskannauksessa → palautetaan aina oletus
+    if slab_type != "floor":
+        return _THICKNESS_DEFAULT
+    # Lattia: katsotaan alle
+    search = pts[pts[:, 2] < z - 20.0, 2]
 
     if len(search) < 50:
         return _THICKNESS_DEFAULT

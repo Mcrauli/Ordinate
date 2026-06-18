@@ -92,18 +92,33 @@ def _trim_endpoints(wall, pts: np.ndarray):
     lo = float(np.percentile(face_along, 2))
     hi = float(np.percentile(face_along, 98))
 
-    _MARGIN = 5.0   # mm
-    updates = {}
+    _MARGIN = 5.0        # mm — pieni reuna päätepisteiden ympärillä
+    _MAX_EXTEND = 300.0  # mm — älä pidennä yli tämän (T-liitos tai dataaukko)
+
+    ax = [list(wall.axis[0]), list(wall.axis[1])]
+    changed = False
+
+    # p0: trimmaa jos data alkaa sisempänä, pidennä jos data alkaa ulompana
     if lo > _MARGIN:
         new_p0 = p0 + (lo - _MARGIN) * along
-        updates["axis"] = [[round(float(new_p0[0]), 1), round(float(new_p0[1]), 1)], list(wall.axis[1])]
+        ax[0] = [round(float(new_p0[0]), 1), round(float(new_p0[1]), 1)]
+        changed = True
+    elif lo < -_MARGIN and abs(lo) <= _MAX_EXTEND:
+        new_p0 = p0 + (lo + _MARGIN) * along
+        ax[0] = [round(float(new_p0[0]), 1), round(float(new_p0[1]), 1)]
+        changed = True
+
+    # p1: trimmaa jos data loppuu sisempänä, pidennä jos data jatkuu ulompana
     if hi < length - _MARGIN:
-        ax = updates.get("axis", [list(wall.axis[0]), list(wall.axis[1])])
         new_p1 = p0 + (hi + _MARGIN) * along
         ax[1] = [round(float(new_p1[0]), 1), round(float(new_p1[1]), 1)]
-        updates["axis"] = ax
+        changed = True
+    elif hi > length + _MARGIN and (hi - length) <= _MAX_EXTEND:
+        new_p1 = p0 + (hi - _MARGIN) * along
+        ax[1] = [round(float(new_p1[0]), 1), round(float(new_p1[1]), 1)]
+        changed = True
 
-    return wall.model_copy(update=updates) if updates else wall
+    return wall.model_copy(update={"axis": ax}) if changed else wall
 
 
 def _fix_wall_center(wall, pts: np.ndarray):
@@ -216,10 +231,13 @@ class Pipeline:
             self._progress(f"  Auto-voxel: {self.config.voxel_size:.1f} mm")
 
         self._progress("Esikäsittely (downsample + kohinasuodatus)…")
+        # 5mm downsample endpoint-tarkkuutta varten — tarkempi kuin detektiovoxel mutta nopea
+        _REFINE_VOXEL = 5.0
+        refine_cloud = cloud.voxel_down_sample(_REFINE_VOXEL) if len(cloud.points) > 200_000 else cloud
         cloud = self._preprocess(cloud)
 
         self._progress(f"Seinädetektio ({self.config.detector})…")
-        model = self._detect(cloud, input_path)
+        model = self._detect(cloud, input_path, refine_cloud=refine_cloud)
 
         self._progress("Tallennetaan JSON…")
         model.save(output_dir / "model.json")
@@ -347,7 +365,7 @@ class Pipeline:
         from scan2bim.core.geometry.preprocess import preprocess
         return preprocess(cloud, voxel_size=self.config.voxel_size)
 
-    def _detect(self, cloud, source_path: Path) -> StructuralModel:
+    def _detect(self, cloud, source_path: Path, refine_cloud=None) -> StructuralModel:
         import scan2bim.core.segmentation.wall_ransac  # noqa: F401
         import scan2bim.core.segmentation.wall_density  # noqa: F401
         import scan2bim.core.segmentation.wall_normals  # noqa: F401
@@ -371,7 +389,8 @@ class Pipeline:
         model.walls = _deduplicate(model.walls)
 
         model.walls = snap_corners(model.walls)
-        model.walls = _trim_wall_endpoints(model.walls, cloud)
+        trim_cloud = refine_cloud if refine_cloud is not None else cloud
+        model.walls = _trim_wall_endpoints(model.walls, trim_cloud)
         model.walls = snap_corners(model.walls)  # reconnektoi trim:in katkaisevat nurkat
 
         # Normalisoi seinien korkeus lattia-katto-välille (tarkka arkkitehtimalli)
