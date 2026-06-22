@@ -1,36 +1,50 @@
 """Oviaukkojen ja ikkunoiden detektio seinäpinnoilta.
 
-Algoritmi:
-  1. Projisoidaan pisteet seinätasolle (along-wall × Z)
-  2. 1D kolonnidensiteetti: pisteet per along-sarake
-  3. Löydetään "sparse" sarakkeet (< 15 % mediaanista) → aukkokandidaatit
-  4. Ryhmitellään peräkkäiset sparse-sarakkeet
-  5. Aukon korkeus estimoidaan NAAPURISARAKKEIDEN Z-profiilista
-     (ei tyhjistä sarakkeista, joissa korkeus olisi aina koko seinä)
-  6. Suodatetaan koon mukaan, luokitellaan ovi/ikkuna
+Algoritmi (sarakepohjainen):
+  1. Projisoidaan pisteet seinätasolle (along-wall × Z), rakennetaan 2D-miehitysruudukko.
+  2. Sarake on "seinäinen" jos sen alakaista (~150–1400 mm) on TÄYNNÄ riittävän
+     korkealta (osuus täysiä rivejä ≥ 0.45). Kalustepiste osuu vain ohueen
+     viipaleeseen eikä tee sarakkeesta seinäistä → oviaukot eivät pirstoudu.
+  3. Aukko = peräkkäisten EI-seinäisten sarakkeiden jakso seinän sisällä.
+     Ohuet (≤2 solua) yksittäiset solidijaksot aukon sisällä silloitetaan.
+  4. Sill ja korkeus aukon sisäsarakkeiden Z-profiilista (≥50 % sarakkeista
+     täynnä → oikea sokkeli/lintel; yksittäinen kaluste ei).
+  5. Reunaehto: seinämateriaalia molemmin puolin TAI seinän pää on ankkuroitu
+     toiseen seinään (nurkka/T-liitos → uskottava oviaukko nurkan vieressä).
+  6. Luokitellaan ovi/ikkuna sill-korkeuden mukaan.
 """
 from __future__ import annotations
+
+import os
 
 import numpy as np
 
 from scan2bim.schemas.model import ElementSource, Opening, Wall
 
+_DEBUG = os.environ.get("OPENING_DEBUG") == "1"
+
+
+def _dbg(wall, width, height, z_start, floor_z, reason: str) -> None:
+    if _DEBUG:
+        print(f"[op] {wall.id} L={_wlen(wall):.0f} cand w={width:.0f} h={height:.0f} "
+              f"sill={max(z_start - floor_z, 0.0):.0f} -> {reason}")
+
+
+def _wlen(wall) -> float:
+    p0 = np.asarray(wall.axis[0], float)
+    p1 = np.asarray(wall.axis[1], float)
+    return float(np.linalg.norm(p1 - p0))
+
 _FACE_TOL = 20.0          # mm — toleranssi seinän pintaa vasten
 _GRID_MM = 30.0           # mm/solu (pienempi → erottaa yksittäiset ikkunat)
-_GAP_THRESHOLD = 0.20     # sarake on "sparse" jos pisteitä < 20 % mediaanista
-_NEIGHBOR_COLS = 3        # kuinka monta naapurisaraketta katsotaan Z-profiilin laskentaan
+_NEIGHBOR_COLS = 3        # kuinka monta naapurisaraketta katsotaan reunaehtoon
 _MIN_PTS_BASELINE = 30    # min pisteitä per kolonni jotta seinä on "datallinen"
 _MIN_W = 500.0            # mm — kapein aukko (realistisin pienin ikkuna)
 _MAX_W = 2500.0           # mm — levein aukko
 _MAX_FRACTION = 0.50      # aukko ei voi olla yli 50 % seinänpituudesta
 _MIN_H = 600.0            # mm — matalin aukko
-_MAX_H_FRACTION = 0.90    # aukon korkeus max 90 % seinänkorkeudesta
 _DOOR_SILL_MAX = 500.0    # mm — ovi jos sill_height < tämä (ikkunan sill tyyp. >=900)
-_DOOR_MIN_W = 700.0       # mm — ovi min leveys (alle tämän = ikkuna tai hylätään)
-_DOOR_MAX_W = 1500.0      # mm — ovi max leveys
-_DOOR_MAX_H = 2400.0      # mm — ovi max korkeus
-_NOISE_FILL_CELLS = 2     # täytettävät kohinaaukot (z-soluja)
-_MIN_OPEN_CELLS = 40      # min soluja yhtenäisessä aukossa (kohinaklusterit pois)
+_DOOR_MAX_W = 1500.0      # mm — ovi max leveys (leveämpi lattiarako = lasiseinä/ikkuna)
 
 
 def detect_openings(
@@ -42,12 +56,33 @@ def detect_openings(
     openings: list[Opening] = []
     counter = 0
     for wall in walls:
-        new = _wall_openings(wall, pts, floor_z, counter)
+        new = _wall_openings(wall, pts, floor_z, counter, walls)
         if origins:
             new = [op for op in new if not _is_occlusion_shadow(op, wall, pts, origins, floor_z)]
         openings.extend(new)
         counter += len(new)
     return openings
+
+
+def _wall_end_anchors(wall: Wall, walls: list[Wall]) -> tuple[bool, bool]:
+    """Onko seinän alku-/loppupäässä toinen seinä (nurkka/T-liitos)?
+    Jos on, päässä oleva aukko on uskottava (oviaukko nurkan vieressä)."""
+    if len(wall.axis) < 2:
+        return False, False
+    p0 = np.array(wall.axis[0], float)
+    p1 = np.array(wall.axis[1], float)
+    _REACH = 500.0  # mm — kuinka lähellä toisen seinän on oltava
+    start_anchor = False
+    end_anchor = False
+    for other in walls:
+        if other.id == wall.id or len(other.axis) < 2:
+            continue
+        for q in (np.array(other.axis[0], float), np.array(other.axis[1], float)):
+            if np.linalg.norm(q - p0) < _REACH:
+                start_anchor = True
+            if np.linalg.norm(q - p1) < _REACH:
+                end_anchor = True
+    return start_anchor, end_anchor
 
 
 def _is_occlusion_shadow(
@@ -99,7 +134,8 @@ def _is_occlusion_shadow(
 
 
 def _wall_openings(
-    wall: Wall, pts: np.ndarray, floor_z: float, start_idx: int
+    wall: Wall, pts: np.ndarray, floor_z: float, start_idx: int,
+    all_walls: list[Wall],
 ) -> list[Opening]:
     if len(wall.axis) < 2:
         return []
@@ -164,25 +200,45 @@ def _wall_openings(
     cell_base = float(np.median(occ_cells))
     occ = dens > 0.25 * cell_base  # bool (n_x, n_z)
 
-    # 1D: pisteitä per x-sarake
     col_pts = grid.sum(axis=1)
     pos_cols = col_pts[col_pts > 0]
     if len(pos_cols) < 5:
         return []
     baseline = float(np.median(pos_cols))
     if baseline < _MIN_PTS_BASELINE:
+        if _DEBUG:
+            print(f"[op] {wall.id} L={length:.0f} REJECT baseline={baseline:.1f} < {_MIN_PTS_BASELINE}")
         return []
 
-    is_gap_col = col_pts < _GAP_THRESHOLD * baseline
+    start_anchor, end_anchor = _wall_end_anchors(wall, all_walls)
+    if _DEBUG:
+        print(f"[op] {wall.id} L={length:.0f} baseline={baseline:.0f} "
+              f"maskpts={int(mask.sum())} anchors={start_anchor},{end_anchor}")
 
     return _find_openings(
-        is_gap_col, occ, col_pts, xe, ze, n_x, n_z,
-        length, wall, floor_z, start_idx,
+        occ, col_pts, xe, ze, n_x, n_z,
+        length, wall, floor_z, start_idx, start_anchor, end_anchor,
     )
 
 
+def _runs(mask: np.ndarray) -> list[tuple[int, int]]:
+    """Palauta True-jaksot (alku, loppu_inclusive) boolean-vektorista."""
+    out: list[tuple[int, int]] = []
+    i = 0
+    n = len(mask)
+    while i < n:
+        if mask[i]:
+            j = i
+            while j + 1 < n and mask[j + 1]:
+                j += 1
+            out.append((i, j))
+            i = j + 1
+        else:
+            i += 1
+    return out
+
+
 def _find_openings(
-    is_gap_col: np.ndarray,
     occ: np.ndarray,
     col_pts: np.ndarray,
     xe: np.ndarray,
@@ -193,71 +249,139 @@ def _find_openings(
     wall: Wall,
     floor_z: float,
     start_idx: int,
+    start_anchor: bool,
+    end_anchor: bool,
 ) -> list[Opening]:
-    """2D-aukkohaku: aukko = yhtenäinen alue, jossa seinäpinta puuttuu mutta
-    ympärillä (vasen/oikea/ylä/ala) on pintaa. Toimii osakorkuisille aukoille
-    (ikkuna jättää sill+lintel, ovi jättää lintelin) — 1D-sarakemetodi ei.
+    """Sarakepohjainen aukkohaku.
+
+    Aukko = pystysuora kaista sarakkeita joissa seinämassa puuttuu LATTIAKAISTALTA
+    (oviaukot ja ikkunat näkyvät pistepilvessä lattiasta-ylös -rakoina; lintel jää
+    usein skannaamatta → rako ulottuu kattoon). Sill/korkeus mitataan sarakkeen
+    Z-profiilista. Reunaehto: seinämateriaalia molemmin puolin TAI seinän pää on
+    ankkuroitu toiseen seinään (nurkka/T-liitos → oviaukko nurkassa).
     """
-    from scipy.ndimage import label, binary_closing
+    z0 = float(ze[0])
 
-    # Seinän tyypillinen Z-profiili tiheistä sarakkeista: mille riveille pintaa kuuluu
-    global_z_occ = np.zeros(n_z, dtype=bool)
-    for k in range(n_x):
-        if not is_gap_col[k] and col_pts[k] > 0:
-            global_z_occ |= occ[k]
-    _fill_noise_in_zprofile(global_z_occ, _NOISE_FILL_CELLS)
-    wall_rows = np.flatnonzero(global_z_occ)
-    if len(wall_rows) < 2:
+    # Rivivälit Z-arvoina
+    z_centers = 0.5 * (ze[:-1] + ze[1:])
+
+    # Alakaista ~150–1400 mm lattiasta. Solidi seinä täyttää kaistan koko
+    # korkeudelta; kaluste/clutter osuu vain ohueen viipaleeseen. Siksi vaadi
+    # että RIITTÄVÄ OSUUS kaistan riveistä on täynnä — yksittäinen kalustepiste
+    # ei tee sarakkeesta "seinäistä" (muuten oviaukot pirstoutuvat).
+    floor_band_lo = z0 + 150.0
+    floor_band_hi = z0 + 1400.0
+    fb_rows = np.where((z_centers >= floor_band_lo) & (z_centers <= floor_band_hi))[0]
+    if len(fb_rows) < 2:
         return []
-    z_lo_row, z_hi_row = int(wall_rows.min()), int(wall_rows.max())
 
-    # Seinän X-laajuus: tiheiden sarakkeiden väli (rajaa aukot seinän sisälle)
-    dense_idx = np.flatnonzero(~is_gap_col & (col_pts > 0))
-    if len(dense_idx) < 2:
+    fb_frac = occ[:, fb_rows].mean(axis=1)   # osuus täysiä rivejä per sarake
+    col_floor_solid = fb_frac >= 0.45
+    # Sarakkeessa on lainkaan dataa (erottaa skannaamattoman seinän aukosta)
+    col_has_data = col_pts > 0
+
+    # Seinän todellinen X-laajuus = lattialla solidien sarakkeiden väli
+    solid_idx = np.flatnonzero(col_floor_solid)
+    if len(solid_idx) < 2:
         return []
-    x_lo, x_hi = int(dense_idx.min()), int(dense_idx.max())
+    x_lo, x_hi = int(solid_idx.min()), int(solid_idx.max())
 
-    # "Puuttuva pinta": rivi kuuluu seinään mutta solu on tyhjä
-    missing = (~occ) & global_z_occ[None, :]
-    missing[:x_lo] = False
-    missing[x_hi + 1:] = False
-    missing[:, :z_lo_row] = False
-    missing[:, z_hi_row + 1:] = False
-    # Sulje pienet kohinaaukot, jotta yksi aukko ei pirstoudu
-    missing = binary_closing(missing, structure=np.ones((2, 2)))
+    # Aukkosarake = seinän sisällä, ei lattiasolidia
+    gap_col = ~col_floor_solid
+    gap_col[:x_lo] = False
+    gap_col[x_hi + 1:] = False
+    # Silloita ohuet yksittäiset solidisarakkeet (kaluste/karmin reuna aukon sisällä):
+    # ≤2 solua leveä solidijakso aukon sisällä → osa samaa aukkoa.
+    for (s, e) in _runs(col_floor_solid & (np.arange(n_x) > x_lo) & (np.arange(n_x) < x_hi)):
+        if e - s + 1 <= 2:
+            gap_col[s:e + 1] = True
 
-    labels, n = label(missing, structure=np.ones((3, 3)))
+    # Seinän tyypillinen yläreuna (lintel-taso) solideista sarakkeista
+    solid_top_rows = []
+    for k in solid_idx:
+        rows = np.flatnonzero(occ[k])
+        if len(rows):
+            solid_top_rows.append(int(rows.max()))
+    wall_top_row = int(np.median(solid_top_rows)) if solid_top_rows else n_z - 1
+    wall_top_z = float(ze[min(wall_top_row + 1, n_z)])
+
     openings: list[Opening] = []
-    for lab in range(1, n + 1):
-        xs, zs = np.where(labels == lab)
-        xi0, xi1 = int(xs.min()), int(xs.max())
-        zi0, zi1 = int(zs.min()), int(zs.max())
-
+    for (xi0, xi1) in _runs(gap_col):
         width = float(xe[xi1 + 1] - xe[xi0])
-        z_start = float(ze[zi0])
-        z_end = float(ze[zi1 + 1])
-        height = z_end - z_start
 
-        if not _is_valid_opening(width, height, length, wall.height):
+        # Onko aukon sisällä lainkaan dataa? (skannaamaton seinänpätkä ≠ aukko,
+        # paitsi jos pää on ankkuroitu nurkkaan jolloin sekin on uskottava oviaukko)
+        run_has_data = bool(col_has_data[xi0:xi1 + 1].any())
+
+        if not (_MIN_W <= width <= _MAX_W):
+            _dbg(wall, width, 0, z0, floor_z, "width")
             continue
-        # Soliditeetti: aukon on oltava täyteläinen suorakaide, ei hajanaista kohinaa
-        bbox_cells = (xi1 - xi0 + 1) * (zi1 - zi0 + 1)
-        if len(xs) < _MIN_OPEN_CELLS or len(xs) < 0.55 * bbox_cells:
+        if width > length * _MAX_FRACTION:
+            _dbg(wall, width, 0, z0, floor_z, f"frac w/L={width/length:.2f}")
             continue
-        # Vaadi seinämateriaalia molemmin puolin samalla Z-kaistalla (ei seinän pää)
-        band = slice(zi0, zi1 + 1)
-        left_ok = xi0 > x_lo and occ[max(x_lo, xi0 - _NEIGHBOR_COLS):xi0, band].any()
-        right_ok = xi1 < x_hi and occ[xi1 + 1:min(x_hi + 1, xi1 + 1 + _NEIGHBOR_COLS), band].any()
+
+        # Reunaehto: materiaalia molemmin puolin TAI pää ankkuroitu nurkkaan
+        at_start = xi0 <= x_lo + 1
+        at_end = xi1 >= x_hi - 1
+        left_ok = (not at_start) or (start_anchor and xi0 <= x_lo + 2)
+        right_ok = (not at_end) or (end_anchor and xi1 >= x_hi - 2)
+        # Sisäaukolle (ei seinän päässä) vaadi solidia naapuria heti vieressä
+        if not at_start:
+            left_ok = left_ok and bool(col_floor_solid[max(0, xi0 - _NEIGHBOR_COLS):xi0].any())
+        if not at_end:
+            right_ok = right_ok and bool(col_floor_solid[xi1 + 1:xi1 + 1 + _NEIGHBOR_COLS].any())
         if not (left_ok and right_ok):
+            _dbg(wall, width, 0, z0, floor_z,
+                 f"sides L={left_ok} R={right_ok} atS={at_start} atE={at_end}")
             continue
 
-        # Hylkää leveät+matalat haamut (esim. 2.3m × 0.7m harva katto-/lattiakaista)
-        if width > 2.0 * height:
+        # Seinänpään aukko ilman dataa = todennäköisesti skannaamaton → hylkää,
+        # paitsi jos selvästi ankkuroitu nurkkaan (oviaukko).
+        if not run_has_data and not (at_start and start_anchor) and not (at_end and end_anchor):
+            _dbg(wall, width, 0, z0, floor_z, "no-data end")
             continue
-        sill_h = max(z_start - floor_z, 0.0)
+
+        # Sill + korkeus: aukon sisäsarakkeiden Z-profiili. Käytä aukon keskisarakkeita.
+        # row_occ vaatii että pinta kattaa OSAN aukon leveydestä (oikea sokkeli/lintel
+        # ulottuu yli aukon; yksittäinen kalustepiste ei) → robusti clutterille.
+        cx0 = xi0 + max((xi1 - xi0) // 4, 0)
+        cx1 = xi1 - max((xi1 - xi0) // 4, 0) + 1
+        inner = occ[cx0:cx1]                       # (cols, n_z)
+        row_occ = inner.mean(axis=0) >= 0.5        # ≥50 % sisäsarakkeista täynnä
+        # sill = korkein yhtenäinen pohjalta alkava pinta (esim. ikkunan sokkeli)
+        z = 0
+        while z < n_z and row_occ[z]:
+            z += 1
+        sill_row = z
+        sill_z = float(ze[sill_row])
+        sill_h = max(sill_z - floor_z, 0.0)
+
+        # Head = aukon yläreuna. Aukon yli pinta palaa (lintel) → etsi seuraava
+        # yhtenäinen pinta sill_row:n yläpuolelta; jos ei löydy → kattoon asti.
+        head_row = n_z
+        z = sill_row
+        while z < n_z and not row_occ[z]:
+            z += 1
+        # z = ensimmäinen pinnallinen rivi sillin yläpuolella, tai n_z
+        head_row = z
+        head_z = float(ze[min(head_row, n_z)])
+        # Jos aukko ulottuu lähelle seinän yläreunaa (ei lintel-pintaa) → kattoon
+        if head_row >= wall_top_row - 1:
+            head_z = wall_top_z
+
+        height = head_z - sill_z
+        if height < _MIN_H:
+            _dbg(wall, width, height, sill_z, floor_z, "too-short")
+            continue
+        # Rajaa korkeus uskottavaan (täyskorkea oviaukko = lattiasta kattoon)
+        height = min(height, wall.height)
+
         otype = _classify(sill_h, width, height)
         if otype == "unknown":
-            continue   # vain varmat ovet/ikkunat → vähemmän virhehavaintoja
+            _dbg(wall, width, height, sill_z, floor_z, f"unknown sill={sill_h:.0f}")
+            continue
+        _dbg(wall, width, height, sill_z, floor_z,
+             f"ACCEPT {otype} atS={at_start} atE={at_end} data={run_has_data}")
         openings.append(Opening(
             id=f"opening_{start_idx + len(openings):03d}",
             confidence=round(min(1.0, (width / 900.0) * (height / 2000.0)), 3),
@@ -274,75 +398,15 @@ def _find_openings(
     return openings
 
 
-def _fill_noise_in_zprofile(occ: np.ndarray, max_gap: int) -> None:
-    """Täytä lyhyet aukot (≤ max_gap solua) boolean-profiilissa."""
-    n = len(occ)
-    in_gap = False
-    gap_start = 0
-    for z in range(n):
-        if not occ[z]:
-            if not in_gap:
-                in_gap = True
-                gap_start = z
-        else:
-            if in_gap:
-                in_gap = False
-                if z - gap_start <= max_gap:
-                    occ[gap_start:z] = True
-
-
-def _largest_true_span(mask: np.ndarray, ze: np.ndarray, n_z: int) -> tuple[float, float] | None:
-    """Suurin True-jakso boolean-maskissa → (z_alku, z_loppu) tai None."""
-    best: tuple[float, float] | None = None
-    best_len = 0
-    in_span = False
-    span_start = 0
-    for z in range(n_z):
-        if mask[z]:
-            if not in_span:
-                in_span = True
-                span_start = z
-        else:
-            if in_span:
-                in_span = False
-                if z - span_start > best_len:
-                    best_len = z - span_start
-                    best = (float(ze[span_start]), float(ze[z]))
-    if in_span and n_z - span_start > best_len:
-        best = (float(ze[span_start]), float(ze[n_z]))
-    return best
-
-
-def _infer_height_from_top(
-    global_z_occ: np.ndarray, ze: np.ndarray, n_z: int, wall: Wall
-) -> tuple[float, float] | None:
-    """Kun gap-sarakkeet ovat täysin tyhjiä: etsitään seinän ylin täynnä-alue
-    ja arvataan aukko siitä alas lattiaan asti."""
-    # Etsi alin Z-rivi jossa seinäpisteitä (= seinän yläreunan alku)
-    for z in range(n_z - 1, -1, -1):
-        if global_z_occ[z]:
-            top_z = float(ze[z + 1]) if z + 1 <= n_z else float(ze[n_z])
-            # Aukko alkaa lattialta, päättyy tähän
-            bottom_z = float(ze[0])
-            height = top_z - bottom_z
-            if height > _MIN_H:
-                return (bottom_z, min(top_z, bottom_z + _DOOR_MAX_H))
-    return None
-
-
-def _is_valid_opening(width: float, height: float, wall_length: float, wall_height: float) -> bool:
-    if not (_MIN_W <= width <= _MAX_W):
-        return False
-    if width > wall_length * _MAX_FRACTION:
-        return False
-    if not (_MIN_H <= height <= wall_height * _MAX_H_FRACTION):
-        return False
-    return True
-
-
 def _classify(sill_h: float, width: float, height: float) -> str:
-    if sill_h < _DOOR_SILL_MAX and width >= _DOOR_MIN_W and width <= _DOOR_MAX_W and height <= _DOOR_MAX_H:
-        return "door"
-    if sill_h >= _DOOR_SILL_MAX or width < _DOOR_MIN_W:
+    # Ovi: lattiatason sill (matala) + uskottava korkeus. Leveys saa olla kapeahko
+    # (kapea ovi / läpikäynti) kunhan se ei ole sokkelillinen ikkuna.
+    if sill_h < _DOOR_SILL_MAX and height >= 1500.0:
+        if width <= _DOOR_MAX_W:
+            return "door"
+        return "window"  # lattiasta lähtevä mutta hyvin leveä = lasiseinä/ikkuna
+    # Ikkuna: kohonnut sill
+    if sill_h >= _DOOR_SILL_MAX:
         return "window"
+    # Matala lattiatason rako (height < 1500) = epävarma → hylkää
     return "unknown"
