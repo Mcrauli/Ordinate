@@ -5,7 +5,8 @@ import numpy as np
 
 from scan2bim.schemas.model import Slab, Wall
 
-_MAX_SEARCH_DIST = 400.0    # mm — kuinka kaukaa pisteitä haetaan normaalin suunnassa
+_MAX_SEARCH_DIST = 230.0    # mm — kuinka kaukaa pisteitä haetaan normaalin suunnassa
+                            # (kapea: ±400 nappasi viereisen huoneen seinän → 315/393mm)
 _MIN_PEAK_PTS = 20          # min pisteitä huipussa jotta se on validi pinta
 _BIN_MM = 6.0               # histogrammin resoluutio mm
 
@@ -120,6 +121,43 @@ def _wall_length(wall: Wall) -> float:
     return float(np.hypot(p1[0] - p0[0], p1[1] - p0[1]))
 
 
+def remove_dangling_walls(walls: list[Wall], free_tol: float = 400.0) -> list[Wall]:
+    """Poistaa irralliset tynkäseinät: sisäseinä jonka jompikumpi pää on ilmassa
+    (>free_tol kaikista muista seinistä) ei rajaa huonetta → roskaa. Perimetri
+    (method=floorplan) säilytetään aina."""
+    if len(walls) < 2:
+        return walls
+    kept: list[Wall] = []
+    for i, w in enumerate(walls):
+        if w.source.method == "floorplan":  # perimetriseinä → säilytä
+            kept.append(w)
+            continue
+        if len(w.axis) < 2:
+            kept.append(w)
+            continue
+        others = [o for j, o in enumerate(walls) if j != i and len(o.axis) >= 2]
+        free_ends = 0
+        for ep in (np.array(w.axis[0], float), np.array(w.axis[1], float)):
+            dmin = min((_pt_seg_dist(ep, np.array(o.axis[0], float), np.array(o.axis[1], float))
+                        for o in others), default=1e9)
+            if dmin > free_tol:
+                free_ends += 1
+        # Vain aidosti kelluvat (MOLEMMAT päät irti) poistetaan — huonejakaja
+        # yhdistyy vähintään toisesta päästä, joten se säilyy.
+        if free_ends < 2:
+            kept.append(w)
+    return kept
+
+
+def _pt_seg_dist(p: np.ndarray, a: np.ndarray, b: np.ndarray) -> float:
+    ab = b - a
+    L2 = float(ab @ ab)
+    if L2 < 1e-9:
+        return float(np.linalg.norm(p - a))
+    t = max(0.0, min(1.0, float((p - a) @ ab) / L2))
+    return float(np.linalg.norm(p - (a + t * ab)))
+
+
 def refine_thicknesses(walls: list[Wall], cloud) -> list[Wall]:
     """Päivittää jokaisen seinän paksuuden pistepilvestä mitattuna."""
     pts = np.asarray(cloud.points)
@@ -158,10 +196,15 @@ def _refine(wall: Wall, pts: np.ndarray) -> Wall:
         return wall
 
     thickness = _measure_thickness(local_pts, T_ref=wall.thickness)
-    if thickness is not None:
-        wall = wall.model_copy(update={"thickness": round(thickness, 1)})
-
-    return wall
+    if thickness is None:
+        # Mittaus epäonnistui (yksipuolinen pinta / kohina) → käytä prioria.
+        thickness = wall.thickness
+    # Enforce sane range: yli max = mittausvirhe → default; alle min = nosta lattiaan.
+    if thickness > _MAX_THICKNESS:
+        thickness = _DEFAULT_THICKNESS
+    elif thickness < 70.0:
+        thickness = 70.0
+    return wall.model_copy(update={"thickness": round(thickness, 1)})
 
 
 def _interp_peak(hist: np.ndarray, centers: np.ndarray, pk: int) -> float:
@@ -177,7 +220,13 @@ def _interp_peak(hist: np.ndarray, centers: np.ndarray, pk: int) -> float:
 
 
 def _measure_thickness(proj: np.ndarray, T_ref: float = 200.0) -> float | None:
-    """Histogrammi → kaksi huippua → niiden etäisyys = paksuus."""
+    """Paksuus = seinän kahden pinnan etäisyys.
+
+    Akseli on keskilinja → pinnat ovat offset 0:n eri puolilla (±T/2).
+    Valitaan kummaltakin puolelta keskilinjaa LÄHIN merkittävä huippu — ei
+    kahta korkeinta. Näin viereisen huoneen seinä (kauempana samalla puolella)
+    ei sotke mittausta, eikä kohina toisella puolella tuota valepaksuutta.
+    """
     from scipy.signal import find_peaks
 
     p_min, p_max = float(proj.min()), float(proj.max())
@@ -187,15 +236,20 @@ def _measure_thickness(proj: np.ndarray, T_ref: float = 200.0) -> float | None:
 
     min_dist_bins = max(int(50.0 / _BIN_MM), 3)
     peaks, _ = find_peaks(counts, height=_MIN_PEAK_PTS, distance=min_dist_bins)
-
-    if len(peaks) < 2:
+    if len(peaks) == 0:
         return None
 
-    top2 = sorted(peaks, key=lambda i: counts[i], reverse=True)[:2]
-    z0, z1 = centers[top2[0]], centers[top2[1]]
-    thickness = abs(float(z1 - z0))
+    peak_centers = centers[peaks]
+    neg = peaks[peak_centers < 0.0]
+    pos = peaks[peak_centers > 0.0]
+    if len(neg) == 0 or len(pos) == 0:
+        return None  # yksipuolinen pinta → priori hoitaa
 
-    if thickness < 50.0 or thickness > 500.0:
+    neg_face = neg[int(np.argmin(np.abs(centers[neg])))]
+    pos_face = pos[int(np.argmin(np.abs(centers[pos])))]
+    thickness = _interp_peak(counts, centers, pos_face) - _interp_peak(counts, centers, neg_face)
+
+    if thickness < 60.0 or thickness > _MAX_THICKNESS:
         return None
 
-    return thickness
+    return float(thickness)

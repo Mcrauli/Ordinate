@@ -23,7 +23,7 @@ log = logging.getLogger(__name__)
 class PipelineConfig:
     voxel_size: float = 12.0                                   # mm (manuaalinen, kun auto_voxel=False)
     auto_voxel: bool = True            # valitse voxelikoko datasta automaattisesti
-    detector: Literal["ransac", "density", "floorplan", "normals"] = "normals"
+    detector: Literal["ransac", "density", "floorplan", "normals", "contour"] = "contour"
     export_ifc: bool = True
     export_dxf: bool = True
     export_qa: bool = True                                     # QA/LOA-poikkeamaraportti
@@ -158,7 +158,9 @@ def _fix_wall_center(wall, pts: np.ndarray):
         return wall
 
     T_ref = wall.thickness
-    dist_limit = 600.0
+    # Kapea raja: ±600 nappasi viereisen huoneen seinän pinnan → 315/393mm valepaksuus.
+    # Seinän omat pinnat ovat keskilinjan lähellä (±175mm 350mm-seinälle).
+    dist_limit = 280.0
     best_pair: tuple[float, float] | None = None
     best_score = 0.0
     for ii in range(len(pks)):
@@ -168,7 +170,7 @@ def _fix_wall_center(wall, pts: np.ndarray):
             if abs(da) > dist_limit or abs(db) > dist_limit:
                 continue
             t_pair = abs(da - db)
-            if not (50.0 <= t_pair <= 450.0):
+            if not (70.0 <= t_pair <= 350.0):
                 continue
             t_weight = 1.0 / (1.0 + abs(t_pair - T_ref) / 50.0)
             score = (smooth[pks[ii]] + smooth[pks[jj]]) * t_weight
@@ -183,7 +185,7 @@ def _fix_wall_center(wall, pts: np.ndarray):
     t_new = abs(d1 - d2)
     center_offset = (d1 + d2) / 2.0
 
-    if not (50.0 <= t_new <= 450.0):
+    if not (70.0 <= t_new <= 350.0):
         return wall
 
     updates: dict = {}
@@ -369,6 +371,7 @@ class Pipeline:
         import scan2bim.core.segmentation.wall_ransac  # noqa: F401
         import scan2bim.core.segmentation.wall_density  # noqa: F401
         import scan2bim.core.segmentation.wall_normals  # noqa: F401
+        import scan2bim.core.segmentation.wall_contour  # noqa: F401
         import scan2bim.core.floorplan.detector  # noqa: F401
         from scan2bim.core.segmentation.base import DetectorRegistry
         from scan2bim.core.segmentation.slab_detector import detect_slabs
@@ -379,19 +382,45 @@ class Pipeline:
         detector = DetectorRegistry.get(self.config.detector)()
         model = detector.detect(cloud)
         model.slabs = detect_slabs(cloud)
+
+        # Lattian todellinen ulkokontuuri (ennen kuin room_polygon korvaa sen
+        # konveksilla kuorella) → perimetriseinien lähde.
+        floor_contour = next(
+            (s.boundary for s in model.slabs if s.slab_type == "floor"), None
+        )
+
         model.walls = filter_structural_walls(model.walls, model.slabs)
         model.walls = refine_thicknesses(model.walls, cloud)
         model.walls = _recenter_wall_axes(model.walls, cloud)
 
         # Toinen deduplikointi: akselinkorjaus saattaa tuoda aiemmin eri paikassa olevia
         # seiniä samalle akselille (kuten wall_105/wall_108 jotka ovat saman seinän pinnat)
+        # Täydennä perimetri lattian ulkorajasta — sulkee ulkoseinät joita
+        # detektori ei nappaa (keilausvarjot/ikkunat/kalusteet).
+        if floor_contour:
+            floor_z_w = min((w.z_min for w in model.walls), default=0.0)
+            wall_h = max((w.height for w in model.walls), default=2700.0)
+            from scan2bim.core.semantics.perimeter import add_perimeter_walls
+            model.walls = model.walls + add_perimeter_walls(
+                floor_contour, model.walls, floor_z_w, wall_h
+            )
+
         from scan2bim.core.semantics.wall_semantics import _deduplicate
         model.walls = _deduplicate(model.walls)
+
+        # Suorista seinät kahteen kohtisuoraan suuntaan ennen kulmien yhdistämistä —
+        # vinot seinät eivät muuten kohtaa puhtaasti eivätkä huoneet sulkeudu.
+        from scan2bim.core.semantics.orthogonal import regularize_orthogonal
+        model.walls = regularize_orthogonal(model.walls)
 
         model.walls = snap_corners(model.walls)
         trim_cloud = refine_cloud if refine_cloud is not None else cloud
         model.walls = _trim_wall_endpoints(model.walls, trim_cloud)
         model.walls = snap_corners(model.walls)  # reconnektoi trim:in katkaisevat nurkat
+
+        # Poista irralliset tynkäseinät (pää ilmassa, ei rajaa huonetta)
+        from scan2bim.core.semantics.wall_semantics import remove_dangling_walls
+        model.walls = remove_dangling_walls(model.walls)
 
         # Normalisoi seinien korkeus lattia-katto-välille (tarkka arkkitehtimalli)
         floor_z = min(
@@ -414,6 +443,9 @@ class Pipeline:
         room_poly = build_room_polygon(model.walls)
         if room_poly and len(room_poly) >= 3:
             model.slabs = [s.model_copy(update={"boundary": room_poly}) for s in model.slabs]
+
+        from scan2bim.core.semantics.room_detector import detect_rooms
+        model.spaces = detect_rooms(model.walls, floor_z, ceiling_z)
 
         from scan2bim.core.segmentation.opening_detector import detect_openings
         model.openings = detect_openings(model.walls, cloud, floor_z, scanner_origins=self._scanner_origins)

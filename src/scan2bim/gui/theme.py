@@ -3,16 +3,17 @@ from __future__ import annotations
 
 from PySide6 import QtGui, QtWidgets
 
-ACCENT = "#2563eb"       # sininen
-ACCENT_HOVER = "#1d4ed8"
-BG = "#0f172a"
-BG_PANEL = "#1e293b"
-BG_WIDGET = "#334155"
-TEXT = "#f1f5f9"
-TEXT_DIM = "#94a3b8"
+ACCENT = "#c6f24e"       # keilaus-lime (brändiväri)
+ACCENT_HOVER = "#b3e635"
+ACCENT_2 = "#39d0d8"     # point-cloud cyan
+BG = "#0a0e14"
+BG_PANEL = "#121a26"
+BG_WIDGET = "#1e2a3a"
+TEXT = "#e6edf5"
+TEXT_DIM = "#8194a8"
 SUCCESS = "#22c55e"
 ERROR = "#ef4444"
-WARN = "#f59e0b"
+WARN = "#ffb454"
 
 QSS = f"""
 QMainWindow, QWidget {{
@@ -32,14 +33,29 @@ QFrame#panel {{
 /* Painikkeet */
 QPushButton {{
     background: {ACCENT};
-    color: white;
+    color: #0a0e14;
     border: none;
     border-radius: 6px;
     padding: 8px 18px;
-    font-weight: 600;
+    font-weight: 700;
 }}
 QPushButton:hover {{ background: {ACCENT_HOVER}; }}
 QPushButton:disabled {{ background: {BG_WIDGET}; color: {TEXT_DIM}; }}
+
+/* Välilehdet */
+QTabWidget::pane {{ border: 1px solid {BG_WIDGET}; border-radius: 8px; top: -1px; }}
+QTabBar::tab {{
+    background: {BG_PANEL};
+    color: {TEXT_DIM};
+    padding: 8px 18px;
+    border: 1px solid {BG_WIDGET};
+    border-bottom: none;
+    border-top-left-radius: 7px;
+    border-top-right-radius: 7px;
+    font-weight: 600;
+}}
+QTabBar::tab:selected {{ background: {BG_WIDGET}; color: {ACCENT}; }}
+QTabBar::tab:hover {{ color: {TEXT}; }}
 
 /* Kentät */
 QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox {{

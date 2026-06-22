@@ -9,6 +9,7 @@ from scan2bim._version import __version__
 from scan2bim.core.pipeline import PipelineConfig
 from scan2bim.gui.file_panel import FilePanel
 from scan2bim.gui.log_panel import LogPanel
+from scan2bim.gui.plan_view import PlanView
 from scan2bim.gui.process_worker import ProcessWorker
 from scan2bim.gui.update_banner import UpdateBanner, UpdateChecker, perform_update
 from scan2bim.gui.brand import app_icon, logo_pixmap
@@ -66,8 +67,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self._file_panel.setFixedWidth(320)
         splitter.addWidget(self._file_panel)
 
+        self._tabs = QtWidgets.QTabWidget()
+        self._plan_view = PlanView()
         self._log_panel = LogPanel()
-        splitter.addWidget(self._log_panel)
+        self._tabs.addTab(self._plan_view, "Pohja")
+        self._tabs.addTab(self._log_panel, "Loki")
+        splitter.addWidget(self._tabs)
         splitter.setStretchFactor(1, 1)
 
         root.addWidget(splitter, stretch=1)
@@ -116,8 +121,11 @@ class MainWindow(QtWidgets.QMainWindow):
             lines = [f"{len(result)} kerrosta käsitelty:"]
             lines += [f"  kerros {i}: {m.summary()}" for i, m in enumerate(result)]
             self._log_panel.set_results("\n".join(lines))
+            self._plan_view.show_models(result)
         else:
             self._log_panel.set_results(result.summary())
+            self._plan_view.show_model(result)
+        self._tabs.setCurrentWidget(self._plan_view)   # näytä pohja heti
         self.statusBar().showMessage("Valmis")
 
     def _on_failed(self, error: str) -> None:

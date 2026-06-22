@@ -17,12 +17,12 @@ from scan2bim.schemas.model import ElementSource, Opening, Wall
 
 _FACE_TOL = 20.0          # mm — toleranssi seinän pintaa vasten
 _GRID_MM = 30.0           # mm/solu (pienempi → erottaa yksittäiset ikkunat)
-_GAP_THRESHOLD = 0.15     # sarake on "sparse" jos pisteitä < 15 % mediaanista
+_GAP_THRESHOLD = 0.20     # sarake on "sparse" jos pisteitä < 20 % mediaanista
 _NEIGHBOR_COLS = 3        # kuinka monta naapurisaraketta katsotaan Z-profiilin laskentaan
 _MIN_PTS_BASELINE = 30    # min pisteitä per kolonni jotta seinä on "datallinen"
 _MIN_W = 500.0            # mm — kapein aukko (realistisin pienin ikkuna)
 _MAX_W = 2500.0           # mm — levein aukko
-_MAX_FRACTION = 0.38      # aukko ei voi olla yli 38 % seinänpituudesta
+_MAX_FRACTION = 0.50      # aukko ei voi olla yli 50 % seinänpituudesta
 _MIN_H = 600.0            # mm — matalin aukko
 _MAX_H_FRACTION = 0.90    # aukon korkeus max 90 % seinänkorkeudesta
 _DOOR_SILL_MAX = 500.0    # mm — ovi jos sill_height < tämä (ikkunan sill tyyp. >=900)
@@ -30,7 +30,7 @@ _DOOR_MIN_W = 700.0       # mm — ovi min leveys (alle tämän = ikkuna tai hyl
 _DOOR_MAX_W = 1500.0      # mm — ovi max leveys
 _DOOR_MAX_H = 2400.0      # mm — ovi max korkeus
 _NOISE_FILL_CELLS = 2     # täytettävät kohinaaukot (z-soluja)
-_MIN_OPEN_CELLS = 60      # min soluja yhtenäisessä aukossa (kohinaklusterit pois)
+_MIN_OPEN_CELLS = 40      # min soluja yhtenäisessä aukossa (kohinaklusterit pois)
 
 
 def detect_openings(

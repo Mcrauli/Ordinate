@@ -67,10 +67,12 @@ def _normalise_version(raw: str) -> Version | None:
 
 
 def _select_asset(release: dict) -> tuple[str, int] | None:
-    """Pick the installer/exe asset, skipping .sha256 sidecars.
+    """Pick the raw onefile exe asset, skipping .sha256 sidecars.
 
-    Prefers an Inno Setup installer (``*Setup*.exe``) over the raw exe
-    so the auto-update path installs the same way as a fresh download.
+    Prefers the raw exe (``scan2bim.exe``) over the Setup installer so the
+    auto-update path swaps the exe in place via :func:`replace_exe` — silent,
+    no UAC, exactly like dwg2ifc. The ``*Setup*.exe`` asset exists only for
+    fresh manual downloads.
     """
     exe_assets: list[tuple[str, int]] = []
     for asset in release.get("assets", []):
@@ -85,7 +87,7 @@ def _select_asset(release: dict) -> tuple[str, int] | None:
     if not exe_assets:
         return None
     for url, size in exe_assets:
-        if "setup" in url.lower():
+        if "setup" not in url.lower():
             return url, size
     return exe_assets[0]
 

@@ -135,8 +135,14 @@ class FilePanel(QtWidgets.QWidget):
         vx_row.addWidget(self._voxel)
         form.addRow("Voxel-koko:", vx_row)
 
-        self._icp = QtWidgets.QCheckBox("ICP-hienorekisteröinti (monikerros)")
+        self._icp = QtWidgets.QCheckBox("ICP-hienorekisteröinti")
         self._icp.setChecked(False)
+        self._icp.setToolTip(
+            "Vain kohdistamattomille raakaskanneille (erilliset E57:t eri poseista).\n"
+            "Jos pistepilvi on jo yhdistetty keilainohjelmassa (esim. yksi PLY tai "
+            "valmiiksi rekisteröidyt skannit), JÄTÄ POIS — se vain tuplaa ajan "
+            "parantamatta tulosta."
+        )
         form.addRow("Rekisteröinti:", self._icp)
 
         self._qa = QtWidgets.QCheckBox("QA/LOA-raportti")
@@ -191,7 +197,7 @@ class FilePanel(QtWidgets.QWidget):
         cfg = PipelineConfig(
             voxel_size=self._voxel.value(),
             auto_voxel=self._auto_voxel.isChecked(),
-            detector="normals",
+            detector="contour",
             export_ifc=self._ifc.isChecked(),
             export_dxf=self._dxf.isChecked(),
             export_qa=self._qa.isChecked(),
