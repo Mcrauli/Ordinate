@@ -5,9 +5,8 @@ import numpy as np
 
 from scan2bim.schemas.model import Wall
 
-_MAX_EXTEND = 900.0       # mm — kuinka paljon seinää voidaan jatkaa leikkauspisteeseen
-                          # (perimetri hoitaa ulkonurkat → ei tarvita rajua jatkoa sisällä)
-_MAX_SNAP   = 450.0       # mm — T-liitoksen snap-etäisyys (leikkauspiste seinän sisällä)
+_MAX_EXTEND = 1300.0      # mm — kuinka paljon seinää voidaan jatkaa leikkauspisteeseen
+_MAX_SNAP   = 700.0       # mm — T-liitoksen snap-etäisyys (leikkauspiste seinän sisällä)
 _PARALLEL_COS_MAX = 0.70  # |cos| > tämä → rinnakkaiset, ohitetaan
 
 
