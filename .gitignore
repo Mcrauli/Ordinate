@@ -22,3 +22,7 @@ reference/
 # OS
 .DS_Store
 Thumbs.db
+
+.claude/worktrees/
+data/*.ply
+data/*.png
