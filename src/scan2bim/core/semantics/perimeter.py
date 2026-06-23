@@ -38,6 +38,10 @@ def add_perimeter_walls(
 
     pts = [np.array(p, dtype=float) for p in boundary]
     n = len(pts)
+    # Polygonin kiertosuunta (signed area): määrää johdonmukaisen ULOSPÄIN-normaalin
+    # myös koveralle (L-muotoiselle) kontuurille — sentroidi epäonnistuu siinä.
+    area2 = sum(pts[i][0] * pts[(i + 1) % n][1] - pts[(i + 1) % n][0] * pts[i][1] for i in range(n))
+    ccw = area2 > 0.0
     new_walls: list[Wall] = []
     idx = 0
     for i in range(n):
@@ -49,13 +53,22 @@ def add_perimeter_walls(
             continue
         if _edge_covered(a, b, seg / seg_len, seg_len, existing):
             continue
+        # Lattiakontuuri = ulkoseinän SISÄPINTA (skannauksen reuna). Siirrä akseli
+        # ULOSPÄIN puoli paksuutta, jotta mallin sisäpinta osuu kontuuriin (bias→0)
+        # — ei symmetristä keskitystä joka työntäisi sisäpinnan thickness/2 ohi.
+        u = seg / seg_len
+        # CCW-polygonissa ulkonormaali on (uy,-ux); CW:ssä (-uy,ux).
+        nrm = np.array([u[1], -u[0]]) if ccw else np.array([-u[1], u[0]])
+        off = nrm * (_EXT_THICKNESS / 2.0)
+        a2 = a + off
+        b2 = b + off
         new_walls.append(Wall(
             id=f"wall_ext_{idx:03d}",
             confidence=0.5,
             classification="wall",
             source=ElementSource(method="floorplan", notes="perimeter-from-slab"),
-            axis=[[round(float(a[0]), 1), round(float(a[1]), 1)],
-                  [round(float(b[0]), 1), round(float(b[1]), 1)]],
+            axis=[[round(float(a2[0]), 1), round(float(a2[1]), 1)],
+                  [round(float(b2[0]), 1), round(float(b2[1]), 1)]],
             height=round(float(height), 1),
             thickness=_EXT_THICKNESS,
             z_min=round(float(z_min), 1),

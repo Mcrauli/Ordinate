@@ -47,10 +47,10 @@ def _auto_voxel(cloud, target: int = _AUTO_TARGET_POINTS) -> float:
     return round(min(max(v, _AUTO_VOXEL_MIN), _AUTO_VOXEL_MAX), 1)
 
 
-def _recenter_wall_axes(walls, cloud) -> list:
-    """Korjaa seinäakselin ja paksuuden leveällä histogrammilla — ei luota alkupaksuuteen."""
+def _recenter_wall_axes(walls, cloud, band: float | None = None, keep_thickness: bool = False) -> list:
+    """Pintalukittu tarkennus: mallin lähin pinta osuu skannattuun pistepintaan (bias→0)."""
     pts = np.asarray(cloud.points)
-    return [_fix_wall_center(w, pts) for w in walls]
+    return [_surface_lock_wall(w, pts, band=band, keep_thickness=keep_thickness) for w in walls]
 
 
 def _trim_wall_endpoints(walls, cloud) -> list:
@@ -121,7 +121,31 @@ def _trim_endpoints(wall, pts: np.ndarray):
     return wall.model_copy(update={"axis": ax}) if changed else wall
 
 
+# --- pintalukittu tarkennus -------------------------------------------------
+# Tavoite: mallin LÄHIN pinta osuu skannattuun pistepintaan, ei thickness/2 ohi.
+# Yksipuolisesti keilatuille seinille (sisätilakeilaus) detektoitu akseli istuu
+# pinnan päällä; symmetrinen paksuus työntäisi pinnan ~thickness/2 ohi. Lukitaan
+# lähin pinta huippuun ja kasvatetaan paksuus huoneesta POISPÄIN.
+
+_SL_BAND = 280.0           # mm — kohtisuora hakukaista (kapea: ei naapuriseinää)
+_SL_MIN_PTS = 60           # min pisteitä jotta tarkennetaan
+_SL_BIN = 5.0              # mm histogrammin resoluutio
+_SL_MIN_THICK = 60.0       # mm
+_SL_MAX_THICK = 380.0      # mm
+_SL_DEFAULT_THICK = 120.0  # mm — sisäväliseinän oletus kun toista pintaa ei nähdä
+_SL_DOM_BAND = 120.0       # mm — dominantti pinta haetaan akselin läheltä (detektori jättää akselin pinnalle)
+_SL_PARTNER_FRAC = 0.45    # toisen pinnan oltava väh. tämä osuus dominantin pisteistä → aito pari
+_SL_ROOM_LO = 150.0        # mm — huonepuolen pisteenlaskenta alkaa tästä huipusta
+_SL_ROOM_HI = 700.0        # mm — ja päättyy tähän
+
+
 def _fix_wall_center(wall, pts: np.ndarray):
+    """Vanha nimi taaksepäinyhteensopivuudelle; delegoi pintalukitukseen."""
+    return _surface_lock_wall(wall, pts)
+
+
+def _surface_lock_wall(wall, pts: np.ndarray, band: float | None = None, keep_thickness: bool = False):
+    sl_band = band if band is not None else _SL_BAND
     if len(wall.axis) < 2:
         return wall
     p0 = np.array(wall.axis[0], dtype=float)
@@ -141,61 +165,94 @@ def _fix_wall_center(wall, pts: np.ndarray):
 
     mask = (
         (along_proj >= 100.0) & (along_proj <= length - 100.0)
-        & (np.abs(dist) <= 650.0)
+        & (np.abs(dist) <= sl_band)
         & (pts[:, 2] >= z_lo) & (pts[:, 2] <= z_hi)
     )
-    if mask.sum() < 40:
+    if mask.sum() < _SL_MIN_PTS:
         return wall
 
     d_vals = dist[mask]
-    # Bin-alkupiste -653.75 → bin-keskipisteet osuvat 5mm-bin-keskipisteisiin (±62.5, ±157.5 jne.)
-    hist, edges = np.histogram(d_vals, bins=np.arange(-653.75, 656.25, 2.5))
+    edges = np.arange(-sl_band, sl_band + _SL_BIN, _SL_BIN)
+    hist, edges = np.histogram(d_vals, bins=edges)
     centers = 0.5 * (edges[:-1] + edges[1:])
     smooth = uniform_filter1d(hist.astype(float), size=3)
-    pks, _ = find_peaks(smooth, height=smooth.max() * 0.08, distance=20)
-
-    if len(pks) < 2:
+    pks, _ = find_peaks(smooth, height=smooth.max() * 0.20, distance=4)
+    if len(pks) == 0:
         return wall
 
-    T_ref = wall.thickness
-    # Kapea raja: ±600 nappasi viereisen huoneen seinän pinnan → 315/393mm valepaksuus.
-    # Seinän omat pinnat ovat keskilinjan lähellä (±175mm 350mm-seinälle).
-    dist_limit = 280.0
-    best_pair: tuple[float, float] | None = None
-    best_score = 0.0
-    for ii in range(len(pks)):
-        for jj in range(ii + 1, len(pks)):
-            da = float(centers[pks[ii]])
-            db = float(centers[pks[jj]])
-            if abs(da) > dist_limit or abs(db) > dist_limit:
+    # Dominantti SKANNATTU pinta: vahvin huippu akselin läheltä. Detektoiduilla
+    # seinillä akseli on pinnan päällä → rajaa ±_SL_DOM_BAND (ei naapuriseinää).
+    if keep_thickness:
+        # Perimetriseinä: akseli on jo siirretty ULOS thickness/2, joten odotettu
+        # SISÄPINTA on ~+thickness/2 kohdalla. Etsi huippu sen ympäriltä → pieni
+        # korjaus oikeaan sisäpintaan, ei naapuriseinän nappaamista väärältä puolelta.
+        exp = wall.thickness / 2.0
+        win = 100.0
+        cand = [p for p in pks if abs(float(centers[p]) - exp) <= win]
+        if not cand:
+            return wall
+        dom = int(max(cand, key=lambda p: smooth[p]))
+    else:
+        near = [p for p in pks if abs(float(centers[p])) <= _SL_DOM_BAND]
+        cand = near if near else list(pks)
+        dom = int(max(cand, key=lambda p: smooth[p]))
+    surf = float(centers[dom])
+    dom_h = float(smooth[dom])
+
+    # Toinen pinta: lähin riittävän vahva huippu joka antaa järkevän paksuuden.
+    # Vaaditaan että sillä on oikeasti pisteitä (PARTNER_FRAC dominantista),
+    # muuten kyseessä on yksipuolinen seinä eikä kohinapiikki/naapuri.
+    # keep_thickness (perimetriseinä): pakota yksipuolinen haara → lukitse vain
+    # sisäpinta, säilytä annettu paksuus (ei naapuriseinän nappaamista).
+    best_partner: int | None = None
+    best_t = 1e9
+    if not keep_thickness:
+        for q in pks:
+            if int(q) == dom:
                 continue
-            t_pair = abs(da - db)
-            if not (70.0 <= t_pair <= 350.0):
+            t_pair = abs(float(centers[q]) - surf)
+            if not (_SL_MIN_THICK <= t_pair <= _SL_MAX_THICK):
                 continue
-            t_weight = 1.0 / (1.0 + abs(t_pair - T_ref) / 50.0)
-            score = (smooth[pks[ii]] + smooth[pks[jj]]) * t_weight
-            if score > best_score:
-                best_score = score
-                best_pair = (da, db)
+            if float(smooth[q]) < _SL_PARTNER_FRAC * dom_h:
+                continue
+            if t_pair < best_t:
+                best_t = t_pair
+                best_partner = int(q)
 
-    if best_pair is None:
-        return wall
+    if best_partner is not None:
+        # KAKSI pintaa nähty → akseli pintojen puoliväliin, paksuus = pintaero.
+        other = float(centers[best_partner])
+        t_new = abs(surf - other)
+        center_offset = 0.5 * (surf + other)
+    elif keep_thickness:
+        # Perimetriseinä: surf = todellinen SISÄPINTA (etsitty +thickness/2:n läheltä).
+        # Lukitse sisäpinta siihen, säilytä paksuus → akseli = surf - thickness/2.
+        t_new = wall.thickness
+        room_sign = 1.0 if surf >= 0.0 else -1.0
+        center_offset = surf - room_sign * (t_new / 2.0)
+    else:
+        # YKSI pinta → lukitse lähin (huoneenpuoleinen) pinta huippuun. Huoneen
+        # puoli = enemmän pisteitä huipun takana (avoin tila); seinärunko menee
+        # siitä poispäin → mallin lähin pinta osuu skannattuun pintaan (bias→0).
+        left = float(((d_vals > surf - _SL_ROOM_HI) & (d_vals < surf - _SL_ROOM_LO)).sum())
+        right = float(((d_vals > surf + _SL_ROOM_LO) & (d_vals < surf + _SL_ROOM_HI)).sum())
+        room_sign = 1.0 if right >= left else -1.0
+        t_new = wall.thickness
+        if not (_SL_MIN_THICK <= t_new <= _SL_MAX_THICK):
+            t_new = _SL_DEFAULT_THICK
+        center_offset = surf - room_sign * (t_new / 2.0)
 
-    d1, d2 = best_pair
-    t_new = abs(d1 - d2)
-    center_offset = (d1 + d2) / 2.0
-
-    if not (70.0 <= t_new <= 350.0):
+    if not (_SL_MIN_THICK <= t_new <= _SL_MAX_THICK):
         return wall
 
     updates: dict = {}
-    if abs(center_offset) >= 1.0:
+    if abs(center_offset) >= 0.5:
         shift_vec = center_offset * normal
         updates["axis"] = [
             [round(p0[0] + shift_vec[0], 1), round(p0[1] + shift_vec[1], 1)],
             [round(p1[0] + shift_vec[0], 1), round(p1[1] + shift_vec[1], 1)],
         ]
-    if abs(t_new - wall.thickness) >= 2.0:
+    if abs(t_new - wall.thickness) >= 1.0:
         updates["thickness"] = round(t_new, 1)
 
     return wall.model_copy(update=updates) if updates else wall
@@ -287,20 +344,25 @@ class Pipeline:
             )
 
             from scan2bim.core.geometry.streaming import load_floor_slice
-            cloud = load_floor_slice(
+            # Lataa 5mm refine-laatuinen siivu KERRAN; johda 12mm detektointipilvi
+            # siitä. Pintalukitus (bias→~3mm) vaatii hienon pilven; detektointi
+            # pysyy nopeana 12mm:llä. (Pelkkä 12mm jättää bias ~11mm.)
+            _REFINE_VOXEL = 5.0
+            refine_cloud = load_floor_slice(
                 paths, z_lo, z_hi,
-                voxel_size=self.config.voxel_size,
+                voxel_size=_REFINE_VOXEL,
                 progress_cb=self._progress,
                 icp_refine=self.config.icp_refine,
             )
 
-            if len(cloud.points) < 500:
-                self._progress(f"  Liian vähän pisteitä ({len(cloud.points)}), ohitetaan.")
+            if len(refine_cloud.points) < 500:
+                self._progress(f"  Liian vähän pisteitä ({len(refine_cloud.points)}), ohitetaan.")
                 continue
 
+            cloud = refine_cloud.voxel_down_sample(self.config.voxel_size)
             # Kohinasuodatus aina: voxelointi ei poista harhapisteitä, ja ne
             # sotkevat seinien koordinaatit + tuottavat valehavaintoja. Tarkkuus > nopeus.
-            self._progress(f"  Pisteitä: {len(cloud.points):,} — kohinasuodatus…")
+            self._progress(f"  Pisteitä: {len(cloud.points):,} (det) / {len(refine_cloud.points):,} (refine) — kohinasuodatus…")
             cloud, _ = cloud.remove_statistical_outlier(nb_neighbors=20, std_ratio=2.0)
 
             from scan2bim.core.geometry.loader import scanner_origins
@@ -314,7 +376,7 @@ class Pipeline:
                 self._progress(f"  Skannerin origoja: {len(origins)} (okkluusiosuodatus päällä)")
 
             self._progress(f"  Seinädetektio ({self.config.detector})…")
-            model = self._detect(cloud, source)
+            model = self._detect(cloud, source, refine_cloud=refine_cloud)
             model.metadata.floor_index = floor_idx
             model.metadata.floor_count = len(floors)
 
@@ -389,9 +451,14 @@ class Pipeline:
             (s.boundary for s in model.slabs if s.slab_type == "floor"), None
         )
 
+        # Pintalukitus tarvitsee mahd. tarkan pilven: 12mm-detektiovoxelin
+        # sentroidi-bias siirtää yksipuolisen pinnan ~sisäänpäin. Hienompi
+        # refine_cloud (5mm) → bias laskee mediaani ~13mm→~3mm.
+        lock_cloud = refine_cloud if refine_cloud is not None else cloud
+
         model.walls = filter_structural_walls(model.walls, model.slabs)
-        model.walls = refine_thicknesses(model.walls, cloud)
-        model.walls = _recenter_wall_axes(model.walls, cloud)
+        model.walls = refine_thicknesses(model.walls, lock_cloud)
+        model.walls = _recenter_wall_axes(model.walls, lock_cloud)
 
         # Toinen deduplikointi: akselinkorjaus saattaa tuoda aiemmin eri paikassa olevia
         # seiniä samalle akselille (kuten wall_105/wall_108 jotka ovat saman seinän pinnat)
@@ -401,9 +468,14 @@ class Pipeline:
             floor_z_w = min((w.z_min for w in model.walls), default=0.0)
             wall_h = max((w.height for w in model.walls), default=2700.0)
             from scan2bim.core.semantics.perimeter import add_perimeter_walls
-            model.walls = model.walls + add_perimeter_walls(
+            # add_perimeter_walls siirtää akselin ulospäin thickness/2 → sisäpinta
+            # osuu lattiakontuuriin. Tarkennetaan vielä todelliseen sisäpintaan:
+            # keep_thickness säilyttää 300mm-paksuuden eikä nappaa naapuriseinää.
+            perim = add_perimeter_walls(
                 floor_contour, model.walls, floor_z_w, wall_h
             )
+            perim = _recenter_wall_axes(perim, lock_cloud, band=300.0, keep_thickness=True)
+            model.walls = model.walls + perim
 
         from scan2bim.core.semantics.wall_semantics import _deduplicate
         model.walls = _deduplicate(model.walls)
