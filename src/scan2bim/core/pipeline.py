@@ -344,25 +344,20 @@ class Pipeline:
             )
 
             from scan2bim.core.geometry.streaming import load_floor_slice
-            # Lataa 5mm refine-laatuinen siivu KERRAN; johda 12mm detektointipilvi
-            # siitä. Pintalukitus (bias→~3mm) vaatii hienon pilven; detektointi
-            # pysyy nopeana 12mm:llä. (Pelkkä 12mm jättää bias ~11mm.)
-            _REFINE_VOXEL = 5.0
-            refine_cloud = load_floor_slice(
+            cloud = load_floor_slice(
                 paths, z_lo, z_hi,
-                voxel_size=_REFINE_VOXEL,
+                voxel_size=self.config.voxel_size,
                 progress_cb=self._progress,
                 icp_refine=self.config.icp_refine,
             )
 
-            if len(refine_cloud.points) < 500:
-                self._progress(f"  Liian vähän pisteitä ({len(refine_cloud.points)}), ohitetaan.")
+            if len(cloud.points) < 500:
+                self._progress(f"  Liian vähän pisteitä ({len(cloud.points)}), ohitetaan.")
                 continue
 
-            cloud = refine_cloud.voxel_down_sample(self.config.voxel_size)
             # Kohinasuodatus aina: voxelointi ei poista harhapisteitä, ja ne
             # sotkevat seinien koordinaatit + tuottavat valehavaintoja. Tarkkuus > nopeus.
-            self._progress(f"  Pisteitä: {len(cloud.points):,} (det) / {len(refine_cloud.points):,} (refine) — kohinasuodatus…")
+            self._progress(f"  Pisteitä: {len(cloud.points):,} — kohinasuodatus…")
             cloud, _ = cloud.remove_statistical_outlier(nb_neighbors=20, std_ratio=2.0)
 
             from scan2bim.core.geometry.loader import scanner_origins
@@ -376,7 +371,7 @@ class Pipeline:
                 self._progress(f"  Skannerin origoja: {len(origins)} (okkluusiosuodatus päällä)")
 
             self._progress(f"  Seinädetektio ({self.config.detector})…")
-            model = self._detect(cloud, source, refine_cloud=refine_cloud)
+            model = self._detect(cloud, source)
             model.metadata.floor_index = floor_idx
             model.metadata.floor_count = len(floors)
 
