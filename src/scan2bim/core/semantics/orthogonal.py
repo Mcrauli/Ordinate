@@ -144,9 +144,11 @@ def _fine_rotate_wall(w: Wall, xy, z, z_min, z_max, max_dev: float) -> Wall:
     p0 = np.array(w.axis[0], dtype=float)
     p1 = np.array(w.axis[1], dtype=float)
     length = float(np.linalg.norm(p1 - p0))
-    # Vain riittävän pitkät seinät: lyhyissä (<2.5 m) pään ajautuma on pieni mutta
-    # niiden kiertäminen tekee niistä ei-yhdensuuntaisia naapureihin → valehuoneita.
-    if length < 2500.0:
+    # Vain riittävän pitkät seinät: lyhyissä pään ajautuma on pieni mutta niiden
+    # kiertäminen tekee niistä ei-yhdensuuntaisia naapureihin → valehuoneita.
+    # Sliver-suodatus huonedetektiossa tekee 1.5m-rajan turvalliseksi (lisää voittoa
+    # keskipitkiltä seiniltä) — valehuoneet hylätään aspect/min-width-säännöllä.
+    if length < 1500.0:
         return w
 
     along = (p1 - p0) / length
