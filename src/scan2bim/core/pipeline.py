@@ -489,6 +489,12 @@ class Pipeline:
         from scan2bim.core.semantics.wall_semantics import remove_dangling_walls
         model.walls = remove_dangling_walls(model.walls)
 
+        # LUKITSE PINNAT LOPULLISESTI: snap/trim siirtävät päätepisteitä ja kumoavat
+        # aiemman pintalukituksen (akseli jää pistepinnalle → mallin pinta thickness/2
+        # ohi → bias ~50mm). Aja surface_lock vielä kerran, sitten snap nurkat kiinni.
+        model.walls = _recenter_wall_axes(model.walls, lock_cloud)
+        model.walls = snap_corners(model.walls)
+
         # Normalisoi seinien korkeus lattia-katto-välille (tarkka arkkitehtimalli)
         floor_z = min(
             (s.elevation for s in model.slabs if s.slab_type == "floor"),
