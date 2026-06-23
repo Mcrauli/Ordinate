@@ -477,8 +477,25 @@ class Pipeline:
 
         # Suorista seinät kahteen kohtisuoraan suuntaan ennen kulmien yhdistämistä —
         # vinot seinät eivät muuten kohtaa puhtaasti eivätkä huoneet sulkeudu.
-        from scan2bim.core.semantics.orthogonal import regularize_orthogonal
+        from scan2bim.core.semantics.orthogonal import regularize_orthogonal, fine_rotate_walls
         model.walls = regularize_orthogonal(model.walls)
+
+        # Per-seinä hienokierto: globaali akseli on usein 1–2° vinossa todelliseen
+        # ruudukkoon → pitkän seinän pää ajautuu 100–200 mm. Kierrä riittävän pitkät
+        # seinät (±2.5°) parhaiten omiin pisteisiinsä. Tehdään ennen nurkkien
+        # snäppäystä jotta snap reconnektoi päät kierron jälkeen.
+        if model.walls:
+            lz = min((w.z_min for w in model.walls), default=0.0)
+            lh = max((w.height for w in model.walls), default=2700.0)
+            fr_pts = np.asarray(lock_cloud.points)
+            model.walls = fine_rotate_walls(
+                model.walls, fr_pts, z_min=lz + 200.0, z_max=lz + lh - 200.0
+            )
+            # Hienokierto voi tehdä lähes päällekkäisistä seinistä (perimetri +
+            # detektoitu samalla linjalla) hieman ei-yhdensuuntaisia → ne eivät
+            # enää sulaudu ja rajaavat ohuen valehuoneen. Dedup uudestaan kierron
+            # jälkeen poistaa parit ennen nurkkien snäppäystä.
+            model.walls = _deduplicate(model.walls)
 
         model.walls = snap_corners(model.walls)
         trim_cloud = refine_cloud if refine_cloud is not None else cloud
@@ -493,6 +510,11 @@ class Pipeline:
         # aiemman pintalukituksen (akseli jää pistepinnalle → mallin pinta thickness/2
         # ohi → bias ~50mm). Aja surface_lock vielä kerran, sitten snap nurkat kiinni.
         model.walls = _recenter_wall_axes(model.walls, lock_cloud)
+        model.walls = snap_corners(model.walls)
+        # Hienokierto voi tehdä seinistä hieman ei-yhdensuuntaisia → snap jatkaa
+        # niitä kaukaisiin risteyksiin (ylityspätkä tyhjään tilaan → ylimääräinen
+        # huone). Trimmaa päät takaisin todelliseen dataan, snap reconnektoi nurkat.
+        model.walls = _trim_wall_endpoints(model.walls, trim_cloud)
         model.walls = snap_corners(model.walls)
 
         # Normalisoi seinien korkeus lattia-katto-välille (tarkka arkkitehtimalli)

@@ -95,3 +95,125 @@ def regularize_orthogonal(walls: list[Wall], drop_skew: bool = True) -> list[Wal
 def _angle_wrap(a: float) -> float:
     """Kääri kulma välille [-π, π]."""
     return float((a + np.pi) % (2.0 * np.pi) - np.pi)
+
+
+# --- per-seinä hienokierto ---------------------------------------------------
+# Globaali snäppi antaa yhden rectilineaarisen kulman koko pohjalle, mutta
+# todellinen ruudukko on usein 1–2° vinossa siihen nähden, ja pitkän (7 m) seinän
+# pää ajautuu 100–200 mm. Korjaus: kierrä jokaista seinää keskipisteensä ympäri
+# enintään ±_FINE_MAX_DEG niin että sen OMAT pinnan pisteet asettuvat akselin
+# suuntaisiksi (kohtisuora hajonta minimiin). Pieni raja pitää pohjan suorana
+# eikä riko nurkkien snäppäystä.
+
+_FINE_MAX_DEG = 2.5        # ° — suurin sallittu poikkeama globaalista akselista.
+                           # Tätä suurempi vaadittu kierto = epäluotettava sovitus
+                           # (T-liitos/viisto) → seinä hylätään (ei clampata).
+_FINE_BAND = 100.0         # mm — kohtisuora kaista jolta seinän omat pisteet haetaan
+_FINE_MIN_PTS = 300        # min pisteitä jotta kierretään
+_FINE_END_MARGIN = 200.0   # mm — jätä päät pois (nurkka/T-liitos sotkee suunnan)
+
+
+def fine_rotate_walls(
+    walls: list[Wall],
+    pts: np.ndarray,
+    z_min: float | None = None,
+    z_max: float | None = None,
+    max_dev_deg: float = _FINE_MAX_DEG,
+) -> list[Wall]:
+    """Kierrä jokaista seinää keskipisteensä ympäri parhaiten omiin pisteisiinsä.
+
+    Käytetään globaalin snäpin JÄLKEEN: poistaa pitkän seinän pään ajautuman
+    sovittamalla seinän suunnan sen dominantin skannatun pinnan pistejoukkoon.
+    Kierto rajataan ±``max_dev_deg`` jotta pohja pysyy rectilineaarisena.
+    """
+    if pts is None or len(pts) == 0 or len(walls) < 1:
+        return walls
+
+    xy = np.asarray(pts)[:, :2]
+    z = np.asarray(pts)[:, 2] if pts.shape[1] > 2 else None
+    max_dev = np.radians(max_dev_deg)
+
+    out: list[Wall] = []
+    for w in walls:
+        rotated = _fine_rotate_wall(w, xy, z, z_min, z_max, max_dev)
+        out.append(rotated)
+    return out
+
+
+def _fine_rotate_wall(w: Wall, xy, z, z_min, z_max, max_dev: float) -> Wall:
+    p0 = np.array(w.axis[0], dtype=float)
+    p1 = np.array(w.axis[1], dtype=float)
+    length = float(np.linalg.norm(p1 - p0))
+    # Vain riittävän pitkät seinät: lyhyissä (<2.5 m) pään ajautuma on pieni mutta
+    # niiden kiertäminen tekee niistä ei-yhdensuuntaisia naapureihin → valehuoneita.
+    if length < 2500.0:
+        return w
+
+    along = (p1 - p0) / length
+    normal = np.array([-along[1], along[0]])
+    mid = 0.5 * (p0 + p1)
+
+    rel = xy - p0
+    along_proj = rel @ along
+    perp = rel @ normal
+
+    mask = (
+        (along_proj >= _FINE_END_MARGIN)
+        & (along_proj <= length - _FINE_END_MARGIN)
+        & (np.abs(perp) <= _FINE_BAND)
+    )
+    if z is not None and z_min is not None and z_max is not None:
+        mask &= (z >= z_min) & (z <= z_max)
+    if int(mask.sum()) < _FINE_MIN_PTS:
+        return w
+
+    band_along = along_proj[mask]
+    band_perp = perp[mask]
+
+    # Rajaa dominanttiin pintaan: kaistalla voi olla sisä- JA ulkopinta (kaksi
+    # piikkiä). Valitse tiheämpi pinta ±40 mm ikkunalla, muuten total least
+    # squares sovittaisi keskiviivan kahden pinnan väliin → väärä kulma.
+    hist, edges = np.histogram(band_perp, bins=np.arange(-_FINE_BAND, _FINE_BAND + 10.0, 10.0))
+    peak = 0.5 * (edges[:-1] + edges[1:])[int(np.argmax(hist))]
+    surf = np.abs(band_perp - peak) <= 40.0
+    if int(surf.sum()) < _FINE_MIN_PTS:
+        return w
+    s_along = band_along[surf]
+    s_perp = band_perp[surf]
+
+    # Total least squares: paras suora pinnan pisteille seinän omassa kehyksessä.
+    # Kulmakorjaus = atan2(slope) jossa pinta = vakio + slope*along.
+    a_mean = s_along.mean()
+    p_mean = s_perp.mean()
+    da = s_along - a_mean
+    dp = s_perp - p_mean
+    saa = float(da @ da)
+    if saa < 1e-6:
+        return w
+    delta = float(np.arctan2(float(da @ dp), saa))
+
+    # Robustius: hylkää jos sovitus heikko (liikaa hajontaa kohtisuorassa).
+    resid = dp - (float(da @ dp) / saa) * da
+    if len(resid) > 2:
+        rms = float(np.sqrt(np.mean(resid ** 2)))
+        if rms > 35.0:  # hajanainen kaista (kalusteet/T-liitos) → älä luota
+            return w
+
+    # Jos sovitus vaatii enemmän kuin sallittu poikkeama, kaista nappasi
+    # ei-yhdensuuntaisen pinnan (T-liitos / viistoseinä / naapuri) → EI clamppia
+    # vaan hylkää koko kierto. Clamppaaminen kiertäisi seinän väärään suuntaan
+    # ja rikkoisi nurkan → ylimääräisiä huoneita.
+    if abs(delta) > max_dev:
+        return w
+    if abs(delta) < np.radians(0.05):
+        return w
+
+    c, s = np.cos(delta), np.sin(delta)
+    u = np.array([c * along[0] - s * along[1], s * along[0] + c * along[1]])
+    half = 0.5 * length
+    n0 = mid - half * u
+    n1 = mid + half * u
+    return w.model_copy(update={"axis": [
+        [round(float(n0[0]), 1), round(float(n0[1]), 1)],
+        [round(float(n1[0]), 1), round(float(n1[1]), 1)],
+    ]})
