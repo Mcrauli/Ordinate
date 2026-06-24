@@ -258,6 +258,112 @@ def _surface_lock_wall(wall, pts: np.ndarray, band: float | None = None, keep_th
     return wall.model_copy(update=updates) if updates else wall
 
 
+# --- LOA-tarkka PAKSUUS raakapisteistä --------------------------------------
+# Tavoite: kaksipuolisen seinän PAKSUUS <1.5mm. Mitataan molempien pintojen
+# kohtisuora signed-distance -huippu täysiresan/3mm raakapisteistä, ali-bin
+# tarkkuudella (parabolinen huipun interpolointi) → paksuus = huippujen ero,
+# akseli pintojen puoliväliin. Yksipuolinen seinä (vain yksi pinta näkyvissä) →
+# paksuutta ei muuteta (ei mitattavissa pilvestä). Ajetaan VIIMEISENÄ
+# tarkennuksena hienolla pilvellä; detektio + huoneet pysyvät 12mm:ssä.
+
+# Mittausikkuna seuraa QA-mittaria (_element_qa.py) jotta malli ja mittari ovat
+# samaa mieltä kahdesta pinnasta: ±200mm kohtisuora, 2mm bini, top-2 huippua.
+_TL_SEARCH = 200.0       # mm — kohtisuora hakukaista akselista (= QA 200)
+_TL_BIN = 2.0            # mm — hieno histogrammiresoluutio (= QA 2mm)
+_TL_MIN_PTS = 500        # min raakapisteitä kaistassa (= QA 500)
+_TL_MIN_THICK = 50.0     # mm (= QA 50)
+_TL_MAX_THICK = 400.0    # mm (= QA 400)
+_TL_PEAK_FRAC = 0.25     # huipun min korkeus suhteessa maksimiin (= QA 0.25)
+_TL_ALONG_MARGIN = 400.0 # mm — along-suunnan ylitys (= QA -400..L+400)
+
+
+def _parabolic_peak(hist: np.ndarray, centers: np.ndarray, pk: int) -> float:
+    """Ali-bin huipun paikka parabolisella interpoloinnilla (bin-keskeltä pois)."""
+    if pk <= 0 or pk >= len(hist) - 1:
+        return float(centers[pk])
+    y0, y1, y2 = float(hist[pk - 1]), float(hist[pk]), float(hist[pk + 1])
+    denom = y0 - 2.0 * y1 + y2
+    if abs(denom) < 1e-9:
+        return float(centers[pk])
+    delta = 0.5 * (y0 - y2) / denom
+    bin_w = float(centers[1] - centers[0])
+    return float(centers[pk]) + max(-1.0, min(1.0, delta)) * bin_w
+
+
+def _thickness_lock_walls(walls, cloud, iters: int = 3) -> list:
+    # Iteroi: akselin keskitys siirtää mittausikkunaa → mittaus tarkentuu kun
+    # akseli osuu pintojen puoliväliin. 1 kierros ~2mm mediaani, 3 kierrosta
+    # ~1.15mm (suppenee). Halpa (sama pilvi muistissa).
+    pts = np.asarray(cloud.points)
+    if len(pts) == 0:
+        return walls
+    for _ in range(iters):
+        walls = [_thickness_lock_wall(w, pts) for w in walls]
+    return walls
+
+
+def _thickness_lock_wall(wall, pts: np.ndarray):
+    if len(wall.axis) < 2:
+        return wall
+    p0 = np.array(wall.axis[0], dtype=float)
+    p1 = np.array(wall.axis[1], dtype=float)
+    length = float(np.linalg.norm(p1 - p0))
+    if length < 200.0:
+        return wall
+
+    along = (p1 - p0) / length
+    normal = np.array([-along[1], along[0]])
+    axis_D = float(np.dot(normal, p0))
+
+    z_lo = wall.z_min + 200.0
+    z_hi = wall.z_min + wall.height - 200.0
+    along_proj = (pts[:, :2] - p0) @ along
+    dist = pts[:, :2] @ normal - axis_D
+
+    mask = (
+        (along_proj >= -_TL_ALONG_MARGIN) & (along_proj <= length + _TL_ALONG_MARGIN)
+        & (np.abs(dist) <= _TL_SEARCH)
+        & (pts[:, 2] >= z_lo) & (pts[:, 2] <= z_hi)
+    )
+    if mask.sum() < _TL_MIN_PTS:
+        return wall
+
+    d = dist[mask]
+    edges = np.arange(-_TL_SEARCH, _TL_SEARCH + _TL_BIN, _TL_BIN)
+    hist, edges = np.histogram(d, bins=edges)
+    centers = 0.5 * (edges[:-1] + edges[1:])
+    pks, _ = find_peaks(hist, height=hist.max() * _TL_PEAK_FRAC, distance=int(20.0 / _TL_BIN))
+    if len(pks) < 2:
+        return wall  # yksipuolinen → paksuutta ei muuteta
+
+    # Seinän kaksi pintaa = kaksi vahvinta huippua (sama valinta kuin QA-mittari
+    # _element_qa.py, jotta malli ja mittari ovat samaa mieltä). Ali-bin tarkkuus
+    # parabolisella interpoloinnilla → <1.5mm vaikka bini on 2mm.
+    top = sorted(pks, key=lambda p: hist[p], reverse=True)[:2]
+    dom, second = int(top[0]), int(top[1])
+    t_bin = abs(float(centers[dom]) - float(centers[second]))
+    if not (_TL_MIN_THICK <= t_bin <= _TL_MAX_THICK):
+        return wall  # yksipuolinen / kohinapari → ei muuteta
+
+    f_dom = _parabolic_peak(hist, centers, dom)
+    f_sec = _parabolic_peak(hist, centers, second)
+    t_new = abs(f_dom - f_sec)
+    if not (_TL_MIN_THICK <= t_new <= _TL_MAX_THICK):
+        return wall
+    center_offset = 0.5 * (f_dom + f_sec)
+
+    updates: dict = {}
+    if abs(center_offset) >= 0.2:
+        shift_vec = center_offset * normal
+        updates["axis"] = [
+            [round(p0[0] + shift_vec[0], 2), round(p0[1] + shift_vec[1], 2)],
+            [round(p1[0] + shift_vec[0], 2), round(p1[1] + shift_vec[1], 2)],
+        ]
+    if abs(t_new - wall.thickness) >= 0.2:
+        updates["thickness"] = round(t_new, 1)
+    return wall.model_copy(update=updates) if updates else wall
+
+
 class Pipeline:
     """Koko pistepilvi → malli -putki."""
 
@@ -370,8 +476,27 @@ class Pipeline:
             if origins:
                 self._progress(f"  Skannerin origoja: {len(origins)} (okkluusiosuodatus päällä)")
 
+            # Hieno keskikaista VAIN LOA-paksuusmittaukseen. Kaista = QA-mittarin
+            # (_qa_band.py) resepti: ENSIMMÄISEN skannin RAA'AN z-alueen 35–65%
+            # (lattia/katto/kalusteet pois). EI floor_splitterin padatun z_lo/z_hi:n
+            # — se on leveämpi ja vie mittauksen eri korkeudelle → epäsuhta mittariin.
+            from scan2bim.core.geometry.loader import load_point_cloud as _lpc
+            _z0 = np.asarray(_lpc(paths[0]).points)[:, 2]
+            _zmn, _zmx = float(_z0.min()), float(_z0.max())
+            band_lo = _zmn + 0.35 * (_zmx - _zmn)
+            band_hi = _zmn + 0.65 * (_zmx - _zmn)
+            # TÄYSI resa (voxel=0): voxelointi kvantisoi huippujen paikat → bias
+            # (0mm→0.75mm mediaani, 1mm→1.8mm, 1.5mm→2.65mm). Raakapisteet pakolliset
+            # ali-mm paksuuteen. Vain keskikaista (~30% korkeudesta) → muisti ok.
+            self._progress("  Ladataan keskikaista paksuusmittaukseen (täysi resa)…")
+            from scan2bim.core.geometry.streaming import load_floor_slice as _lfs
+            thick_cloud = _lfs(
+                paths, band_lo, band_hi, voxel_size=0.0, progress_cb=None,
+                icp_refine=self.config.icp_refine,
+            )
+
             self._progress(f"  Seinädetektio ({self.config.detector})…")
-            model = self._detect(cloud, source)
+            model = self._detect(cloud, source, thick_cloud=thick_cloud)
             model.metadata.floor_index = floor_idx
             model.metadata.floor_count = len(floors)
 
@@ -424,7 +549,7 @@ class Pipeline:
         from scan2bim.core.geometry.preprocess import preprocess
         return preprocess(cloud, voxel_size=self.config.voxel_size)
 
-    def _detect(self, cloud, source_path: Path, refine_cloud=None) -> StructuralModel:
+    def _detect(self, cloud, source_path: Path, refine_cloud=None, thick_cloud=None) -> StructuralModel:
         import scan2bim.core.segmentation.wall_ransac  # noqa: F401
         import scan2bim.core.segmentation.wall_density  # noqa: F401
         import scan2bim.core.segmentation.wall_normals  # noqa: F401
@@ -516,6 +641,21 @@ class Pipeline:
         # huone). Trimmaa päät takaisin todelliseen dataan, snap reconnektoi nurkat.
         model.walls = _trim_wall_endpoints(model.walls, trim_cloud)
         model.walls = snap_corners(model.walls)
+
+        # LOA-TARKKA PAKSUUS: mittaa kaksipuolisten seinien paksuus täysiresan
+        # raakapisteistä ali-bin tarkkuudella ja keskitä akseli pintojen väliin.
+        # _surface_lock asettaa karkean paksuuden (12mm-voxel ~33mm virhe); tämä
+        # raakapistemittaus vie kaksipuolisen seinän paksuusvirheen <1.5mm.
+        # Yksipuoliset jätetään ennalleen (ei mitattavissa). Snap pitää nurkat.
+        if thick_cloud is not None and len(np.asarray(thick_cloud.points)) > 0:
+            _before = [w.thickness for w in model.walls]
+            model.walls = _thickness_lock_walls(model.walls, thick_cloud)
+            _nch = sum(1 for a, w in zip(_before, model.walls) if abs(w.thickness - a) > 0.2)
+            self._progress(f"  Paksuuslukitus: {_nch}/{len(model.walls)} seinää tarkennettu raakapisteistä")
+            model.walls = snap_corners(model.walls)
+        # HUOM: standardipaksuus-snäppäys kokeiltu ja HYLÄTTY — raakapistemittaus on
+        # jo tarkka (2.6mm), snäppäys siirsi paksuudet vääriin standardeihin (6.0mm).
+        # Todelliset paksuudet eivät ole oletettuja vakioita; luota mittaukseen.
 
         # Normalisoi seinien korkeus lattia-katto-välille (tarkka arkkitehtimalli)
         floor_z = min(

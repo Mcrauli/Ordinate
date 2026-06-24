@@ -49,7 +49,8 @@ def load_floor_slice(
         slice_cloud = cloud.select_by_index(idx)
         del cloud  # vapauta muisti ennen downsamplausta
 
-        slice_cloud = slice_cloud.voxel_down_sample(voxel_size)
+        if voxel_size > 0.0:
+            slice_cloud = slice_cloud.voxel_down_sample(voxel_size)
 
         if icp_refine:
             from scan2bim.core.geometry.registration import align_to_reference
