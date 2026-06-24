@@ -14,7 +14,8 @@ import numpy as np
 from scan2bim.schemas.model import ElementSource, Space
 
 _EXTEND = 120.0        # mm — jatka seinänpäitä jotta nurkat solmittuvat varmasti
-_MIN_AREA = 1_300_000.0   # mm² (~1.3 m²) — pienin huone (komero/wc)
+_MIN_AREA = 1_800_000.0   # mm² (~1.8 m²) — pienin huone (komero/wc); alle = perimetrin
+                          # ja sisäseinän väliin jäävä kuollut kaista (valehuone), ei tila
 _MAX_AREA = 90_000_000.0  # mm² (~90 m²) — tätä suurempi = koko asunnon ulkokehä, ohitetaan
 # Sliver-suodatus: kahden lähes yhdensuuntaisen seinän väliin (ohut rako) syntyy
 # usein pitkä ja kapea valehuone, jonka pinta-ala silti ylittää _MIN_AREA. Hylätään

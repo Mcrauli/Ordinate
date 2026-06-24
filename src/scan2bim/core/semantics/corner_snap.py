@@ -1,4 +1,11 @@
-"""Kulmakorjaus: yhdistää seinät kulmiin snäppäämällä ja jatkamalla akseleita."""
+"""Kulmakorjaus: yhdistää seinät kulmiin snäppäämällä ja jatkamalla akseleita.
+
+Kaksivaiheinen:
+  1) pairwise extend/snap — jatka/snäppää akselin päät risteyksiin (lähikulmat).
+  2) corner-resolve — rakenna KAIKKI seinä-seinä-risteykset ja vedä jokainen
+     seinän pää lähimpään pätevään risteykseen: ylittävä pää TRIMMATAAN, vajaa
+     pää JATKETAAN. Tämä poistaa tyngät (overshoot) ja sulkee raot.
+"""
 from __future__ import annotations
 
 import numpy as np
@@ -20,6 +27,8 @@ def snap_corners(walls: list[Wall]) -> list[Wall]:
     for i in range(n):
         for j in range(i + 1, n):
             _try_connect(axes, i, j)
+
+    _resolve_corners(axes)
 
     return [walls[i].model_copy(update={"axis": axes[i]}) for i in range(n)]
 
@@ -90,6 +99,109 @@ def _clip_overshoot(
         axes[k][1] = _fmt(pt)
     elif p1_near <= _MAX_OVERSHOOT and p1_near >= 0.0:
         axes[k][0] = _fmt(pt)
+
+
+# --- corner-resolve: vedä jokainen pää lähimpään pätevään risteykseen ---------
+#
+# Tynkä (overshoot) = pää joka jatkuu kohtisuoran seinän OHI; rako = pää joka jää
+# vajaaksi. Molemmat korjautuvat samalla logiikalla: etsi seinän jokaiselle
+# päälle lähin risteys jonka SE seinä leikkaa, ja vedä pää siihen — kunhan se on
+# sallitun ikkunan sisällä eikä lyhennä seinää nollaan.
+
+_RES_TRIM = 600.0        # mm — pään saa vetää SISÄÄN (trimmaus) enintään tämän verran
+_RES_EXTEND = 1300.0     # mm — pään saa vetää ULOS (jatko) enintään tämän verran
+_RES_PERP_MAX = 250.0    # mm — risteys kelpaa vain jos kohtisuora seinä kulkee näin läheltä päätä
+_RES_MIN_LEN = 250.0     # mm — älä lyhennä seinää tätä lyhyemmäksi
+
+
+def _resolve_corners(axes: list[list[list[float]]]) -> None:
+    """Vedä jokainen seinän pää lähimpään pätevään seinä-seinä-risteykseen.
+
+    Pätevä risteys päälle E (E ∈ {0,1}):
+      - kohtisuora kumppani (|cos| <= _PARALLEL_COS_MAX)
+      - risteys osuu kumppanin janalle (sallien pieni ylitys) → aito kulma/T
+      - risteyksen along-koordinaatti tällä seinällä on lähellä päätä E:
+          ylitys (trimmaus)  : risteys ennen päätä,   <= _RES_TRIM
+          vajaa  (jatko)     : risteys pään takana,   <= _RES_EXTEND
+      - lopputulos ei lyhennä seinää alle _RES_MIN_LEN
+    Valitaan kullekin päälle along-suunnassa LÄHIN pätevä risteys.
+    """
+    n = len(axes)
+    dirs: list[np.ndarray | None] = []
+    lens: list[float] = []
+    p0s: list[np.ndarray] = []
+    for k in range(n):
+        p0 = np.array(axes[k][0], dtype=float)
+        p1 = np.array(axes[k][1], dtype=float)
+        d = p1 - p0
+        ln = float(np.linalg.norm(d))
+        p0s.append(p0)
+        lens.append(ln)
+        dirs.append((d / ln) if ln >= 1.0 else None)
+
+    new_ends: list[list[np.ndarray | None]] = [[None, None] for _ in range(n)]
+
+    for i in range(n):
+        ui = dirs[i]
+        Li = lens[i]
+        if ui is None or Li < 1.0:
+            continue
+        p0 = p0s[i]
+        # ehdokkaat kummallekin päälle: (|delta|, along_t, piste)
+        best = [None, None]  # type: ignore
+        best_d = [1e18, 1e18]
+
+        for j in range(n):
+            if j == i:
+                continue
+            uj = dirs[j]
+            Lj = lens[j]
+            if uj is None or Lj < 1.0:
+                continue
+            if abs(float(np.dot(ui, uj))) > _PARALLEL_COS_MAX:
+                continue
+            pt, ti, tj = _intersection_params(p0, ui, p0s[j], uj)
+            if pt is None:
+                continue
+            # risteyksen oltava kumppanin janalla (aito kulma/T, ei kaukainen jatke)
+            if tj < -_RES_PERP_MAX or tj > Lj + _RES_PERP_MAX:
+                continue
+            # kumman pään lähellä risteys on?
+            for E in (0, 1):
+                end_t = 0.0 if E == 0 else Li
+                delta = ti - end_t  # >0: risteys pään ULKOPUOLELLA (jatko); <0: SISÄPUOLELLA (trim)
+                if E == 0:
+                    # p0: jatko = risteys ennen p0 (delta<0), trim = risteys p0:n jälkeen (delta>0)
+                    extend = -delta  # mm ulospäin
+                    trim = delta     # mm sisäänpäin
+                else:
+                    # p1: jatko = risteys p1:n jälkeen (delta>0), trim = risteys ennen p1 (delta<0)
+                    extend = delta
+                    trim = -delta
+                if extend > _RES_EXTEND or trim > _RES_TRIM:
+                    continue
+                if extend < 0 and trim < 0:
+                    continue
+                # tarkista ettei lyhennä seinää liikaa
+                if E == 0:
+                    new_len = Li - ti
+                else:
+                    new_len = ti
+                if new_len < _RES_MIN_LEN:
+                    continue
+                dist = abs(ti - end_t)
+                if dist < best_d[E]:
+                    best_d[E] = dist
+                    best[E] = pt
+        new_ends[i][0] = best[0]
+        new_ends[i][1] = best[1]
+
+    # sovita lasketut päät (vain jos molemmat eivät romahda samaan pisteeseen)
+    for i in range(n):
+        for E in (0, 1):
+            pt = new_ends[i][E]
+            if pt is not None:
+                axes[i][E] = _fmt(pt)
 
 
 def _snap_endpoint_to_wall(
