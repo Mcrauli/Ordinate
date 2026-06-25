@@ -172,42 +172,43 @@ def _fine_rotate_wall(w: Wall, xy, z, z_min, z_max, max_dev: float) -> Wall:
     band_along = along_proj[mask]
     band_perp = perp[mask]
 
-    # Rajaa dominanttiin pintaan: kaistalla voi olla sisä- JA ulkopinta (kaksi
-    # piikkiä). Valitse tiheämpi pinta ±40 mm ikkunalla, muuten total least
-    # squares sovittaisi keskiviivan kahden pinnan väliin → väärä kulma.
+    # Kaistalla on sisä- JA ulkopinta (yksi tai kaksi piikkiä). Sovita KUMPIKIN
+    # pinta erikseen ja ota kulmakorjausten KESKIARVO → kierto keskilinjan
+    # suuntaan, jolloin akseli pysyy kohtisuorassa MOLEMPIIN pintoihin ja paksuus
+    # säilyy. (Yhden dominantin pinnan sovitus kiertäisi akselin sen pinnan
+    # mukaan → toinen pinta vinoon → thickness_lock mittaa vinosti → paksuus pilalle.)
+    from scipy.signal import find_peaks
     hist, edges = np.histogram(band_perp, bins=np.arange(-_FINE_BAND, _FINE_BAND + 10.0, 10.0))
-    peak = 0.5 * (edges[:-1] + edges[1:])[int(np.argmax(hist))]
-    surf = np.abs(band_perp - peak) <= 40.0
-    if int(surf.sum()) < _FINE_MIN_PTS:
+    centers_h = 0.5 * (edges[:-1] + edges[1:])
+    pks, _ = find_peaks(hist, height=max(hist.max() * 0.3, 5.0), distance=4)
+    if len(pks) == 0:
         return w
-    s_along = band_along[surf]
-    s_perp = band_perp[surf]
+    pks = sorted(pks, key=lambda p: hist[p], reverse=True)[:2]   # 1–2 vahvinta pintaa
 
-    # Total least squares: paras suora pinnan pisteille seinän omassa kehyksessä.
-    # Kulmakorjaus = atan2(slope) jossa pinta = vakio + slope*along.
-    a_mean = s_along.mean()
-    p_mean = s_perp.mean()
-    da = s_along - a_mean
-    dp = s_perp - p_mean
-    saa = float(da @ da)
-    if saa < 1e-6:
+    deltas = []
+    for pidx in pks:
+        pk_off = float(centers_h[pidx])
+        surf = np.abs(band_perp - pk_off) <= 40.0
+        if int(surf.sum()) < _FINE_MIN_PTS // 2:
+            continue
+        s_along = band_along[surf]
+        s_perp = band_perp[surf]
+        da = s_along - s_along.mean()
+        dp = s_perp - s_perp.mean()
+        saa = float(da @ da)
+        if saa < 1e-6:
+            continue
+        d = float(np.arctan2(float(da @ dp), saa))
+        resid = dp - (float(da @ dp) / saa) * da
+        if len(resid) > 2 and float(np.sqrt(np.mean(resid ** 2))) > 35.0:
+            continue   # hajanainen kaista (kalusteet/T-liitos) → älä luota tähän pintaan
+        deltas.append(d)
+    if not deltas:
         return w
-    delta = float(np.arctan2(float(da @ dp), saa))
+    delta = float(np.mean(deltas))   # keskilinjan suunta = pintojen kulmien keskiarvo
 
-    # Robustius: hylkää jos sovitus heikko (liikaa hajontaa kohtisuorassa).
-    resid = dp - (float(da @ dp) / saa) * da
-    if len(resid) > 2:
-        rms = float(np.sqrt(np.mean(resid ** 2)))
-        if rms > 35.0:  # hajanainen kaista (kalusteet/T-liitos) → älä luota
-            return w
-
-    # Jos sovitus vaatii enemmän kuin sallittu poikkeama, kaista nappasi
-    # ei-yhdensuuntaisen pinnan (T-liitos / viistoseinä / naapuri) → EI clamppia
-    # vaan hylkää koko kierto. Clamppaaminen kiertäisi seinän väärään suuntaan
-    # ja rikkoisi nurkan → ylimääräisiä huoneita.
-    if abs(delta) > max_dev:
-        return w
-    if abs(delta) < np.radians(0.05):
+    # Liian iso vaadittu kierto = ei-yhdensuuntainen pinta (T/viisto/naapuri) → hylkää.
+    if abs(delta) > max_dev or abs(delta) < np.radians(0.05):
         return w
 
     c, s = np.cos(delta), np.sin(delta)
