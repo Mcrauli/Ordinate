@@ -91,11 +91,27 @@ def _find_z_levels(pts: np.ndarray) -> list[tuple[float, str]]:
 
 
 def _refine_z(pts: np.ndarray, z_approx: float) -> float:
-    """Tarkka Z mediaanina lähipisteistä (mediaani kestää jakauman vinouden)."""
-    near = np.abs(pts[:, 2] - z_approx) < _Z_BAND_MM
-    if near.sum() < 10:
+    """Tarkka Z sub-bin-piikkisovituksella (paraabeli huipun kolmesta binistä).
+
+    Laatta on terävä taso → tiheyshuippu osuu pinnalle. Piikkisovitus kestää
+    lattian lähellä olevan krääsän (kalusteet, listat) joka vinouttaisi mediaanin.
+    """
+    near = pts[np.abs(pts[:, 2] - z_approx) < _Z_BAND_MM, 2]
+    if len(near) < 10:
         return z_approx
-    return float(np.median(pts[near, 2]))
+    bin_mm = 1.0
+    lo = float(near.min())
+    nb = max(int((near.max() - lo) / bin_mm) + 1, 3)
+    counts, edges = np.histogram(near, bins=nb)
+    centers = 0.5 * (edges[:-1] + edges[1:])
+    k = int(np.argmax(counts))
+    if 0 < k < len(counts) - 1:
+        c0, c1, c2 = float(counts[k - 1]), float(counts[k]), float(counts[k + 1])
+        denom = c0 - 2.0 * c1 + c2
+        delta = 0.5 * (c0 - c2) / denom if abs(denom) > 1e-9 else 0.0
+        delta = max(-0.5, min(0.5, delta))
+        return float(centers[k] + delta * bin_mm)
+    return float(centers[k])
 
 
 def _measure_thickness(pts: np.ndarray, z: float, slab_type: str) -> float:

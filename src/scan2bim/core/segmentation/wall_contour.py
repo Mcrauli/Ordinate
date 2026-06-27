@@ -44,6 +44,16 @@ _Z_BAND = (0.35, 0.65)      # osuus lattia–katto-korkeudesta
 _DENSITY_THRESHOLD = 8      # min pistettä per pikseli → maski päälle
 _DEFAULT_THICKNESS = 200.0  # mm — siemen ohuelle (parittomalle) seinälle; pipeline mittaa todellisen
 
+# Monikerros-pystymaski (kalustesuodatus). Seinä ulottuu lattiasta kattoon → se on
+# "täynnä" lähes kaikissa vaakaviipaleissa; kaluste (kaappi, sänky, pöytä, jääkaappi)
+# on osakorkuinen → täynnä vain osassa viipaleita. Pidetään vain pikselit jotka
+# täyttyvät vähintään _VSLICE_FRAC osuudessa viipaleita.
+_VSLICE_STEP    = 150.0     # mm — vaakaviipaleen paksuus
+_VSLICE_BOTTOM  = 350.0     # mm — aloita näin korkealta lattiasta (lattiakrääsä/jalkalistat pois)
+_VSLICE_TOP     = 250.0     # mm — lopeta näin matalalta katosta (valaisimet/IV-putket pois)
+_VSLICE_FRAC    = 0.55      # osuus viipaleista joissa pikselin oltava täynnä → seinä
+_VSLICE_MIN_PER = 2         # min pistettä pikselissä per viipale → viipale "täynnä"
+
 _MAX_WORK_POINTS = 1_200_000  # raskas detektori → ajetaan harvennetulle pilvelle
 
 
@@ -417,7 +427,14 @@ class WallDetectorContour(ElementDetector):
             band = pts
         xy = band[:, :2]
 
-        binary, x_min, y_min = self._binary_mask(xy)
+        # Monikerros-pystymaski koko vapaalta korkeudelta (lattia+pohja → katto−ylä):
+        # suodattaa osakorkuiset kalusteet pois. Fallback yhden kaistan tiheyteen
+        # jos korkeus on liian matala viipalointiin.
+        clear = pts[(z >= floor_z + _VSLICE_BOTTOM) & (z <= ceil_z - _VSLICE_TOP)]
+        if len(clear) >= 200 and (ceil_z - _VSLICE_TOP) - (floor_z + _VSLICE_BOTTOM) >= 4 * _VSLICE_STEP:
+            binary, x_min, y_min = self._vertical_mask(clear, floor_z, ceil_z)
+        else:
+            binary, x_min, y_min = self._binary_mask(xy)
         # RETR_CCOMP: ulkoreuna + reiät (huoneiden ääriviivat). Reikien reunat ovat
         # sisäseinien pinnat → niistä saadaan väliseinät, ei vain perimetri.
         contours, _ = cv2.findContours(binary, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_NONE)
@@ -483,6 +500,37 @@ class WallDetectorContour(ElementDetector):
                 z_min=round(float(z_min_w), 1),
             ))
         return walls
+
+    def _vertical_mask(self, clear: np.ndarray, floor_z: float, ceil_z: float):
+        """Monikerros-pystymaski: pikseli on seinää vain jos se täyttyy isossa
+        osassa vaakaviipaleita (= ulottuu lattiasta kattoon). Kalusteet, jotka
+        täyttävät vain osan korkeudesta, putoavat pois."""
+        xy = clear[:, :2]
+        z = clear[:, 2]
+        x_min, y_min = float(xy[:, 0].min()), float(xy[:, 1].min())
+        cols = max(int((xy[:, 0].max() - x_min) / self.pixel_size) + 1, 1)
+        rows = max(int((xy[:, 1].max() - y_min) / self.pixel_size) + 1, 1)
+        xr = [x_min, x_min + cols * self.pixel_size]
+        yr = [y_min, y_min + rows * self.pixel_size]
+
+        z0 = floor_z + _VSLICE_BOTTOM
+        z1 = ceil_z - _VSLICE_TOP
+        edges = np.arange(z0, z1 + _VSLICE_STEP, _VSLICE_STEP)
+        n_sl = len(edges) - 1
+        vcount = np.zeros((rows, cols), dtype=np.int32)
+        for k in range(n_sl):
+            m = (z >= edges[k]) & (z < edges[k + 1])
+            if int(m.sum()) < 10:
+                continue
+            grid, _, _ = np.histogram2d(
+                xy[m, 0], xy[m, 1], bins=[cols, rows], range=[xr, yr])
+            vcount += (grid.T >= _VSLICE_MIN_PER).astype(np.int32)
+
+        need = max(2, int(round(_VSLICE_FRAC * n_sl)))
+        binary = (vcount >= need).astype(np.uint8) * 255
+        kernel = np.ones((self.close_kernel, self.close_kernel), np.uint8)
+        binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)
+        return binary, x_min, y_min
 
     def _binary_mask(self, xy: np.ndarray):
         x_min, y_min = float(xy[:, 0].min()), float(xy[:, 1].min())
