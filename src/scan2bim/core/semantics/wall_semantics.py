@@ -52,7 +52,12 @@ def _deduplicate(walls: list[Wall]) -> list[Wall]:
     """Poistaa lähes päällekkäiset seinät — pitää korkeimman confidence-arvon."""
     kept: list[Wall] = []
     used = [False] * len(walls)
-    walls_sorted = sorted(walls, key=lambda w: (-w.confidence, -_wall_length(w)))
+    # Pidä korkein confidence; lähes yhtä pitkien duplikaattien kesken pidä OHUEMPI
+    # (perimetri-swell paisuttaa saman seinän paksuudeksi esim. 266mm vaikka pinta
+    # on 77mm). Pituus pyöristetään 500mm-koreihin jottei 1mm ero voita ohuempaa.
+    walls_sorted = sorted(
+        walls, key=lambda w: (-w.confidence, -round(_wall_length(w) / 500.0), w.thickness)
+    )
     cos_thresh = float(np.cos(np.radians(_DEDUP_ANGLE_DEG)))
 
     for i, wa in enumerate(walls_sorted):

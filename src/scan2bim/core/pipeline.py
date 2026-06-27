@@ -657,6 +657,26 @@ class Pipeline:
         # jo tarkka (2.6mm), snäppäys siirsi paksuudet vääriin standardeihin (6.0mm).
         # Todelliset paksuudet eivät ole oletettuja vakioita; luota mittaukseen.
 
+        # LOPULLINEN DEDUP: kaikki akselinsiirrot (recenter/snap/trim/thickness_lock)
+        # on nyt tehty → lähekkäiset duplikaatit (esim. perimetri ext_003 77mm +
+        # ext_004 266mm = sama yläseinä) ovat vasta NYT lopullisilla, päällekkäisillä
+        # paikoillaan. Aiemmat dedupit eivät napanneet niitä koska sijainnit muuttuivat
+        # vielä. Tehdään ennen huone/aukko-detektiota jotta ne käyttävät puhdasta joukkoa.
+        model.walls = _deduplicate(model.walls)
+        model.walls = snap_corners(model.walls)
+
+        # TOIMITUSPAKSUUS: snäppää mitattu paksuus lähimpään rakennusstandardiin →
+        # siisti arkkitehtimalli muutamalla seinätyypillä (ei 14 uniikkia). Tarkka
+        # mitattu arvo talteen measured_thickness-kenttään (IFC-property dokumentiksi).
+        _STD_THICK = [66.0, 92.0, 120.0, 150.0, 200.0, 250.0, 300.0]
+        model.walls = [
+            w.model_copy(update={
+                "measured_thickness": round(w.thickness, 1),
+                "thickness": min(_STD_THICK, key=lambda s: abs(s - w.thickness)),
+            })
+            for w in model.walls
+        ]
+
         # Normalisoi seinien korkeus lattia-katto-välille (tarkka arkkitehtimalli)
         floor_z = min(
             (s.elevation for s in model.slabs if s.slab_type == "floor"),

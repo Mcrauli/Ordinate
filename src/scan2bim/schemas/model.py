@@ -36,8 +36,9 @@ class Wall(Element):
     classification: str = "wall"
     axis: list[list[float]]          # [[x0,y0], [x1,y1]] mm
     height: float                    # mm
-    thickness: float                 # mm
+    thickness: float                 # mm — toimitusarvo (snäpätty vakioon)
     z_min: float = 0.0               # mm — seinän alin piste (lattiaan vertailua varten)
+    measured_thickness: float | None = None  # mm — pilvestä mitattu tarkka paksuus (dokumentti)
 
 
 class Slab(Element):
