@@ -4,8 +4,8 @@
 
 VSVersionInfo(
     ffi=FixedFileInfo(
-        filevers=(0, 4, 10, 0),
-        prodvers=(0, 4, 10, 0),
+        filevers=(0, 4, 11, 0),
+        prodvers=(0, 4, 11, 0),
         mask=0x3F,
         flags=0x0,
         OS=0x40004,
@@ -21,12 +21,12 @@ VSVersionInfo(
                     [
                         StringStruct("CompanyName", "Lauri Rekola"),
                         StringStruct("FileDescription", "scan2bim — point cloud to IFC/DXF"),
-                        StringStruct("FileVersion", "0.4.10"),
+                        StringStruct("FileVersion", "0.4.11"),
                         StringStruct("InternalName", "scan2bim"),
                         StringStruct("LegalCopyright", "(c) 2026 Lauri Rekola"),
                         StringStruct("OriginalFilename", "scan2bim.exe"),
                         StringStruct("ProductName", "scan2bim"),
-                        StringStruct("ProductVersion", "0.4.10"),
+                        StringStruct("ProductVersion", "0.4.11"),
                     ],
                 )
             ]

@@ -133,6 +133,66 @@ def close_open_corners(walls: list[Wall]) -> list[Wall]:
             axes[i][e] = [round(float(best[1][0]), 1), round(float(best[1][1]), 1)]
             used.add((i, e))
 
+    # PASS 3: vajaa ulkonurkka jossa kohtisuora kumppani jää VAJAAKSI (leikkaus sen
+    # janan ULKONA). Venytä SEKÄ avoin pää ETTÄ kumppanin lähin pää nurkkaan — mutta
+    # VAIN jos kumppanin venytysmatka kulkee TYHJÄSSÄ (ei ylitä muita seiniä). Tämä
+    # sulkee aidot ulkonurkat (bottom/top) gridaamatta (grid = venytys huoneen halki).
+    def _ext_clear(p_from, p_to, ignore):
+        # Testaa vain venytyksen KESKIOSA (ohita 250mm molemmista päistä: ne ovat
+        # liitosvyöhykkeitä, joissa kohtisuora naapuri kuuluukin olla). Keskiosan
+        # oltava tyhjä → venytys ei kulje huoneen halki (ei gridiä).
+        v = p_to - p_from
+        Lv = float(np.linalg.norm(v))
+        if Lv < 500.0:
+            return True
+        u = v / Lv
+        d = 250.0
+        while d < Lv - 250.0:
+            q = p_from + u * d
+            for k in range(n):
+                if k in ignore or dirs[k] is None:
+                    continue
+                if _pt_seg_dist(q, P[k][0], P[k][1]) < 160.0:
+                    return False
+            d += 120.0
+        return True
+
+    for i, e in open_ends:
+        if (i, e) in used or dirs[i] is None:
+            continue
+        ep = np.array(axes[i][e], float)
+        if nearest_other(ep, i) <= _OPEN_TOL:
+            continue
+        best = None
+        for j in range(n):
+            if j == i or dirs[j] is None:
+                continue
+            if abs(float(np.dot(dirs[i], dirs[j]))) > _CLOSE_PERP_COS:
+                continue
+            pt, _, tj = _intersection_params(P[i][0], dirs[i], P[j][0], dirs[j])
+            if pt is None:
+                continue
+            # kumppanin lähin pää + paljonko sen yli leikkaus on
+            d0 = float(np.linalg.norm(pt - P[j][0]))
+            d1 = float(np.linalg.norm(pt - P[j][1]))
+            jend = 0 if d0 < d1 else 1
+            jend_pt = P[j][jend]
+            jext = float(np.linalg.norm(pt - jend_pt))      # kumppanin venytys
+            iext = float(np.linalg.norm(pt - ep))           # avoimen pään venytys
+            if jext > _CLOSE_MAX_EXT or iext > _CLOSE_MAX_EXT:
+                continue
+            # kumppanin venytysmatkan oltava tyhjä (ei gridiä)
+            if not _ext_clear(jend_pt, pt, ignore={i, j}):
+                continue
+            score = iext + jext
+            if best is None or score < best[0]:
+                best = (score, j, jend, pt)
+        if best is not None:
+            _, j, jend, pt = best
+            axes[i][e] = [round(float(pt[0]), 1), round(float(pt[1]), 1)]
+            axes[j][jend] = [round(float(pt[0]), 1), round(float(pt[1]), 1)]
+            used.add((i, e))
+
     return [walls[i].model_copy(update={"axis": axes[i]}) for i in range(n)]
 
 
