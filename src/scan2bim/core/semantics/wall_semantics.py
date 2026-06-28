@@ -48,6 +48,63 @@ def filter_structural_walls(walls: list[Wall], slabs: list[Slab]) -> list[Wall]:
     return _deduplicate(walls)
 
 
+_COLIN_ANGLE_DEG = 8.0     # ° — collinear-yhdistyksen kulmatoleranssi
+_COLIN_PERP_MM = 130.0     # mm — saman linjan kohtisuora toleranssi
+_COLIN_GAP_MM = 450.0      # mm — vierekkäisten päiden max väli (pieni: ei yhdistä eri seiniä)
+
+
+def merge_collinear_walls(walls: list[Wall]) -> list[Wall]:
+    """Yhdistä collinear vierekkäiset seinät yhdeksi (sama fyysinen seinä jaettuna).
+
+    Kontuuridetektori jakaa pitkän seinän joskus kahteen pätkään eri paksuudella
+    (esim. wall_002 120mm + wall_010 300mm pää-päähän → 300 on mittausartefakti).
+    Sama linja (kulma+kohtisuora etäisyys) + päät lähekkäin → yksi seinä, paksuus =
+    OHUEMPI (artefaktit ovat aina paisutettuja, ei koskaan ohennettuja)."""
+    if len(walls) < 2:
+        return walls
+    work = list(walls)
+    merged = True
+    while merged:
+        merged = False
+        n = len(work)
+        for i in range(n):
+            for j in range(i + 1, n):
+                a, b = work[i], work[j]
+                da, db = _direction(a), _direction(b)
+                ang = np.degrees(np.arccos(min(1.0, abs(float(np.dot(da, db))))))
+                if ang > _COLIN_ANGLE_DEG:
+                    continue
+                p0a = np.array(a.axis[0], float); p1a = np.array(a.axis[1], float)
+                p0b = np.array(b.axis[0], float); p1b = np.array(b.axis[1], float)
+                na = np.array([-da[1], da[0]])
+                perp = abs(float(np.dot(p0b - p0a, na)))
+                if perp > _COLIN_PERP_MM:
+                    continue
+                # projektiot a:n suuntaan → tarkista vierekkäisyys (gap pieni / overlap)
+                ts = [float(np.dot(p - p0a, da)) for p in (p0a, p1a, p0b, p1b)]
+                ta0, ta1 = sorted(ts[:2]); tb0, tb1 = sorted(ts[2:])
+                gap = max(ta0, tb0) - min(ta1, tb1)  # >0: väli, <0: overlap
+                if gap > _COLIN_GAP_MM:
+                    continue
+                # yhdistä: span min..max a:n suunnassa, paksuus = ohuempi
+                lo = min(ta0, tb0); hi = max(ta1, tb1)
+                s = p0a + lo * da; e = p0a + hi * da
+                keep = a if _wall_length(a) >= _wall_length(b) else b
+                thin = a if a.thickness <= b.thickness else b
+                work[i] = keep.model_copy(update={
+                    "axis": [[round(float(s[0]), 1), round(float(s[1]), 1)],
+                             [round(float(e[0]), 1), round(float(e[1]), 1)]],
+                    "thickness": thin.thickness,
+                    "measured_thickness": getattr(thin, "measured_thickness", None),
+                })
+                work.pop(j)
+                merged = True
+                break
+            if merged:
+                break
+    return work
+
+
 def _deduplicate(walls: list[Wall]) -> list[Wall]:
     """Poistaa lähes päällekkäiset seinät — pitää korkeimman confidence-arvon."""
     kept: list[Wall] = []

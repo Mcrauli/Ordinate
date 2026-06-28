@@ -662,6 +662,8 @@ class Pipeline:
         # ext_004 266mm = sama yläseinä) ovat vasta NYT lopullisilla, päällekkäisillä
         # paikoillaan. Aiemmat dedupit eivät napanneet niitä koska sijainnit muuttuivat
         # vielä. Tehdään ennen huone/aukko-detektiota jotta ne käyttävät puhdasta joukkoa.
+        from scan2bim.core.semantics.wall_semantics import merge_collinear_walls
+        model.walls = merge_collinear_walls(model.walls)   # yhdistä sama seinä jaettuna (poistaa pöhö-pätkät)
         model.walls = _deduplicate(model.walls)
         model.walls = snap_corners(model.walls)
         # Sulje vajaat perimetrinurkat: yhdistä avoimet päät PAREITTAIN (vain avoimet
