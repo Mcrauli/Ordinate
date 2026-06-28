@@ -32,7 +32,20 @@ for w in m["walls"]:
     mid = 0.5*(a+b)
     ax.text(mid[0], mid[1], f"{w['id'].replace('wall_','')}\n{w['thickness']:.0f}", fontsize=6, ha="center", va="center")
 
-ax.set_aspect("equal"); ax.set_title("POHJA: punainen=mittaamaton/epäilyttävä paksuus, sininen=mitattu")
+# avoimet päät: pää joka on >30mm lähimmästä toisesta seinästä
+def _pt_seg(p, a, b):
+    ab = b - a; L = float(ab @ ab)
+    if L < 1: return np.linalg.norm(p - a)
+    t = max(0.0, min(1.0, float((p - a) @ ab) / L)); return np.linalg.norm(p - (a + t * ab))
+segs = [(np.array(w["axis"][0], float), np.array(w["axis"][1], float)) for w in m["walls"]]
+for i, (a, b) in enumerate(segs):
+    for ep in (a, b):
+        d = min(_pt_seg(ep, oa, ob) for j, (oa, ob) in enumerate(segs) if j != i)
+        if d > 30:
+            ax.plot(ep[0], ep[1], "o", ms=14, mfc="none", mec="red", mew=2.5)
+            ax.text(ep[0]+80, ep[1], f"{d:.0f}", color="red", fontsize=8, weight="bold")
+
+ax.set_aspect("equal"); ax.set_title("POHJA: punaiset renkaat=AVOIMET PÄÄT (rako mm)")
 out = ROOT / "data/_plan_qa.png"
 plt.savefig(out, dpi=110, bbox_inches="tight")
 print("saved", out)

@@ -559,7 +559,7 @@ class Pipeline:
         from scan2bim.core.segmentation.slab_detector import detect_slabs
 
         from scan2bim.core.semantics.wall_semantics import filter_structural_walls, refine_thicknesses
-        from scan2bim.core.semantics.corner_snap import snap_corners
+        from scan2bim.core.semantics.corner_snap import snap_corners, close_open_corners
 
         detector = DetectorRegistry.get(self.config.detector)()
         model = detector.detect(cloud)
@@ -664,6 +664,9 @@ class Pipeline:
         # vielä. Tehdään ennen huone/aukko-detektiota jotta ne käyttävät puhdasta joukkoa.
         model.walls = _deduplicate(model.walls)
         model.walls = snap_corners(model.walls)
+        # Sulje vajaat perimetrinurkat: yhdistä avoimet päät PAREITTAIN (vain avoimet
+        # päät, vain toisiinsa) → ei gridiä kuten iso _resolve_corners-extend tekisi.
+        model.walls = close_open_corners(model.walls)
 
         # TOIMITUSPAKSUUS: snäppää mitattu paksuus lähimpään rakennusstandardiin →
         # siisti arkkitehtimalli muutamalla seinätyypillä (ei 14 uniikkia). Tarkka

@@ -33,6 +33,118 @@ def snap_corners(walls: list[Wall]) -> list[Wall]:
     return [walls[i].model_copy(update={"axis": axes[i]}) for i in range(n)]
 
 
+# --- vajaiden nurkkien sulku: vain AVOIMET päät, vain toisiinsa -----------------
+# Iso extend _resolve_corners:issa gridaa (venyttää SISÄseiniä kaukaisiin
+# risteyksiin). Tämä on turvallinen: käsittelee VAIN avoimia päitä (>_OPEN_TOL
+# kaikista seinistä) ja yhdistää avoimen pään VAIN toiseen avoimeen päähän niiden
+# kohtisuorien linjojen leikkaukseen. Sisäseinillä ei ole avoimia päitä → ei gridiä.
+_OPEN_TOL = 60.0          # mm — pää on "avoin" jos näin kaukana lähimmästä seinästä
+_CLOSE_MAX_EXT = 2300.0   # mm — avoimen pään saa jatkaa korkeintaan tämän verran nurkkaan
+_CLOSE_PERP_COS = 0.35    # |cos| < tämä → riittävän kohtisuorat muodostamaan nurkan
+
+
+def close_open_corners(walls: list[Wall]) -> list[Wall]:
+    """Sulje vajaat nurkat: yhdistä parit avoimia päitä niiden linjojen leikkaukseen."""
+    if len(walls) < 2:
+        return walls
+    axes = [[list(w.axis[0]), list(w.axis[1])] for w in walls]
+    n = len(walls)
+    P = [(np.array(a[0], float), np.array(a[1], float)) for a in axes]
+    dirs, lens = [], []
+    for a, b in P:
+        d = b - a
+        L = float(np.linalg.norm(d))
+        lens.append(L)
+        dirs.append(d / L if L > 1 else None)
+
+    def nearest_other(p, i):
+        return min(
+            (_pt_seg_dist(p, P[j][0], P[j][1]) for j in range(n) if j != i and dirs[j] is not None),
+            default=1e9,
+        )
+
+    # avoimet päät
+    open_ends = []
+    for i in range(n):
+        if dirs[i] is None:
+            continue
+        for e in (0, 1):
+            if nearest_other(P[i][e], i) > _OPEN_TOL:
+                open_ends.append((i, e))
+
+    used = set()
+    for idx_a in range(len(open_ends)):
+        ia, ea = open_ends[idx_a]
+        if (ia, ea) in used:
+            continue
+        best = None
+        for idx_b in range(idx_a + 1, len(open_ends)):
+            ib, eb = open_ends[idx_b]
+            if (ib, eb) in used or ib == ia:
+                continue
+            if abs(float(np.dot(dirs[ia], dirs[ib]))) > _CLOSE_PERP_COS:
+                continue  # ei kohtisuorat → ei nurkka
+            pt, _, _ = _intersection_params(P[ia][0], dirs[ia], P[ib][0], dirs[ib])
+            if pt is None:
+                continue
+            ea_pt = np.array(axes[ia][ea], float)
+            eb_pt = np.array(axes[ib][eb], float)
+            da = float(np.linalg.norm(pt - ea_pt))
+            db = float(np.linalg.norm(pt - eb_pt))
+            if da > _CLOSE_MAX_EXT or db > _CLOSE_MAX_EXT:
+                continue
+            score = da + db
+            if best is None or score < best[0]:
+                best = (score, idx_b, pt)
+        if best is not None:
+            _, idx_b, pt = best
+            ib, eb = open_ends[idx_b]
+            axes[ia][ea] = [round(float(pt[0]), 1), round(float(pt[1]), 1)]
+            axes[ib][eb] = [round(float(pt[0]), 1), round(float(pt[1]), 1)]
+            used.add((ia, ea))
+            used.add((ib, eb))
+
+    # PASS 2: vielä avoimet päät → venytä kohtisuoran OLEMASSA olevan seinän linjalle,
+    # MUTTA vain jos leikkaus osuu sen janalle (t∈[0,L], pieni marginaali) → aito
+    # T-liitos, ei kaukainen gridiviiva. Vain avoin pää liikkuu.
+    for i, e in open_ends:
+        if (i, e) in used or dirs[i] is None:
+            continue
+        ep = np.array(axes[i][e], float)
+        if nearest_other(ep, i) <= _OPEN_TOL:
+            continue
+        best = None
+        for j in range(n):
+            if j == i or dirs[j] is None:
+                continue
+            if abs(float(np.dot(dirs[i], dirs[j]))) > _CLOSE_PERP_COS:
+                continue
+            pt, _, tj = _intersection_params(P[i][0], dirs[i], P[j][0], dirs[j])
+            if pt is None:
+                continue
+            if tj < -120.0 or tj > lens[j] + 120.0:   # leikkaus janan ULKONA → hylkää (ei gridiä)
+                continue
+            ext = float(np.linalg.norm(pt - ep))
+            if ext > _CLOSE_MAX_EXT:
+                continue
+            if best is None or ext < best[0]:
+                best = (ext, pt)
+        if best is not None:
+            axes[i][e] = [round(float(best[1][0]), 1), round(float(best[1][1]), 1)]
+            used.add((i, e))
+
+    return [walls[i].model_copy(update={"axis": axes[i]}) for i in range(n)]
+
+
+def _pt_seg_dist(p, a, b) -> float:
+    ab = b - a
+    L = float(ab @ ab)
+    if L < 1.0:
+        return float(np.linalg.norm(p - a))
+    t = max(0.0, min(1.0, float((p - a) @ ab) / L))
+    return float(np.linalg.norm(p - (a + t * ab)))
+
+
 def _try_connect(axes: list[list[list[float]]], i: int, j: int) -> None:
     p0a = np.array(axes[i][0], dtype=float)
     p1a = np.array(axes[i][1], dtype=float)
