@@ -1,35 +1,37 @@
 # Arkkitehtuuri
 
+> **Huom:** ajantasaisin putkikuvaus, moduulit ja opitut asiat ovat
+> [`../AGENTS.md`](../AGENTS.md):ssä. Tämä tiedosto kuvaa periaatteet.
+
 ## Tavoite
 
-Pistepilvi (E57/LAS/PTS) → puhdas arkkitehtimalli. Tunnistaa rakenteet, suodattaa pois kalusteet ja LVI. Exportoi IFC + DXF + AutoLISP.
+Pistepilvi (E57/LAS/LAZ/PLY/PTS) → puhdas arkkitehtimalli. Tunnistaa rakenteet,
+suodattaa pois kalusteet, exportoi älykkään IFC4:n + DXF.
 
 ## Putki
 
 ```
-[Point Cloud]  E57 / LAS/LAZ / PTS
+[Point Cloud]  E57 / LAS/LAZ / PLY / PTS  (yksi tai monta keilausta)
       |
       ▼
-[geometry]     Lataus, koordinaattinormalisointi, voxel-downsample (1-3 cm),
-               kohinasuodatus (statistical outlier + radius filter)
+[geometry]     Lataus + metri→mm, voxel-downsample, kohinasuodatus,
+               monikeilauksen hienorekisteröinti
       |
       ▼
-[segmentation] ElementDetector-rajapinta — per elementtityyppi:
-               WallDetector    → seinät  (RANSAC-tasodet. tai 2D-tiheys)
-               SlabDetector    → lattia/katto
-               ColumnDetector  → pilarit
-               BeamDetector    → palkit
+[segmentation] contour-detektori (DEFAULT, Cloud2BIM-tyyli):
+               monikerros-PYSTYMASKI (kalustesuodatus) → 2D-tiheysmaski →
+               cv2.findContours → Douglas-Peucker → seinäakselit + paksuus.
+               SlabDetector (lattia/katto), Opening/Column/Beam-detektorit.
       |
       ▼
-[semantics]    Centerline, paksuus, korkeus, tilojen johtaminen,
-               confidence-pisteytys, krääsän suodatus
+[semantics]    pintalukitus, paksuus (raakapisteistä, sub-bin), ortogonalisointi,
+               hienokierto, nurkkien sulku, perimetri, tilat, aukot
       |
       ▼
 [StructuralModel JSON]  ← YDIN — kaikki export tästä
       |
-      ├──▶ [ifc]     → model.ifc    (ifcopenshell, IfcWall/Slab/Column/Beam/Space)
-      ├──▶ [export]  → model.dxf    (ezdxf)
-      └──▶ [export]  → walls.lsp    (AutoLISP-skripti AutoCADille)
+      ├──▶ [ifc]     → building.ifc  (älykäs IFC4: IfcWallType/materiaalit/Pset/Qto)
+      └──▶ [export]  → model.dxf      (ezdxf)
 ```
 
 ## Sisäinen schema (ydin)
