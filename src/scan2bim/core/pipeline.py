@@ -30,6 +30,7 @@ class PipelineConfig:
     qa_tolerance: float = 2.5                                  # mm
     icp_refine: bool = False                                   # ICP-hienorekisteröinti monoskannauksille
     save_intermediate: bool = False
+    semantic_filter: bool = False          # Vaihe 2: suodata kalusteet/krääsä ennen detektiota
 
 
 _AUTO_TARGET_POINTS = 4_000_000
@@ -401,6 +402,8 @@ class Pipeline:
         refine_cloud = cloud.voxel_down_sample(_REFINE_VOXEL) if len(cloud.points) > 200_000 else cloud
         cloud = self._preprocess(cloud)
 
+        cloud = self._semantic_filter(cloud)
+
         self._progress(f"Seinädetektio ({self.config.detector})…")
         model = self._detect(cloud, input_path, refine_cloud=refine_cloud)
 
@@ -495,6 +498,8 @@ class Pipeline:
                 icp_refine=self.config.icp_refine,
             )
 
+            cloud = self._semantic_filter(cloud)
+
             self._progress(f"  Seinädetektio ({self.config.detector})…")
             model = self._detect(cloud, source, thick_cloud=thick_cloud)
             model.metadata.floor_index = floor_idx
@@ -548,6 +553,17 @@ class Pipeline:
     def _preprocess(self, cloud):
         from scan2bim.core.geometry.preprocess import preprocess
         return preprocess(cloud, voxel_size=self.config.voxel_size)
+
+    def _semantic_filter(self, cloud):
+        """Vaihe 2: poista kalusteet/krääsä ennen detektiota (jos käytössä)."""
+        if not self.config.semantic_filter:
+            return cloud
+        from scan2bim.core.segmentation.semantic_filter import SemanticFilter
+        n0 = len(cloud.points)
+        out = SemanticFilter().filter(cloud)
+        self._progress(f"  Semanttinen suodatin: {n0} → {len(out.points)} pistettä "
+                       f"({100*len(out.points)/max(n0,1):.0f}% rakenteellisia)")
+        return out
 
     def _detect(self, cloud, source_path: Path, refine_cloud=None, thick_cloud=None) -> StructuralModel:
         import scan2bim.core.segmentation.wall_ransac  # noqa: F401
