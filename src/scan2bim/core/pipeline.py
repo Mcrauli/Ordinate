@@ -30,7 +30,8 @@ class PipelineConfig:
     qa_tolerance: float = 2.5                                  # mm
     icp_refine: bool = False                                   # ICP-hienorekisteröinti monoskannauksille
     save_intermediate: bool = False
-    semantic_filter: bool = False          # Vaihe 2: suodata kalusteet/krääsä ennen detektiota
+    semantic_filter: bool = False          # Vaihe 2 legacy (geometric); käytä semantic_filter_mode
+    semantic_filter_mode: Literal["off", "geometric", "pointnet"] = "off"
 
 
 _AUTO_TARGET_POINTS = 4_000_000
@@ -555,13 +556,26 @@ class Pipeline:
         return preprocess(cloud, voxel_size=self.config.voxel_size)
 
     def _semantic_filter(self, cloud):
-        """Vaihe 2: poista kalusteet/krääsä ennen detektiota (jos käytössä)."""
-        if not self.config.semantic_filter:
+        """Vaihe 2: poista kalusteet/krääsä ennen detektiota."""
+        mode = self.config.semantic_filter_mode
+        # Taaksepäinyhteensopivuus: vanha semantic_filter=True → "geometric"
+        if mode == "off" and self.config.semantic_filter:
+            mode = "geometric"
+        if mode == "off":
             return cloud
-        from scan2bim.core.segmentation.semantic_filter import SemanticFilter
+
         n0 = len(cloud.points)
-        out = SemanticFilter().filter(cloud)
-        self._progress(f"  Semanttinen suodatin: {n0} → {len(out.points)} pistettä "
+        if mode == "pointnet":
+            from scan2bim.core.segmentation.pointnet_filter import PointNetFilter  # noqa: PLC0415
+            filt = PointNetFilter()
+            out = filt.filter(cloud)
+            label = "PointNet" if filt.is_available() else "geometrinen (PointNet-fallback)"
+        else:
+            from scan2bim.core.segmentation.semantic_filter import SemanticFilter  # noqa: PLC0415
+            out = SemanticFilter().filter(cloud)
+            label = "geometrinen"
+
+        self._progress(f"  Semanttinen suodatin ({label}): {n0} → {len(out.points)} pistettä "
                        f"({100*len(out.points)/max(n0,1):.0f}% rakenteellisia)")
         return out
 

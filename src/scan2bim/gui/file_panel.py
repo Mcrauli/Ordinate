@@ -6,7 +6,10 @@ from pathlib import Path
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from scan2bim.core.pipeline import PipelineConfig
+from scan2bim.core.segmentation.pointnet_filter import _find_model_path
 from scan2bim.gui.theme import ACCENT, BG_WIDGET, TEXT_DIM
+
+_MODEL_AVAILABLE = _find_model_path() is not None
 
 
 _EXTS = {".e57", ".las", ".laz", ".pts", ".ply"}
@@ -159,6 +162,22 @@ class FilePanel(QtWidgets.QWidget):
         qa_row.addStretch()
         form.addRow("Tarkkuus:", qa_row)
 
+        self._sem_filter = QtWidgets.QCheckBox("Kalustesuodatus (PointNet)")
+        self._sem_filter.setChecked(_MODEL_AVAILABLE)
+        if _MODEL_AVAILABLE:
+            self._sem_filter.setToolTip(
+                "S3DIS PointNet ONNX: poistaa kalusteet ja krääsän ennen detektiota.\n"
+                "Parantaa tarkkuutta kalustetuissa tiloissa."
+            )
+        else:
+            self._sem_filter.setToolTip(
+                "Malli puuttuu (models/s3dis_pointnet.onnx).\n"
+                "Aja: python scripts/export_s3dis_model.py\n"
+                "Kun malli on valmis, tämä kytkin aktivoituu automaattisesti."
+            )
+            self._sem_filter.setEnabled(False)
+        form.addRow("Kalustesuodatus:", self._sem_filter)
+
         self._ifc = QtWidgets.QCheckBox("IFC")
         self._ifc.setChecked(True)
         self._dxf = QtWidgets.QCheckBox("DXF")
@@ -203,6 +222,7 @@ class FilePanel(QtWidgets.QWidget):
             export_qa=self._qa.isChecked(),
             qa_tolerance=self._qa_tol.value(),
             icp_refine=self._icp.isChecked(),
+            semantic_filter_mode="pointnet" if self._sem_filter.isChecked() else "off",
         )
         self.convert_requested.emit(
             self._input_paths,

@@ -20,6 +20,7 @@ dependencies = [
     "ifcopenshell>=0.8.0",
     "click>=8.1",
     "packaging>=23.0",
+    "onnxruntime>=1.18",
 ]
 
 [project.optional-dependencies]

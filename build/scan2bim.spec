@@ -32,6 +32,14 @@ _laspy_data = collect_data_files('laspy')
 _open3d_bins = collect_dynamic_libs('open3d')
 _pye57_bins = collect_dynamic_libs('pye57')
 
+# ── onnxruntime (kalustesuodatin) ──────────────────────────────────────────
+_ort_data = collect_data_files('onnxruntime')
+_ort_bins = collect_dynamic_libs('onnxruntime')
+
+# ── PointNet ONNX-malli (bundlataan exe:hen jos löytyy) ───────────────────
+_model_file = os.path.join(ROOT, 'models', 's3dis_pointnet.onnx')
+_model_data = [(_model_file, 'models')] if os.path.exists(_model_file) else []
+
 block_cipher = None
 
 _icon_path = os.path.join(ROOT, 'assets', 'scan2bim.ico')
@@ -40,8 +48,8 @@ _icon = _icon_path if os.path.exists(_icon_path) else None
 a = Analysis(
     [os.path.join(ROOT, 'src/scan2bim/gui/__main__.py')],
     pathex=[os.path.join(ROOT, 'src')],
-    binaries=_open3d_bins + _pye57_bins,
-    datas=_ifc_data + _open3d_data + _laspy_data,
+    binaries=_open3d_bins + _pye57_bins + _ort_bins,
+    datas=_ifc_data + _open3d_data + _laspy_data + _ort_data + _model_data,
     hiddenimports=[
         'scan2bim',
         'open3d',
@@ -60,6 +68,8 @@ a = Analysis(
         'ezdxf',
         'PySide6.QtSvg',
         'PySide6.QtSvgWidgets',
+        'onnxruntime',
+        'onnxruntime.capi',
     ] + _ifc_api + _ifc_express + _ezdxf,
     hookspath=[],
     hooksconfig={},
