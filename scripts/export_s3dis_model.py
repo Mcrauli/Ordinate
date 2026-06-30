@@ -2,17 +2,28 @@
 
 Vaatii erikseen: pip install torch --index-url https://download.pytorch.org/whl/cpu
 
-Kaksi polkua:
+Vaihtoehto A — valmiit painot (suositeltu, nopea):
+  1. Avaa: https://github.com/yanx27/Pointnet_Pointnet2_pytorch
+  2. README → Pretrained models → S3DIS (Area-5) → pointnet_sem_seg → best_model.pth
+     (Google Drive -linkki, ~10 MB)
+  3. Tallenna best_model.pth mihin tahansa ja aja:
+       python scripts/export_s3dis_model.py --weights best_model.pth
 
-A) Pretrained-painot Pointnet_Pointnet2_pytorch-reposta (suositeltu):
-   1. Lataa checkpoint:
-      https://github.com/yanx27/Pointnet_Pointnet2_pytorch  → log/sem_seg/ → best_model.pth
-   2. python scripts/export_s3dis_model.py --weights best_model.pth
+Vaihtoehto B — harjoita itse 3DSES-datalla:
+  python scripts/export_s3dis_model.py --train --data data/_3dses
 
-B) Harjoita itse 3DSES-datalla (jos ei pretrained-painoja):
-   python scripts/export_s3dis_model.py --train --data data/_3dses
+Tulos: models/s3dis_pointnet.onnx
+build.ps1 bundlaa sen automaattisesti exe:hen.
 
-Tulos: models/s3dis_pointnet.onnx  (bundlataan automaattisesti exe:hen build.ps1:llä)
+--- Mikä tämä malli on ---
+Stanford S3DIS -datasetti: tuhansia käsinlabeloituja 3D-sisätilaskannauksia
+joissa jokainen piste on merkitty 13:een luokkaan. PointNet-neuroverkko on
+harjoitettu tunnistamaan nämä luokat. Me lainaamme ne valmiit "opit" (painot)
+ja muunnamme ONNX-muotoon joka pyörii exe:ssä ilman GPU:ta tai PyTorchia.
+
+Luokat:
+  PIDETÄÄN (rakenteet):  0 katto  1 lattia  2 seinä  3 palkki  4 pilari  5 ikkuna  6 ovi
+  POISTETAAN (kalusteet): 7 pöytä  8 tuoli  9 sohva  10 kaappi  11 taulu  12 krääsä
 """
 from __future__ import annotations
 
@@ -20,11 +31,11 @@ import argparse
 import sys
 from pathlib import Path
 
+
 # ---------------------------------------------------------------------------
-# PointNet semanttinen segmentointimalli (9 piirrettä → 13 S3DIS-luokkaa)
-# Identtinen Pointnet_Pointnet2_pytorch sem_seg -arkkitehtuurin kanssa.
-# Input:  (B, N, 9)  — xyz_local + xyz_scene + rgb
-# Output: (B, N, 13) — per-piste luokkalogitit
+# Täsmälleen sama arkkitehtuuri kuin yanx27/Pointnet_Pointnet2_pytorch
+# models/pointnet_sem_seg.py  (global_feat=False, feature_transform=False, channel=9)
+# Samat parametrinimet → checkpoint latautuu suoraan.
 # ---------------------------------------------------------------------------
 
 def _build_model():
@@ -32,27 +43,67 @@ def _build_model():
     import torch.nn as nn
     import torch.nn.functional as F
 
-    class PointNetSemSeg(nn.Module):
-        def __init__(self, num_classes: int = 13, in_ch: int = 9) -> None:
+    class _Encoder(nn.Module):
+        def __init__(self):
             super().__init__()
-            self.enc1 = nn.Sequential(nn.Conv1d(in_ch, 64,   1), nn.BatchNorm1d(64),   nn.ReLU())
-            self.enc2 = nn.Sequential(nn.Conv1d(64,  128,    1), nn.BatchNorm1d(128),  nn.ReLU())
-            self.enc3 = nn.Sequential(nn.Conv1d(128, 1024,   1), nn.BatchNorm1d(1024), nn.ReLU())
-            self.dec1 = nn.Sequential(nn.Conv1d(1024+128+64, 512, 1), nn.BatchNorm1d(512), nn.ReLU())
-            self.dec2 = nn.Sequential(nn.Conv1d(512, 256, 1), nn.BatchNorm1d(256), nn.ReLU(), nn.Dropout(0.5))
-            self.out  = nn.Conv1d(256, num_classes, 1)
+            self.conv1 = nn.Conv1d(9, 64, 1)
+            self.conv2 = nn.Conv1d(64, 128, 1)
+            self.conv3 = nn.Conv1d(128, 1024, 1)
+            self.bn1 = nn.BatchNorm1d(64)
+            self.bn2 = nn.BatchNorm1d(128)
+            self.bn3 = nn.BatchNorm1d(1024)
 
-        def forward(self, x):   # x: (B, N, 9) → (B, N, 13)
-            x = x.permute(0, 2, 1)          # (B, 9, N)
-            f1 = self.enc1(x)               # (B, 64, N)
-            f2 = self.enc2(f1)              # (B, 128, N)
-            f3 = self.enc3(f2)              # (B, 1024, N)
-            g  = f3.max(dim=2, keepdim=True)[0].expand_as(f3)  # (B, 1024, N)
-            cat = torch.cat([f1, f2, g], 1) # (B, 1216, N)
-            out = self.out(self.dec2(self.dec1(cat)))  # (B, 13, N)
-            return out.permute(0, 2, 1)     # (B, N, 13)
+        def forward(self, x):           # (B, 9, N) → (B, 1088, N)
+            B, _, N = x.size()
+            x = F.relu(self.bn1(self.conv1(x)))
+            pointfeat = x               # (B, 64, N)
+            x = F.relu(self.bn2(self.conv2(x)))
+            x = self.bn3(self.conv3(x))
+            x = torch.max(x, 2, keepdim=True)[0]
+            x = x.view(-1, 1024, 1).expand(-1, -1, N)
+            return torch.cat([x, pointfeat], 1)  # (B, 1088, N)
 
-    return PointNetSemSeg()
+    class _Model(nn.Module):
+        """Parametrinimet vastaavat täysin Pointnet_Pointnet2_pytorch checkpointia."""
+        def __init__(self, k=13):
+            super().__init__()
+            self.k = k
+            self.feat = _Encoder()
+            self.conv1 = nn.Conv1d(1088, 512, 1)
+            self.conv2 = nn.Conv1d(512, 256, 1)
+            self.conv3 = nn.Conv1d(256, 128, 1)
+            self.conv4 = nn.Conv1d(128, k, 1)
+            self.bn1 = nn.BatchNorm1d(512)
+            self.bn2 = nn.BatchNorm1d(256)
+            self.bn3 = nn.BatchNorm1d(128)
+            self.dropout = nn.Dropout(p=0.3)
+
+        def forward(self, x):           # (B, N, 9) → (B, N, 13)  raw logits
+            x = x.permute(0, 2, 1)     # (B, 9, N)
+            x = self.feat(x)            # (B, 1088, N)
+            x = F.relu(self.bn1(self.conv1(x)))
+            x = self.dropout(F.relu(self.bn2(self.conv2(x))))
+            x = F.relu(self.bn3(self.conv3(x)))
+            x = self.conv4(x)           # (B, 13, N)
+            return x.permute(0, 2, 1)   # (B, N, 13)
+
+    return _Model()
+
+
+def load_pretrained(model, path: Path) -> None:
+    import torch
+    ckpt = torch.load(str(path), map_location="cpu", weights_only=True)
+    state = ckpt.get("model_state_dict") or ckpt.get("state_dict") or ckpt
+
+    missing, unexpected = model.load_state_dict(state, strict=False)
+    # fstn-avaimet esiintyvät jos checkpoint on harjoitettu feature_transform=True:llä → ok
+    real_missing = [k for k in missing if "fstn" not in k]
+    if real_missing:
+        print(f"VAROITUS: puuttuvat avaimet ({len(real_missing)}): {real_missing[:5]}")
+        print("Checkpoint ei ehkä täsmää — kokeile --train -vaihtoehtoa.")
+    else:
+        size_kb = path.stat().st_size // 1024
+        print(f"Painot ladattu onnistuneesti: {path}  ({size_kb} KB)")
 
 
 def export_onnx(model, out_path: Path, n_pts: int = 4096) -> None:
@@ -67,24 +118,13 @@ def export_onnx(model, out_path: Path, n_pts: int = 4096) -> None:
         dynamic_axes={"input": {1: "N"}, "output": {1: "N"}},
         opset_version=17,
     )
-    print(f"Viety: {out_path}  ({out_path.stat().st_size // 1024} KB)")
-
-
-def load_pretrained(model, weights_path: Path) -> None:
-    import torch
-    ckpt = torch.load(str(weights_path), map_location="cpu")
-    state = ckpt.get("model_state_dict") or ckpt.get("state_dict") or ckpt
-    # Pointnet_Pointnet2_pytorch käyttää hieman eri nimitystä — kokeile suoraan
-    missing, unexpected = model.load_state_dict(state, strict=False)
-    if missing:
-        print(f"Puuttuvat avaimet: {missing[:5]}")
-    if unexpected:
-        print(f"Ylimääräiset avaimet: {unexpected[:5]}")
-    print(f"Painot ladattu: {weights_path}")
+    size_kb = out_path.stat().st_size // 1024
+    print(f"Viety: {out_path}  ({size_kb} KB)")
+    print("Kopioi models/-hakemistoon (tai se on jo siellä) ja aja build.ps1.")
 
 
 # ---------------------------------------------------------------------------
-# Harjoitus 3DSES-datalla (B polku)
+# Vaihtoehto B — harjoitus 3DSES-datalla
 # ---------------------------------------------------------------------------
 
 def train_on_3dses(model, data_dir: Path, epochs: int = 50) -> None:
@@ -94,15 +134,13 @@ def train_on_3dses(model, data_dir: Path, epochs: int = 50) -> None:
     import torch.nn as nn
     import torch.optim as optim
 
-    # 3DSES: *.npy tiedostot, muoto Nx7 (XYZ + normals/rgb + label)
     files = sorted(glob.glob(str(data_dir / "*.npy")))
     if not files:
-        print(f"Ei .npy-tiedostoja hakemistossa {data_dir}")
+        print(f"Ei .npy-tiedostoja: {data_dir}")
         sys.exit(1)
 
-    print(f"Harjoitusdata: {len(files)} tiedostoa, {data_dir}")
+    print(f"Harjoitusdata: {len(files)} tiedostoa")
 
-    # Oletetaan Nx7: xyz(0:3) + ...  + label(6)
     all_pts, all_labels = [], []
     for f in files:
         a = np.load(f)
@@ -112,46 +150,48 @@ def train_on_3dses(model, data_dir: Path, epochs: int = 50) -> None:
         all_labels.append(a[:, 6].astype(np.int64))
 
     if not all_pts:
-        print("Ei kelvollista dataa")
+        print("Ei kelvollista dataa (Nx7 npy odotetaan)")
         sys.exit(1)
 
-    pts   = np.vstack(all_pts)
-    lbls  = np.concatenate(all_labels)
-    print(f"Pisteitä yhteensä: {len(pts):,}, luokkia: {np.unique(lbls)}")
+    pts = np.vstack(all_pts)
+    lbls = np.concatenate(all_labels)
+    print(f"Pisteitä: {len(pts):,}  luokat: {sorted(map(int, np.unique(lbls)))}")
 
-    # Yksinkertainen minibatch-harjoitus lohkoilla
     N_BLOCK, BATCH = 4096, 8
-    sc_min = pts.min(0); sc_range = np.maximum(pts.max(0) - sc_min, 1.0)
-    block_size = 1.0  # metreissä (3DSES on metreissä)
+    sc_min = pts.min(0)
+    sc_range = np.maximum(pts.max(0) - sc_min, 1.0)
+    block_m = 1.0  # 3DSES on metreissä
 
     optimizer = optim.Adam(model.parameters(), lr=1e-3)
     criterion = nn.CrossEntropyLoss()
     model.train()
 
     for epoch in range(epochs):
-        # Satunnaiset lohkot per epoch
         losses = []
         n_batches = max(20, len(pts) // (N_BLOCK * BATCH))
         for _ in range(n_batches):
             batch_feats, batch_lbls = [], []
             for _ in range(BATCH):
-                cx = np.random.uniform(sc_min[0], pts[:, 0].max() - block_size)
-                cy = np.random.uniform(sc_min[1], pts[:, 1].max() - block_size)
+                cx = np.random.uniform(sc_min[0], pts[:, 0].max() - block_m)
+                cy = np.random.uniform(sc_min[1], pts[:, 1].max() - block_m)
                 mask = (
-                    (pts[:, 0] >= cx) & (pts[:, 0] < cx + block_size) &
-                    (pts[:, 1] >= cy) & (pts[:, 1] < cy + block_size)
+                    (pts[:, 0] >= cx) & (pts[:, 0] < cx + block_m) &
+                    (pts[:, 1] >= cy) & (pts[:, 1] < cy + block_m)
                 )
                 idx = np.where(mask)[0]
                 if len(idx) < 32:
                     continue
-                sel = (np.random.choice(len(idx), N_BLOCK)
-                       if len(idx) >= N_BLOCK else
-                       np.concatenate([np.arange(len(idx)),
-                                       np.random.choice(len(idx), N_BLOCK - len(idx))]))
+                if len(idx) >= N_BLOCK:
+                    sel = np.random.choice(len(idx), N_BLOCK, replace=False)
+                else:
+                    sel = np.concatenate([
+                        np.arange(len(idx)),
+                        np.random.choice(len(idx), N_BLOCK - len(idx))
+                    ])
                 s = pts[idx[sel]]
                 feat = np.zeros((N_BLOCK, 9), dtype=np.float32)
-                feat[:, 0] = (s[:, 0] - cx) / block_size
-                feat[:, 1] = (s[:, 1] - cy) / block_size
+                feat[:, 0] = (s[:, 0] - cx) / block_m
+                feat[:, 1] = (s[:, 1] - cy) / block_m
                 feat[:, 2] = (s[:, 2] - sc_min[2]) / sc_range[2]
                 feat[:, 3] = (s[:, 0] - sc_min[0]) / sc_range[0]
                 feat[:, 4] = (s[:, 1] - sc_min[1]) / sc_range[1]
@@ -161,10 +201,10 @@ def train_on_3dses(model, data_dir: Path, epochs: int = 50) -> None:
 
             if not batch_feats:
                 continue
-            x = torch.tensor(np.stack(batch_feats))      # (B, N, 9)
-            y = torch.tensor(np.stack(batch_lbls))        # (B, N)
+            x = torch.tensor(np.stack(batch_feats))
+            y = torch.tensor(np.stack(batch_lbls))
             optimizer.zero_grad()
-            logits = model(x)                             # (B, N, 13)
+            logits = model(x)
             loss = criterion(logits.reshape(-1, 13), y.reshape(-1))
             loss.backward()
             optimizer.step()
@@ -182,13 +222,21 @@ def main() -> None:
     repo_root = Path(__file__).resolve().parents[1]
     out_default = repo_root / "models" / "s3dis_pointnet.onnx"
 
-    ap = argparse.ArgumentParser(description="Vie S3DIS PointNet ONNX-muotoon")
+    ap = argparse.ArgumentParser(
+        description="Vie S3DIS PointNet ONNX-muotoon",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Mistä saada best_model.pth (Vaihtoehto A):
+  https://github.com/yanx27/Pointnet_Pointnet2_pytorch
+  README → Pretrained models → S3DIS (Area-5) → pointnet_sem_seg → best_model.pth
+""",
+    )
     ap.add_argument("--weights", type=Path, default=None,
-                    help="Pretrained .pth checkpoint (Pointnet_Pointnet2_pytorch)")
+                    help="Pretrained .pth (Pointnet_Pointnet2_pytorch pointnet_sem_seg)")
     ap.add_argument("--train", action="store_true",
-                    help="Harjoita itse 3DSES-datalla (--data pakollinen)")
+                    help="Harjoita 3DSES-datalla (--data pakollinen)")
     ap.add_argument("--data", type=Path, default=repo_root / "data" / "_3dses",
-                    help="3DSES .npy-hakemisto (oletus: data/_3dses)")
+                    help="3DSES .npy-hakemisto")
     ap.add_argument("--epochs", type=int, default=50)
     ap.add_argument("--out", type=Path, default=out_default)
     args = ap.parse_args()
@@ -196,18 +244,22 @@ def main() -> None:
     try:
         import torch  # noqa: F401
     except ImportError:
-        print("PyTorch puuttuu. Asenna: pip install torch --index-url https://download.pytorch.org/whl/cpu")
+        print("PyTorch puuttuu.")
+        print("Asenna: pip install torch --index-url https://download.pytorch.org/whl/cpu")
         sys.exit(1)
 
     model = _build_model()
 
     if args.weights:
+        if not args.weights.exists():
+            print(f"Tiedostoa ei löydy: {args.weights}")
+            sys.exit(1)
         load_pretrained(model, args.weights)
     elif args.train:
         train_on_3dses(model, args.data, epochs=args.epochs)
     else:
-        print("HUOM: Ei painoja eikä harjoitusta — viedään satunnaiset painot (ei käyttökelpoinen).")
-        print("Käytä: --weights <checkpoint.pth>  tai  --train --data data/_3dses")
+        print("HUOM: Ei painoja eikä harjoitusta → viedään satunnaiset painot (ei käyttökelpoinen).")
+        print("Käytä: --weights best_model.pth  tai  --train --data data/_3dses")
 
     export_onnx(model, args.out)
 
