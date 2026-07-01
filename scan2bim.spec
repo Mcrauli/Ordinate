@@ -5,8 +5,10 @@ Aja:  pyinstaller scan2bim.spec
 Tulos: dist/scan2bim/scan2bim.exe
 """
 
+import os
 import sys
 from pathlib import Path
+from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs
 
 block_cipher = None
 
@@ -15,8 +17,15 @@ import ifcopenshell, open3d
 IFOCOS_PATH = Path(ifcopenshell.__file__).parent
 O3D_PATH    = Path(open3d.__file__).parent
 
+# onnxruntime (kalustesuodatin) — kerää data + dynaamiset kirjastot
+_ort_datas = collect_data_files("onnxruntime")
+_ort_bins  = collect_dynamic_libs("onnxruntime")
+
+# PointNet ONNX-malli — bundlaa exe:hen jos löytyy (models/s3dis_pointnet.onnx)
+_model_file  = os.path.join(SPECPATH, "models", "s3dis_pointnet.onnx")
+_model_datas = [(_model_file, "models")] if os.path.exists(_model_file) else []
+
 # Lisätään ifcopenshell-kansio kokonaan (sisältää api/, express/, util/ jne.)
-import os
 ifc_datas = []
 for root, dirs, files in os.walk(str(IFOCOS_PATH)):
     # Jätä pois __pycache__ ja .pyc-kansiot
@@ -29,9 +38,13 @@ for root, dirs, files in os.walk(str(IFOCOS_PATH)):
 a = Analysis(
     ["src/scan2bim/gui/__main__.py"],
     pathex=["src"],
-    binaries=[],
-    datas=ifc_datas,
+    binaries=_ort_bins,
+    datas=ifc_datas + _ort_datas + _model_datas,
     hiddenimports=[
+        # onnxruntime (kalustesuodatin)
+        "onnxruntime",
+        "onnxruntime.capi",
+        "onnxruntime.capi._pybind_state",
         # pye57 C-laajennus
         "pye57",
         # laspy

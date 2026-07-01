@@ -4,6 +4,19 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 [`Mcrauli/scan2bim-web`](https://github.com/Mcrauli/scan2bim-web/releases):iin;
 sovellus päivittää itsensä sieltä.
 
+## v0.5.0 — kalustesuodatin (PointNet, Vaihe 2)
+- **Uusi: ML-pohjainen kalustesuodatin** (`segmentation/pointnet_filter.py`).
+  S3DIS PointNet ONNX-malli (CPU, ~3.4 MB) luokittelee jokaisen pisteen 13
+  luokkaan ja poistaa kalusteet/krääsän (pöytä/tuoli/sohva/kaappi/taulu/clutter)
+  ennen geometrista putkea. Rakenne (seinä/lattia/katto/pilari/palkki/ovi/ikkuna)
+  säilyy. Malli bundlataan exe:hen — ei internetiä, ei GPU:ta.
+- GUI: uusi "Kalustesuodatus (PointNet)" -kytkin (aktiivinen kun malli mukana).
+- Pipeline: `PipelineConfig.semantic_filter_mode` = off|geometric|pointnet.
+  Vanha geometrinen pystymaski säilyy fallbackina; PointNet toimii sen lisänä.
+- Malli harjoitettu 3DSES TLS-skannidatalla (~20M pistettä), validointi:
+  98.9 % rakenne säilyy, 48 % kalusteista poistuu. Vienti- ja harjoitusskripti:
+  `scripts/export_s3dis_model.py`.
+
 ## v0.4.11
 - Sulje vajaat ulkonurkat turvallisesti (`close_open_corners` pass-3): venytä
   avoin pää + kohtisuora kumppani nurkkaan vain jos venytysmatka on tyhjä → ei
