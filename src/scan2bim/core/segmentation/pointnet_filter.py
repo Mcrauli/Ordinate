@@ -109,6 +109,9 @@ class PointNetFilter:
 
     def _classify(self, pts_full: np.ndarray) -> np.ndarray:
         """Palauttaa boolean-maskin: True = rakenteellinen piste."""
+        # Deterministinen näytteistys: sama syöte → sama malli joka ajolla.
+        # Globaali np.random heilutti seinien pintalukitusta ±6mm ajojen välillä.
+        rng = np.random.RandomState(0)
         # Työ-voxel: normalisoi pistemäärä → nopea lohkoprosessointi
         origin = pts_full.min(axis=0)
         wc = o3d.geometry.PointCloud()
@@ -144,11 +147,11 @@ class PointNetFilter:
 
                 # Näytteidenotto: sample tai pad → N_BLOCK_PTS
                 if n >= _N_BLOCK_PTS:
-                    sel = np.random.choice(n, _N_BLOCK_PTS, replace=False)
+                    sel = rng.choice(n, _N_BLOCK_PTS, replace=False)
                 else:
                     sel = np.concatenate([
                         np.arange(n),
-                        np.random.choice(n, _N_BLOCK_PTS - n),
+                        rng.choice(n, _N_BLOCK_PTS - n),
                     ])
                 sampled = block_pts[sel]
 

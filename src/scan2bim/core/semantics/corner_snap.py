@@ -17,8 +17,13 @@ _MAX_SNAP   = 700.0       # mm — T-liitoksen snap-etäisyys (leikkauspiste sei
 _PARALLEL_COS_MAX = 0.70  # |cos| > tämä → rinnakkaiset, ohitetaan
 
 
-def snap_corners(walls: list[Wall]) -> list[Wall]:
-    """Snäppää ja jatkaa seinäakseleita leikkauspisteisiin."""
+def snap_corners(walls: list[Wall], preserve_lines: bool = False) -> list[Wall]:
+    """Snäppää ja jatkaa seinäakseleita leikkauspisteisiin.
+
+    ``preserve_lines``: älä siirrä päätepisteitä sivusuunnassa (T-liitoksen
+    projektio pois) — päät liikkuvat vain oman akselinsa suunnassa linja-linja-
+    leikkauksiin. Käytetään lopullisen pintalukituksen jälkeen: lukittu pinta
+    ei saa enää liikkua, mutta nurkkien on silti sulkeuduttava."""
     if len(walls) < 2:
         return walls
 
@@ -26,7 +31,7 @@ def snap_corners(walls: list[Wall]) -> list[Wall]:
     n = len(walls)
     for i in range(n):
         for j in range(i + 1, n):
-            _try_connect(axes, i, j)
+            _try_connect(axes, i, j, preserve_lines=preserve_lines)
 
     _resolve_corners(axes)
 
@@ -205,7 +210,9 @@ def _pt_seg_dist(p, a, b) -> float:
     return float(np.linalg.norm(p - (a + t * ab)))
 
 
-def _try_connect(axes: list[list[list[float]]], i: int, j: int) -> None:
+def _try_connect(
+    axes: list[list[list[float]]], i: int, j: int, preserve_lines: bool = False,
+) -> None:
     p0a = np.array(axes[i][0], dtype=float)
     p1a = np.array(axes[i][1], dtype=float)
     p0b = np.array(axes[j][0], dtype=float)
@@ -236,8 +243,10 @@ def _try_connect(axes: list[list[list[float]]], i: int, j: int) -> None:
         axes[i][0] = _fmt(pt)
     elif ta > len_a and (ta - len_a) <= _MAX_EXTEND:
         axes[i][1] = _fmt(pt)
-    else:
+    elif not preserve_lines:
         # T-liitos A:ssa — snäppää B:n lähin pääte kohtisuoraan A:han
+        # (siirtää B:n päätä sivusuunnassa → kielletty preserve_lines-tilassa;
+        # _resolve_corners hoitaa T:n vetämällä B:n pään linja-leikkaukseen)
         _snap_endpoint_to_wall(axes, j, p0a, ua, len_a)
 
     # --- Seinä B ---
@@ -250,7 +259,7 @@ def _try_connect(axes: list[list[list[float]]], i: int, j: int) -> None:
         axes[j][1] = _fmt(pt)
         if abs(tb - len_b) < 10.0 and 0.0 < ta < len_a:
             _clip_overshoot(axes, i, ta, len_a, pt)
-    else:
+    elif not preserve_lines:
         _snap_endpoint_to_wall(axes, i, p0b, ub, len_b)
 
 

@@ -14,6 +14,7 @@ def load_floor_slice(
     voxel_size: float = 1.0,
     progress_cb=None,
     icp_refine: bool = False,
+    sample_out: list | None = None,
 ) -> o3d.geometry.PointCloud:
     """
     Lataa vain Z-kaistan [z_lo, z_hi] kaikista tiedostoista.
@@ -21,6 +22,9 @@ def load_floor_slice(
 
     icp_refine=True: kukin siivu kohdistetaan kasvavaan referenssiin ICP:llä,
     jotta karkeasta E57-posesta tulevat kahdentumat poistuvat.
+
+    sample_out: jos annettu, siihen lisätään (tiedostonimi, karkea 100mm-otos)
+    per tiedosto — skannien keskinäisen yhteensopivuuden tarkistukseen.
     """
     from scan2bim.core.geometry.loader import load_point_cloud
 
@@ -62,4 +66,33 @@ def load_floor_slice(
         else:
             merged += slice_cloud
 
+        if sample_out is not None:
+            coarse = slice_cloud.voxel_down_sample(100.0)
+            sample_out.append((path.name, np.asarray(coarse.points).copy()))
+
     return merged
+
+
+def check_scan_consistency(samples: list, dist_thr: float = 120.0) -> list[str]:
+    """Palauttaa tiedostot jotka eivät jaa pintoja muiden skannien kanssa.
+
+    Saman tilan skannit limittyvät: ison osan pisteistä on löydettävä
+    vastinpiste muista skanneista. Eri kohteen skanni samassa koordinaatistossa
+    risteää satunnaisesti → mediaanietäisyys muihin on suuri → varoitus.
+    Mitattu: saman talon skannit medNN 6–37 mm (100 mm otoksella), kymmenen
+    ERI asunnon setti 143–2720 mm → 120 mm erottaa täydellä marginaalilla."""
+    if len(samples) < 2:
+        return []
+    from scipy.spatial import cKDTree
+    suspicious: list[str] = []
+    for i, (name, pts) in enumerate(samples):
+        if len(pts) < 50:
+            continue
+        others = np.vstack([p for j, (_, p) in enumerate(samples) if j != i and len(p)])
+        if len(others) < 50:
+            continue
+        tree = cKDTree(others)
+        d, _ = tree.query(pts, k=1)
+        if float(np.median(d)) > dist_thr:
+            suspicious.append(name)
+    return suspicious

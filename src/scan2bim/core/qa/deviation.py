@@ -92,6 +92,53 @@ def model_deviation(cloud, ifc_path: Path, tol: float = 2.5) -> dict:
     return out
 
 
+_SF_BAND_EXTRA = 80.0   # mm — kaista pintojen ulkopuolelle
+_SF_CORE = 60.0         # mm — kohinaikkuna pistepinnan mediaanin ympärillä
+
+
+def wall_surface_accuracy(model: StructuralModel, cloud) -> list[dict]:
+    """Per-seinä PINTAtarkkuus: skannatun pinnan mediaani vs mallin pinta.
+
+    Erottaa mallin virheen pilven kohinasta: pistetason poikkeama (yllä oleva
+    taulukko) sisältää skannerin kohinan (tyyp. 2–20 mm RMS) — pinnan MEDIAANI
+    keskiarvoistaa sen pois ja kertoo todellisen mallinnustarkkuuden."""
+    pts = np.asarray(cloud.points)
+    if len(pts) == 0:
+        return []
+    out: list[dict] = []
+    for w in model.walls:
+        if len(w.axis) < 2:
+            continue
+        p0 = np.array(w.axis[0], float)
+        p1 = np.array(w.axis[1], float)
+        L = float(np.linalg.norm(p1 - p0))
+        if L < 1.0:
+            continue
+        u = (p1 - p0) / L
+        n = np.array([-u[1], u[0]])
+        rel = pts[:, :2] - p0
+        t = rel @ u
+        perp = rel @ n
+        zm = (pts[:, 2] > w.z_min + 200.0) & (pts[:, 2] < w.z_min + w.height - 200.0)
+        band = zm & (t > 100.0) & (t < L - 100.0) & (np.abs(perp) < w.thickness / 2.0 + _SF_BAND_EXTRA)
+        if band.sum() < 200:
+            continue
+        s = perp[band]
+        side = s > 0
+        dom = s[side] if side.sum() >= (~side).sum() else s[~side]
+        med = float(np.median(dom))
+        core = dom[np.abs(dom - med) < _SF_CORE]
+        med = float(np.median(core)) if len(core) > 50 else med
+        noise = float(np.sqrt(np.mean((core - med) ** 2))) if len(core) > 50 else float("nan")
+        face = w.thickness / 2.0 if med > 0 else -w.thickness / 2.0
+        out.append({
+            "id": w.id,
+            "face_err_mm": round(abs(med - face), 2),
+            "noise_rms_mm": round(noise, 1),
+        })
+    return out
+
+
 def flag_low_confidence(model: StructuralModel) -> list[dict]:
     """Elementit jotka kannattaa tarkistaa manuaalisesti Solibrissa."""
     flags: list[dict] = []
@@ -124,6 +171,18 @@ def write_qa_report(model: StructuralModel, cloud, ifc_path: Path, txt_path: Pat
             continue
         lines.append(f"  {label:<10}{s['within_tol_pct']:>8.1f}%{s['mean']:>8.2f}"
                      f"{s['median']:>7.2f}{s['rms']:>8.2f}{s['p95']:>8.2f}{s['max']:>8.2f}")
+    surf = wall_surface_accuracy(model, cloud)
+    if surf:
+        lines.append("")
+        lines.append("Pintatarkkuus (skannatun pinnan mediaani vs mallin pinta —")
+        lines.append("pistetason hajonta yllä sisältää skannerin kohinan, tämä ei):")
+        lines.append(f"  {'seina':<14}{'pinta mm':>9}{'kohina RMS':>12}")
+        for r in surf:
+            lines.append(f"  {r['id']:<14}{r['face_err_mm']:>9.2f}{r['noise_rms_mm']:>12.1f}")
+        errs = [r["face_err_mm"] for r in surf]
+        n_ok = sum(1 for e in errs if e <= 1.5)
+        lines.append(f"  mediaani {np.median(errs):.2f} mm | <=1.5 mm: {n_ok}/{len(errs)} seinaa")
+
     lines.append("")
     if flags:
         lines.append(f"TARKISTA MANUAALISESTI ({len(flags)} kpl, matala luottamus):")

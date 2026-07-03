@@ -277,6 +277,8 @@ _TL_MIN_THICK = 50.0     # mm (= QA 50)
 _TL_MAX_THICK = 400.0    # mm (= QA 400)
 _TL_PEAK_FRAC = 0.25     # huipun min korkeus suhteessa maksimiin (= QA 0.25)
 _TL_ALONG_MARGIN = 400.0 # mm — along-suunnan ylitys (= QA -400..L+400)
+_TL_FACE_WIN = 60.0      # mm — yksipuolinen: huipun oltava näin lähellä odotettua
+                         # mallipintaa (±th/2), muuten se on naapuri/kaluste → ei lukita
 
 
 def _parabolic_peak(hist: np.ndarray, centers: np.ndarray, pk: int) -> float:
@@ -302,6 +304,41 @@ def _thickness_lock_walls(walls, cloud, iters: int = 3) -> list:
     for _ in range(iters):
         walls = [_thickness_lock_wall(w, pts) for w in walls]
     return walls
+
+
+def _single_face_lock(wall, hist, centers, pks, normal, p0, p1):
+    """Yksipuolinen seinä: lukitse NÄKYVÄ pinta ali-bin-tarkkuudella.
+
+    Kaksipuolinen mittaus ei ole mahdollinen (vain yksi pinta keilattu), mutta
+    pinnan SIJAINTI on — aiemmin nämä seinät jäivät 12mm-voxelin recenterin
+    varaan (~2–4mm pintavirhe). Vahvin huippu odotetun mallipinnan (±th/2)
+    läheltä → siirrä akselia niin että mallipinta osuu huippuun. Paksuus ei muutu."""
+    if not len(pks):
+        return wall
+    half_t = wall.thickness / 2.0
+    cands = []  # (virhe, korkeus, pk, odotettu_pinta)
+    for pk in pks:
+        f = float(centers[pk])
+        for face in (half_t, -half_t):
+            err = abs(f - face)
+            if err <= _TL_FACE_WIN:
+                cands.append((err, float(hist[pk]), int(pk), face))
+    if not cands:
+        return wall
+    # LÄHIN riittävän vahva piikki, ei vahvin: verho/karmi huoneen puolella voi
+    # olla vahvempi piikki 40–60mm päässä — pintalukituksen on osuttava seinään.
+    h_max = max(c[1] for c in cands)
+    cands = [c for c in cands if c[1] >= 0.4 * h_max]
+    err, _, pk, face = min(cands)
+    f_sub = _parabolic_peak(hist, centers, pk)
+    shift = f_sub - face
+    if abs(shift) < 0.2:
+        return wall
+    shift_vec = shift * normal
+    return wall.model_copy(update={"axis": [
+        [round(p0[0] + shift_vec[0], 2), round(p0[1] + shift_vec[1], 2)],
+        [round(p1[0] + shift_vec[0], 2), round(p1[1] + shift_vec[1], 2)],
+    ]})
 
 
 def _thickness_lock_wall(wall, pts: np.ndarray):
@@ -336,7 +373,7 @@ def _thickness_lock_wall(wall, pts: np.ndarray):
     centers = 0.5 * (edges[:-1] + edges[1:])
     pks, _ = find_peaks(hist, height=hist.max() * _TL_PEAK_FRAC, distance=int(20.0 / _TL_BIN))
     if len(pks) < 2:
-        return wall  # yksipuolinen → paksuutta ei muuteta
+        return _single_face_lock(wall, hist, centers, pks, normal, p0, p1)
 
     # Seinän kaksi pintaa = kaksi vahvinta huippua (sama valinta kuin QA-mittari
     # _element_qa.py, jotta malli ja mittari ovat samaa mieltä). Ali-bin tarkkuus
@@ -345,7 +382,7 @@ def _thickness_lock_wall(wall, pts: np.ndarray):
     dom, second = int(top[0]), int(top[1])
     t_bin = abs(float(centers[dom]) - float(centers[second]))
     if not (_TL_MIN_THICK <= t_bin <= _TL_MAX_THICK):
-        return wall  # yksipuolinen / kohinapari → ei muuteta
+        return _single_face_lock(wall, hist, centers, pks, normal, p0, p1)
 
     f_dom = _parabolic_peak(hist, centers, dom)
     f_sec = _parabolic_peak(hist, centers, second)
@@ -364,6 +401,124 @@ def _thickness_lock_wall(wall, pts: np.ndarray):
     if abs(t_new - wall.thickness) >= 0.2:
         updates["thickness"] = round(t_new, 1)
     return wall.model_copy(update=updates) if updates else wall
+
+
+def _count_disjoint_regions(cloud, grid_mm: float = 500.0, min_area_m2: float = 4.0) -> int:
+    """Montako erillistä XY-aluetta pilvessä on (yhtenäisyys 0.5m-ruudukolla)."""
+    from scipy.ndimage import label
+    pts = np.asarray(cloud.points)
+    if len(pts) < 1000:
+        return 1
+    xy = pts[:, :2]
+    x0, y0 = xy[:, 0].min(), xy[:, 1].min()
+    nx = int((xy[:, 0].max() - x0) / grid_mm) + 1
+    ny = int((xy[:, 1].max() - y0) / grid_mm) + 1
+    if nx * ny > 4_000_000:
+        return 1
+    H, _, _ = np.histogram2d(
+        xy[:, 0], xy[:, 1], bins=[nx, ny],
+        range=[[x0, x0 + nx * grid_mm], [y0, y0 + ny * grid_mm]],
+    )
+    occ = H >= 3
+    labels, n = label(occ, structure=np.ones((3, 3), dtype=int))
+    min_cells = int(min_area_m2 * 1e6 / (grid_mm * grid_mm))
+    big = sum(1 for k in range(1, n + 1) if int((labels == k).sum()) >= min_cells)
+    return max(big, 1)
+
+
+def _align_faces_to_surface_median(walls, cloud) -> list:
+    """Viimeinen pintalinjaus SAMALLA estimaattorilla kuin QA-mittari:
+    dominantin puolen pistepinnan MEDIAANI koko seinäkorkeudelta.
+
+    Histogrammihuippu (thickness_lock) ja mediaani eroavat 3–6 mm kun seinä on
+    kallellaan tai kohina vinoa — pystyprisman paras sovitus koko korkeudelle
+    on mediaani, ja QA mittaa sitä. Siirtää akselia vain sivusuunnassa."""
+    pts = np.asarray(cloud.points)
+    if len(pts) == 0:
+        return walls
+    out = []
+    for w in walls:
+        if len(w.axis) < 2:
+            out.append(w)
+            continue
+        p0 = np.array(w.axis[0], float)
+        p1 = np.array(w.axis[1], float)
+        L = float(np.linalg.norm(p1 - p0))
+        if L < 1.0:
+            out.append(w)
+            continue
+        u = (p1 - p0) / L
+        n = np.array([-u[1], u[0]])
+        rel = pts[:, :2] - p0
+        t = rel @ u
+        perp = rel @ n
+        zm = (pts[:, 2] > w.z_min + 200.0) & (pts[:, 2] < w.z_min + w.height - 200.0)
+        band = zm & (t > 100.0) & (t < L - 100.0) & (np.abs(perp) < w.thickness / 2.0 + 80.0)
+        if band.sum() < 200:
+            out.append(w)
+            continue
+        s = perp[band]
+        side = s > 0
+        dom = s[side] if side.sum() >= (~side).sum() else s[~side]
+        med = float(np.median(dom))
+        core = dom[np.abs(dom - med) < 60.0]
+        if len(core) > 50:
+            med = float(np.median(core))
+        face = w.thickness / 2.0 if med > 0 else -w.thickness / 2.0
+        shift = med - face
+        if abs(shift) < 0.2 or abs(shift) > 25.0:
+            out.append(w)
+            continue
+        sv = shift * n
+        out.append(w.model_copy(update={"axis": [
+            [round(p0[0] + sv[0], 2), round(p0[1] + sv[1], 2)],
+            [round(p1[0] + sv[0], 2), round(p1[1] + sv[1], 2)],
+        ]}))
+    return out
+
+
+_STD_THICK = [66.0, 92.0, 120.0, 150.0, 200.0, 250.0, 300.0]
+
+
+def _snap_delivery_thickness(walls, cloud) -> list:
+    """Toimituspaksuus standardiin, akseli ankkuroituna skannattuun pintaan.
+
+    Dominantti (eniten pisteitä) pinta = se jonka arkkitehti näkee ja johon
+    pintalukitus osui — sen on pysyttävä paikallaan. Paksuusmuutos kasvaa/
+    kutistuu näkymättömälle puolelle: akseli siirtyy ±(snap-mitattu)/2 siihen
+    suuntaan. Jos dominanttia puolta ei voi päätellä (ei pisteitä), snap on
+    symmetrinen kuten ennen."""
+    pts = np.asarray(cloud.points)
+    out = []
+    for w in walls:
+        measured = round(w.thickness, 1)
+        snapped = min(_STD_THICK, key=lambda s: abs(s - w.thickness))
+        updates = {"measured_thickness": measured, "thickness": snapped}
+        delta = snapped - w.thickness
+        if abs(delta) >= 0.5 and len(w.axis) >= 2 and len(pts):
+            p0 = np.array(w.axis[0], float)
+            p1 = np.array(w.axis[1], float)
+            L = float(np.linalg.norm(p1 - p0))
+            if L >= 1.0:
+                u = (p1 - p0) / L
+                n = np.array([-u[1], u[0]])
+                rel = pts[:, :2] - p0
+                t = rel @ u
+                perp = rel @ n
+                zm = (pts[:, 2] > w.z_min + 200.0) & (pts[:, 2] < w.z_min + w.height - 200.0)
+                band = zm & (t > 0) & (t < L) & (np.abs(perp) < w.thickness / 2.0 + 60.0)
+                if band.sum() >= 100:
+                    side_pos = int((perp[band] > 0).sum())
+                    side_neg = int(band.sum()) - side_pos
+                    face_sign = 1.0 if side_pos >= side_neg else -1.0
+                    # pinta face_sign-puolella pysyy: akseli siirtyy poispäin siitä
+                    shift = -face_sign * (delta / 2.0) * n
+                    updates["axis"] = [
+                        [round(p0[0] + shift[0], 2), round(p0[1] + shift[1], 2)],
+                        [round(p1[0] + shift[0], 2), round(p1[1] + shift[1], 2)],
+                    ]
+        out.append(w.model_copy(update=updates))
+    return out
 
 
 class Pipeline:
@@ -453,13 +608,23 @@ class Pipeline:
                 f"(Z {z_lo/1000:.2f}–{z_hi/1000:.2f} m)…"
             )
 
-            from scan2bim.core.geometry.streaming import load_floor_slice
+            from scan2bim.core.geometry.streaming import load_floor_slice, check_scan_consistency
+            _samples: list = []
             cloud = load_floor_slice(
                 paths, z_lo, z_hi,
                 voxel_size=self.config.voxel_size,
                 progress_cb=self._progress,
                 icp_refine=self.config.icp_refine,
+                sample_out=_samples if len(paths) > 1 else None,
             )
+            if len(paths) > 1:
+                _bad = check_scan_consistency(_samples)
+                if _bad:
+                    self._progress(
+                        f"  VAROITUS: {len(_bad)} skannia ei jaa pintoja muiden kanssa "
+                        f"({', '.join(_bad[:3])}{'…' if len(_bad) > 3 else ''}) — "
+                        "eri kohteita samassa ajossa? Aja ne erikseen; tulos on epäluotettava."
+                    )
 
             if len(cloud.points) < 500:
                 self._progress(f"  Liian vähän pisteitä ({len(cloud.points)}), ohitetaan.")
@@ -469,6 +634,17 @@ class Pipeline:
             # sotkevat seinien koordinaatit + tuottavat valehavaintoja. Tarkkuus > nopeus.
             self._progress(f"  Pisteitä: {len(cloud.points):,} — kohinasuodatus…")
             cloud, _ = cloud.remove_statistical_outlier(nb_neighbors=20, std_ratio=2.0)
+
+            # Sanity: jos pilvi hajoaa useaan erilliseen XY-alueeseen, syötteet
+            # eivät limity — todennäköisesti eri kohteiden skannauksia samassa
+            # ajossa (esim. 10 eri asuntoa) → tulos olisi roskaa.
+            n_regions = _count_disjoint_regions(cloud)
+            if n_regions > 1:
+                self._progress(
+                    f"  VAROITUS: pistepilvi hajoaa {n_regions} erilliseen alueeseen. "
+                    "Skannit eivät limity keskenään — jos ne ovat eri kohteita, "
+                    "aja ne erikseen. Tulos voi olla epäluotettava."
+                )
 
             from scan2bim.core.geometry.loader import scanner_origins
             origins: list = []
@@ -694,10 +870,13 @@ class Pipeline:
         # raakapistemittaus vie kaksipuolisen seinän paksuusvirheen <1.5mm.
         # Yksipuoliset jätetään ennalleen (ei mitattavissa). Snap pitää nurkat.
         if thick_cloud is not None and len(np.asarray(thick_cloud.points)) > 0:
-            _before = [w.thickness for w in model.walls]
+            _before = [(w.thickness, tuple(map(tuple, w.axis))) for w in model.walls]
             model.walls = _thickness_lock_walls(model.walls, thick_cloud)
-            _nch = sum(1 for a, w in zip(_before, model.walls) if abs(w.thickness - a) > 0.2)
-            self._progress(f"  Paksuuslukitus: {_nch}/{len(model.walls)} seinää tarkennettu raakapisteistä")
+            _nch = sum(
+                1 for (t0, a0), w in zip(_before, model.walls)
+                if abs(w.thickness - t0) > 0.2 or tuple(map(tuple, w.axis)) != a0
+            )
+            self._progress(f"  Pintalukitus: {_nch}/{len(model.walls)} seinää tarkennettu raakapisteistä")
             model.walls = snap_corners(model.walls)
         # HUOM: standardipaksuus-snäppäys kokeiltu ja HYLÄTTY — raakapistemittaus on
         # jo tarkka (2.6mm), snäppäys siirsi paksuudet vääriin standardeihin (6.0mm).
@@ -725,17 +904,18 @@ class Pipeline:
             and float(np.hypot(w.axis[1][0] - w.axis[0][0], w.axis[1][1] - w.axis[0][1])) >= _MIN_FINAL_WALL
         ]
 
-        # TOIMITUSPAKSUUS: snäppää mitattu paksuus lähimpään rakennusstandardiin →
-        # siisti arkkitehtimalli muutamalla seinätyypillä (ei 14 uniikkia). Tarkka
-        # mitattu arvo talteen measured_thickness-kenttään (IFC-property dokumentiksi).
-        _STD_THICK = [66.0, 92.0, 120.0, 150.0, 200.0, 250.0, 300.0]
-        model.walls = [
-            w.model_copy(update={
-                "measured_thickness": round(w.thickness, 1),
-                "thickness": min(_STD_THICK, key=lambda s: abs(s - w.thickness)),
-            })
-            for w in model.walls
-        ]
+        # TOIMITUSPAKSUUS ennen lopullista pintalinjausta: snäppäys ei saa enää
+        # liikuttaa linjattua pintaa (avaisi nurkat ±(snap-mitattu)/2).
+        model.walls = _snap_delivery_thickness(model.walls, cloud)
+
+        # LOPULLINEN PINTALINJAUS: merge/snap/close-ketju liikutti linjoja
+        # (T-liitosprojektio vetää päätepisteen naapurin linjalle → seinä
+        # kallistuu ~5mm). Linjaa TOIMITUSPINTA pistepinnan MEDIAANIIN koko
+        # korkeudelta (sama estimaattori kuin QA — huippu ja mediaani eroavat
+        # kallellaan olevalla seinällä) ja sulje nurkat linjoja säilyttäen:
+        # päät liikkuvat vain oman akselin suunnassa linja-linja-leikkauksiin.
+        model.walls = _align_faces_to_surface_median(model.walls, cloud)
+        model.walls = snap_corners(model.walls, preserve_lines=True)
 
         # Normalisoi seinien korkeus lattia-katto-välille (tarkka arkkitehtimalli)
         floor_z = min(
