@@ -172,6 +172,23 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   akseliin on konventio, ei virhe. Synteettisissä sceneissä kiintokomerot ovat
   täyskorkeita → näkyvät "seininä" (PointNet ei erota) — käytävän eteläseinä voi
   detektoitua komeron etupintaan (~500 mm sisään). Tunnettu jäännösvirhe.
+- **Pistetason QA-luku ≠ mallin tarkkuus.** Pilven oma kohina (synteettinen
+  SpatialLM ~15–20 mm RMS, oikea TLS 2–6 mm) dominoi pistetason mediaania.
+  Mallin tarkkuus = pintamediaani vs mallipinta (QA:n Pintatarkkuus-osio,
+  `data/_tol_heatmap.py`). Seinäpinnat mitatusti 0.0–0.2 mm GT-asunnolla.
+- **Pintalukituksen jälkeen EI saa ajaa tavallista snap_cornersia** — T-liitos-
+  projektio vetää päätepisteen naapurilinjalle ja kallistaa seinää ~5 mm.
+  Käytä `snap_corners(walls, preserve_lines=True)` (päät liikkuvat vain oman
+  akselin suunnassa linja-linja-leikkauksiin). Samasta syystä toimituspaksuus-
+  snäppäys ajetaan ENNEN lopullista pintalinjausta (ja ankkuroituna).
+- **Huippu ≠ mediaani kallellaan olevalla seinällä**: histogrammipiikki ja koko
+  korkeuden pintamediaani eroavat 3–6 mm (lean/vino kohina). Pystyprisman paras
+  sovitus on mediaani — lopullinen linjaus käyttää sitä (sama kuin QA-mittari).
+- **Kaikille seinille yhteinen kulmaviimeistely kokeiltu ja HYLÄTTY** (pinta
+  2.1→14.6 mm): ohut-pinta-verifiointi läpäisee myös VÄÄRÄT pinnat (verho/
+  komero on ohut taso). Skew-polku vain aidosti vinoille (≥3°).
+- **Korkeasokkeliset ikkunat (sokkeli >~600 mm) eivät löydy** sarakedetektiolla
+  (lattiakaista 150–1400, fb_frac 0.45) — roadmap: z-profiilipohjainen haku.
 
 ## Tunnetut rajoitukset
 

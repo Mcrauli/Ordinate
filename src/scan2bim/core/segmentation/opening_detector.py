@@ -217,10 +217,76 @@ def _wall_openings(
         print(f"[op] {wall.id} L={length:.0f} baseline={baseline:.0f} "
               f"maskpts={int(mask.sum())} anchors={start_anchor},{end_anchor}")
 
-    return _find_openings(
+    found = _find_openings(
         occ, col_pts, xe, ze, n_x, n_z,
         length, wall, floor_z, start_idx, start_anchor, end_anchor,
     )
+    # Reunatarkennus raakapisteistä: 30mm-gridi kvantisoi aukon reunat ±15mm +
+    # siltaukset. Step-sovitus (tyhjä aukko vs täysi seinäpinta) vie reunat ja
+    # sillin/ylityksen mm-tasolle.
+    return [_refine_opening_edges(op, proj, zvals, floor_z, wall) for op in found]
+
+
+_RE_WIN = 150.0    # mm — hakuikkuna gridireunasta molempiin suuntiin
+_RE_BIN = 5.0      # mm — step-sovituksen resoluutio
+_RE_MARGIN = 60.0  # mm — z/along-marginaali profiilipisteitä valittaessa
+
+
+def _step_edge(vals: np.ndarray, e0: float, sign: float) -> float | None:
+    """Reunan paikka: maksimoi tiheyskontrasti (tyhjä aukon puoli vs täysi seinä).
+
+    sign=+1: seinä reunan oikealla (aukko vasemmalla); sign=-1: peilikuva."""
+    sel = vals[(vals >= e0 - _RE_WIN) & (vals <= e0 + _RE_WIN)]
+    if len(sel) < 30:
+        return None
+    edges = np.arange(e0 - _RE_WIN, e0 + _RE_WIN + _RE_BIN, _RE_BIN)
+    hist, edges = np.histogram(sel, bins=edges)
+    c = np.cumsum(hist)
+    total = float(c[-1])
+    n = len(hist)
+    best, best_k = -1.0, None
+    for k in range(2, n - 2):
+        left = float(c[k]) / (k + 1)              # keskitiheys reunan vasemmalla
+        right = (total - float(c[k])) / (n - k - 1)
+        contrast = (right - left) * sign
+        if contrast > best:
+            best, best_k = contrast, k
+    if best_k is None or best <= 0:
+        return None
+    return float(edges[best_k + 1])
+
+
+def _refine_opening_edges(op: Opening, proj: np.ndarray, zvals: np.ndarray,
+                          floor_z: float, wall: Wall) -> Opening:
+    a0 = op.position_along
+    a1 = a0 + op.width
+    z0 = floor_z + op.sill_height
+    z1 = z0 + op.opening_height
+
+    # Reunat: pisteet aukon z-alueelta (marginaalilla) → along-step
+    zm = (zvals >= z0 + _RE_MARGIN) & (zvals <= z1 - _RE_MARGIN)
+    new_a0 = _step_edge(proj[zm], a0, -1.0) if zm.sum() >= 30 else None
+    new_a1 = _step_edge(proj[zm], a1, +1.0) if zm.sum() >= 30 else None
+    r0 = new_a0 if new_a0 is not None else a0
+    r1 = new_a1 if new_a1 is not None else a1
+    if r1 - r0 < _MIN_W * 0.8:
+        r0, r1 = a0, a1
+
+    # Silli ja ylitys: pisteet aukon along-alueelta → z-step
+    am = (proj >= r0 + _RE_MARGIN) & (proj <= r1 - _RE_MARGIN)
+    new_z0 = _step_edge(zvals[am], z0, -1.0) if am.sum() >= 30 else None
+    new_z1 = _step_edge(zvals[am], z1, +1.0) if am.sum() >= 30 else None
+    rz0 = new_z0 if new_z0 is not None and op.sill_height > 50.0 else z0
+    rz1 = new_z1 if new_z1 is not None else z1
+    if rz1 - rz0 < _MIN_H * 0.8:
+        rz0, rz1 = z0, z1
+
+    return op.model_copy(update={
+        "position_along": round(r0, 1),
+        "width": round(r1 - r0, 1),
+        "sill_height": round(max(rz0 - floor_z, 0.0), 1),
+        "opening_height": round(min(rz1 - rz0, wall.height), 1),
+    })
 
 
 def _runs(mask: np.ndarray) -> list[tuple[int, int]]:

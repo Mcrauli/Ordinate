@@ -4,6 +4,25 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 [`Mcrauli/scan2bim-web`](https://github.com/Mcrauli/scan2bim-web/releases):iin;
 sovellus päivittää itsensä sieltä.
 
+## v0.5.2 — pintatarkkuus millitasolle + syötevahti
+- **Seinäpinnat ≤0.2 mm skannatusta pinnasta** (oli 2–4 mm; GT-asunnolla mitattu
+  0.00–0.18 mm): yksipuolisetkin seinät saavat raakapiste-pintalukituksen,
+  lopullinen linjaus tehdään koko korkeuden pintamediaaniin (sama estimaattori
+  kuin QA-mittari) ja nurkat suljetaan linjoja säilyttäen (T-liitosprojektio
+  ei enää kallista lukittuja seiniä ~5 mm).
+- **Toimituspaksuus ankkuroituna**: standardipaksuuteen snäppäys pitää skannatun
+  pinnan paikallaan (ennen molemmat pinnat siirtyivät ±(std−mitattu)/2).
+- **Aukkojen reunatarkennus**: ovi/ikkunareunat + silli/ylitys step-sovituksella
+  raakapisteistä (30 mm gridin kvantisointi pois; ovi lattiatasoon sill<5 mm).
+- **QA-raportti erottelee pintavirheen kohinasta**: uusi Pintatarkkuus-osio
+  (pistetason hajonta sisältää skannerin kohinan 2–20 mm — pintamediaani ei).
+- **Syötevahti**: varoitus kun yhdistetyt skannit eivät jaa pintoja keskenään
+  (eri kohteita samassa ajossa) tai pilvi hajoaa erillisiin alueisiin.
+- **Deterministinen**: PointNet-näytteistys siemennetty — sama syöte antaa
+  saman mallin joka ajolla (ennen ±6 mm heittoa).
+- Tunnettu puute kirjattu: korkeasokkeliset (>~600 mm) ikkunat eivät vielä
+  löydy sarakedetektiolla.
+
 ## v0.5.1 — seinä- ja aukkotarkkuus (SpatialLM-GT-validointi)
 - **Katto histogrammin reunabinistä**: `find_peaks` ei tunnista pilven ylintä
   tasoa (viimeinen bin) piikiksi → katoksi valikoitui alempi rakenne (−500 mm
