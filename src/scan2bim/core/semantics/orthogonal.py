@@ -174,9 +174,11 @@ def refine_skew_walls(
         if skewed is w:
             out.append(w)
             continue
-        # Jäännöskulman viimeistely: sama estimaattori alennetulla kynnyksellä ja
-        # KAPEALLA kaistalla — leveä kaista poimii verhot/karmit ja laimentaa
-        # PCA-kulman. Verifiointi (ohut pinta, kate) pitää iteraation kurissa.
+        # Jäännöskulman viimeistely VAIN skew-kierretyille: sama estimaattori
+        # alennetulla kynnyksellä ja KAPEALLA kaistalla (leveä poimii verhot/
+        # karmit ja laimentaa PCA:n). Grid-seiniä EI kierretä uudelleen —
+        # kokeiltu ja MITATTU huonoksi (pinta 2.1→14.6 mm): ohut-pinta-
+        # verifiointi läpäisee myös väärät pinnat (verho/komero on ohut pinta).
         for _ in range(3):
             polished = _skew_rotate_wall(
                 skewed, xy, z, z_min, z_max, min_deg=0.3, band_w=1.5 * _FINE_BAND,
@@ -191,6 +193,7 @@ def refine_skew_walls(
 def _skew_rotate_wall(
     w: Wall, xy, z, z_min, z_max,
     min_deg: float | None = None, band_w: float | None = None,
+    max_deg: float | None = None,
 ) -> Wall:
     p0 = np.array(w.axis[0], dtype=float)
     p1 = np.array(w.axis[1], dtype=float)
@@ -208,7 +211,8 @@ def _skew_rotate_wall(
         along_proj = along_proj[zm]
         perp = perp[zm]
     return _try_skew_rotate(
-        w, along, mid, length, along_proj, perp, min_deg=min_deg, band_w=band_w,
+        w, along, mid, length, along_proj, perp,
+        min_deg=min_deg, band_w=band_w, max_deg=max_deg,
     )
 
 
@@ -310,6 +314,7 @@ def _try_skew_rotate(
     w: Wall, along: np.ndarray, mid: np.ndarray, length: float,
     along_proj: np.ndarray, perp: np.ndarray,
     min_deg: float | None = None, band_w: float | None = None,
+    max_deg: float | None = None,
 ) -> Wall:
     """Aidosti vinon seinän palautus. Vino seinä ajautuu pakotetusta akselista
     ±length/2·sin(θ) → normaali ±100mm-kaista leikkaa sen pään pois eikä
@@ -335,7 +340,9 @@ def _try_skew_rotate(
         return w
     delta = float(np.arctan2(float(da @ dp), saa))
     deg = abs(np.degrees(delta))
-    if deg < (min_deg if min_deg is not None else _SKEW_MIN_DEG) or deg > _SKEW_MAX_DEG:
+    lo = min_deg if min_deg is not None else _SKEW_MIN_DEG
+    hi = max_deg if max_deg is not None else _SKEW_MAX_DEG
+    if deg < lo or deg > hi:
         return w
 
     # Verifiointi kierretyssä kehyksessä: jäännöshajonnan on romahdettava pinnoiksi.
