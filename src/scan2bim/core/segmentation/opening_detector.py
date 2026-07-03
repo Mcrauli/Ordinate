@@ -43,8 +43,10 @@ _MIN_W = 500.0            # mm — kapein aukko (realistisin pienin ikkuna)
 _MAX_W = 2500.0           # mm — levein aukko
 _MAX_FRACTION = 0.50      # aukko ei voi olla yli 50 % seinänpituudesta
 _MIN_H = 600.0            # mm — matalin aukko
-_DOOR_SILL_MAX = 500.0    # mm — ovi jos sill_height < tämä (ikkunan sill tyyp. >=900)
-_DOOR_MAX_W = 1500.0      # mm — ovi max leveys (leveämpi lattiarako = lasiseinä/ikkuna)
+_DOOR_SILL_MAX = 250.0    # mm — ovi alkaa lattiatasosta; korkeampi sokkeli = ikkuna
+                          # (matalasokkeliset ranskalaiset ikkunat ~300-500 eivät ole ovia)
+_DOOR_MAX_W = 1800.0      # mm — ovi max leveys (pari-/liukuovi ~1600-1800; leveämpi
+                          # lattiatason aukko = lasiseinä/ikkuna)
 
 
 def detect_openings(

@@ -112,6 +112,15 @@ _FINE_BAND = 100.0         # mm — kohtisuora kaista jolta seinän omat pisteet
 _FINE_MIN_PTS = 300        # min pisteitä jotta kierretään
 _FINE_END_MARGIN = 200.0   # mm — jätä päät pois (nurkka/T-liitos sotkee suunnan)
 
+# Aidosti vino seinä (ei-Manhattan): regularize pakottaa sen ruudukkoon eikä
+# ±2.5° hienokierto riitä palauttamaan. Skew-polku hyväksyy isomman kierron VAIN
+# vahvalla evidenssillä: PCA-kulma leveästä kaistasta + verifiointi että kierron
+# jälkeen pisteet muodostavat ohuen pinnan (kaluste/sotku ei muodosta).
+_SKEW_MAX_DEG = 8.0        # ° — suurin hyväksyttävä aito vinous
+_SKEW_MIN_DEG = 3.0        # ° — alle tämän hoitaa normaali hienokierto
+_SKEW_RESID_MAX = 25.0     # mm — pinnan max RMS-hajonta kierron jälkeen
+_SKEW_COVER_MIN = 0.55     # osuus kaistan pisteistä joiden on osuttava pinnoille
+
 
 def fine_rotate_walls(
     walls: list[Wall],
@@ -140,6 +149,69 @@ def fine_rotate_walls(
     return out
 
 
+def refine_skew_walls(
+    walls: list[Wall],
+    pts: np.ndarray,
+    z_min: float | None = None,
+    z_max: float | None = None,
+) -> list[Wall]:
+    """Toinen kiertopassi täysipitkillä akseleilla: palauta aidosti vinot seinät.
+
+    Ensimmäinen fine_rotate ajaa ennen nurkkasnappia, jolloin vino seinä on usein
+    lyhyt detektiopätkä (<1.5 m → ei kierretä lainkaan) ja regularize on lukinnut
+    sen ruudukkoon. Tässä yritetään skew-polkua datasta käsin: grid-seinillä
+    PCA-kulma jää alle kynnyksen eikä mitään tapahdu; aidosti vinolle seinälle
+    kierto + 1–2 normaalia hienokiertoiteraatiota viimeistelevät kulman.
+    Grid-seinien normaalikiertoa EI toisteta (iteroiva kierto ajautuu
+    kalustetulla datalla — tunnettu ansa)."""
+    if pts is None or len(pts) == 0 or not walls:
+        return walls
+    xy = np.asarray(pts)[:, :2]
+    z = np.asarray(pts)[:, 2] if pts.shape[1] > 2 else None
+    out: list[Wall] = []
+    for w in walls:
+        skewed = _skew_rotate_wall(w, xy, z, z_min, z_max)
+        if skewed is w:
+            out.append(w)
+            continue
+        # Jäännöskulman viimeistely: sama estimaattori alennetulla kynnyksellä ja
+        # KAPEALLA kaistalla — leveä kaista poimii verhot/karmit ja laimentaa
+        # PCA-kulman. Verifiointi (ohut pinta, kate) pitää iteraation kurissa.
+        for _ in range(3):
+            polished = _skew_rotate_wall(
+                skewed, xy, z, z_min, z_max, min_deg=0.3, band_w=1.5 * _FINE_BAND,
+            )
+            if polished.axis == skewed.axis:
+                break
+            skewed = polished
+        out.append(skewed)
+    return out
+
+
+def _skew_rotate_wall(
+    w: Wall, xy, z, z_min, z_max,
+    min_deg: float | None = None, band_w: float | None = None,
+) -> Wall:
+    p0 = np.array(w.axis[0], dtype=float)
+    p1 = np.array(w.axis[1], dtype=float)
+    length = float(np.linalg.norm(p1 - p0))
+    if length < 1500.0:
+        return w
+    along = (p1 - p0) / length
+    normal = np.array([-along[1], along[0]])
+    mid = 0.5 * (p0 + p1)
+    rel = xy - p0
+    along_proj = rel @ along
+    perp = rel @ normal
+    if z is not None and z_min is not None and z_max is not None:
+        zm = (z >= z_min) & (z <= z_max)
+        along_proj = along_proj[zm]
+        perp = perp[zm]
+    return _try_skew_rotate(
+        w, along, mid, length, along_proj, perp, min_deg=min_deg, band_w=band_w,
+    )
+
+
 def _fine_rotate_wall(w: Wall, xy, z, z_min, z_max, max_dev: float) -> Wall:
     p0 = np.array(w.axis[0], dtype=float)
     p1 = np.array(w.axis[1], dtype=float)
@@ -159,13 +231,18 @@ def _fine_rotate_wall(w: Wall, xy, z, z_min, z_max, max_dev: float) -> Wall:
     along_proj = rel @ along
     perp = rel @ normal
 
+    # Z-suodatus koskee myös skew-polkua: lattia/katto-pisteet kaistalla
+    # hukuttaisivat pintaverifioinnin.
+    if z is not None and z_min is not None and z_max is not None:
+        zm = (z >= z_min) & (z <= z_max)
+        along_proj = along_proj[zm]
+        perp = perp[zm]
+
     mask = (
         (along_proj >= _FINE_END_MARGIN)
         & (along_proj <= length - _FINE_END_MARGIN)
         & (np.abs(perp) <= _FINE_BAND)
     )
-    if z is not None and z_min is not None and z_max is not None:
-        mask &= (z >= z_min) & (z <= z_max)
     if int(mask.sum()) < _FINE_MIN_PTS:
         return w
 
@@ -204,13 +281,20 @@ def _fine_rotate_wall(w: Wall, xy, z, z_min, z_max, max_dev: float) -> Wall:
             continue   # hajanainen kaista (kalusteet/T-liitos) → älä luota tähän pintaan
         deltas.append(d)
     if not deltas:
-        return w
+        return _try_skew_rotate(w, along, mid, length, along_proj, perp)
     delta = float(np.mean(deltas))   # keskilinjan suunta = pintojen kulmien keskiarvo
 
-    # Liian iso vaadittu kierto = ei-yhdensuuntainen pinta (T/viisto/naapuri) → hylkää.
-    if abs(delta) > max_dev or abs(delta) < np.radians(0.05):
+    # Liian iso vaadittu kierto = ei-yhdensuuntainen pinta (T/viisto/naapuri) → hylkää
+    # normaalipolulla; aidosti vino seinä yrittää vielä skew-polkua (vahva evidenssi).
+    if abs(delta) > max_dev:
+        return _try_skew_rotate(w, along, mid, length, along_proj, perp)
+    if abs(delta) < np.radians(0.05):
         return w
 
+    return _rotated(w, along, mid, length, delta)
+
+
+def _rotated(w: Wall, along: np.ndarray, mid: np.ndarray, length: float, delta: float) -> Wall:
     c, s = np.cos(delta), np.sin(delta)
     u = np.array([c * along[0] - s * along[1], s * along[0] + c * along[1]])
     half = 0.5 * length
@@ -220,3 +304,61 @@ def _fine_rotate_wall(w: Wall, xy, z, z_min, z_max, max_dev: float) -> Wall:
         [round(float(n0[0]), 1), round(float(n0[1]), 1)],
         [round(float(n1[0]), 1), round(float(n1[1]), 1)],
     ]})
+
+
+def _try_skew_rotate(
+    w: Wall, along: np.ndarray, mid: np.ndarray, length: float,
+    along_proj: np.ndarray, perp: np.ndarray,
+    min_deg: float | None = None, band_w: float | None = None,
+) -> Wall:
+    """Aidosti vinon seinän palautus. Vino seinä ajautuu pakotetusta akselista
+    ±length/2·sin(θ) → normaali ±100mm-kaista leikkaa sen pään pois eikä
+    pintasovitus näe kahta piikkiä. Tässä: (1) leveä kaista joka kattaa vinouden,
+    (2) PCA-suora antaa kulman, (3) VERIFIOINTI: kierretyssä kehyksessä pisteiden
+    on muodostettava 1–2 ohutta pintaa jotka kattavat ison osan kaistasta —
+    kalusterivi tai sotku ei läpäise tätä."""
+    # Kaistan katettava koko vinon seinän ajautuma (akseli voi olla sivussa
+    # keskikohdastakin) → täysi span, ei puolikas.
+    if band_w is None:
+        band_w = _FINE_BAND + length * np.sin(np.radians(_SKEW_MAX_DEG))
+    m = (
+        (along_proj >= _FINE_END_MARGIN)
+        & (along_proj <= length - _FINE_END_MARGIN)
+        & (np.abs(perp) <= band_w)
+    )
+    if int(m.sum()) < _FINE_MIN_PTS:
+        return w
+    da = along_proj[m] - along_proj[m].mean()
+    dp = perp[m] - perp[m].mean()
+    saa = float(da @ da)
+    if saa < 1e-6:
+        return w
+    delta = float(np.arctan2(float(da @ dp), saa))
+    deg = abs(np.degrees(delta))
+    if deg < (min_deg if min_deg is not None else _SKEW_MIN_DEG) or deg > _SKEW_MAX_DEG:
+        return w
+
+    # Verifiointi kierretyssä kehyksessä: jäännöshajonnan on romahdettava pinnoiksi.
+    resid = dp - (float(da @ dp) / saa) * da
+    from scipy.signal import find_peaks
+    hist, edges = np.histogram(resid, bins=np.arange(resid.min() - 10.0, resid.max() + 10.0, 10.0))
+    if not len(hist):
+        return w
+    centers = 0.5 * (edges[:-1] + edges[1:])
+    pks, _ = find_peaks(hist, height=max(hist.max() * 0.3, 5.0), distance=4)
+    if not len(pks):
+        return w
+    pks = sorted(pks, key=lambda p: hist[p], reverse=True)[:2]
+    covered = 0
+    for pidx in pks:
+        surf = np.abs(resid - float(centers[pidx])) <= 40.0
+        n_surf = int(surf.sum())
+        if n_surf < _FINE_MIN_PTS // 2:
+            continue
+        rms = float(np.sqrt(np.mean((resid[surf] - resid[surf].mean()) ** 2)))
+        if rms > _SKEW_RESID_MAX:
+            return w   # leveä möykky pinnan kohdalla → ei luotettava vino seinä
+        covered += n_surf
+    if covered < _SKEW_COVER_MIN * int(m.sum()):
+        return w
+    return _rotated(w, along, mid, length, delta)

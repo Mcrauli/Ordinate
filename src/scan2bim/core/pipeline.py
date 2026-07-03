@@ -622,7 +622,8 @@ class Pipeline:
             # osuu lattiakontuuriin. Tarkennetaan vielä todelliseen sisäpintaan:
             # keep_thickness säilyttää 300mm-paksuuden eikä nappaa naapuriseinää.
             perim = add_perimeter_walls(
-                floor_contour, model.walls, floor_z_w, wall_h
+                floor_contour, model.walls, floor_z_w, wall_h,
+                pts=np.asarray(cloud.points),
             )
             perim = _recenter_wall_axes(perim, lock_cloud, band=300.0, keep_thickness=True)
             model.walls = model.walls + perim
@@ -672,6 +673,21 @@ class Pipeline:
         model.walls = _trim_wall_endpoints(model.walls, trim_cloud)
         model.walls = snap_corners(model.walls)
 
+        # Vinojen (ei-Manhattan) seinien kulman viimeistely täysipitkällä akselilla:
+        # ensimmäinen hienokierto ajoi ennen snappia lyhyellä detektiopätkällä →
+        # kulma jäi vajaaksi. Koskee vain grid-linjasta poikkeavia seiniä.
+        if model.walls:
+            from scan2bim.core.semantics.orthogonal import refine_skew_walls
+            lz2 = min((w.z_min for w in model.walls), default=0.0)
+            lh2 = max((w.height for w in model.walls), default=2700.0)
+            _pre = [tuple(map(tuple, w.axis)) for w in model.walls]
+            model.walls = refine_skew_walls(
+                model.walls, np.asarray(lock_cloud.points),
+                z_min=lz2 + 200.0, z_max=lz2 + lh2 - 200.0,
+            )
+            if _pre != [tuple(map(tuple, w.axis)) for w in model.walls]:
+                model.walls = snap_corners(model.walls)
+
         # LOA-TARKKA PAKSUUS: mittaa kaksipuolisten seinien paksuus täysiresan
         # raakapisteistä ali-bin tarkkuudella ja keskitä akseli pintojen väliin.
         # _surface_lock asettaa karkean paksuuden (12mm-voxel ~33mm virhe); tämä
@@ -699,6 +715,15 @@ class Pipeline:
         # Sulje vajaat perimetrinurkat: yhdistä avoimet päät PAREITTAIN (vain avoimet
         # päät, vain toisiinsa) → ei gridiä kuten iso _resolve_corners-extend tekisi.
         model.walls = close_open_corners(model.walls)
+
+        # Trim/snap voi romahduttaa datattoman seinän pisteeksi tai lyhyeksi
+        # jämäksi — nollamittainen "seinä" IFC:ssä on roskaa.
+        _MIN_FINAL_WALL = 300.0
+        model.walls = [
+            w for w in model.walls
+            if len(w.axis) >= 2
+            and float(np.hypot(w.axis[1][0] - w.axis[0][0], w.axis[1][1] - w.axis[0][1])) >= _MIN_FINAL_WALL
+        ]
 
         # TOIMITUSPAKSUUS: snäppää mitattu paksuus lähimpään rakennusstandardiin →
         # siisti arkkitehtimalli muutamalla seinätyypillä (ei 14 uniikkia). Tarkka

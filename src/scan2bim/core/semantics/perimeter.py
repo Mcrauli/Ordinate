@@ -20,6 +20,11 @@ _COVER_PERP = 700.0        # mm — olemassa oleva seinä "kattaa" reunan jos n�
 _COVER_COS = 0.94          # suuntien yhdensuuntaisuus (~20°)
 _COVER_OVERLAP = 0.35      # vaadittu pituuspeitto jotta reuna katsotaan katetuksi
 _SIMPLIFY_TOL = 400.0      # mm — kontuurin yksinkertaistus (rosoiset reunat pois)
+_BEYOND_MIN = 250.0        # mm — varjotestin kaista alkaa tästä reunan ulkopuolelta
+_BEYOND_MAX = 1200.0       # mm — ja päättyy tähän
+_BEYOND_Z_FRAC = 0.7       # katoksi lasketaan pisteet z > z_min + 0.7*height
+_BEYOND_BIN = 250.0        # mm — peittobinin leveys reunaa pitkin
+_BEYOND_FRAC = 0.4         # ≥ tämä osuus binejä täynnä → reunan takana jatkuu sisätila
 
 
 def add_perimeter_walls(
@@ -27,8 +32,13 @@ def add_perimeter_walls(
     existing: list[Wall],
     z_min: float,
     height: float,
+    pts=None,
 ) -> list[Wall]:
-    """Palauttaa lisäseinät lattiakontuurin kattamattomille reunoille."""
+    """Palauttaa lisäseinät lattiakontuurin kattamattomille reunoille.
+
+    ``pts`` (Nx3): jos annettu, reuna hylätään kun sen ULKOpuolella jatkuu katto —
+    silloin reuna on kalusteen keilausvarjo lattiassa (sänky/sohva), ei perimetri.
+    Aidon ulkoseinän takana ei ole sisäkattoa."""
     if not boundary or len(boundary) < 3:
         return []
 
@@ -36,17 +46,21 @@ def add_perimeter_walls(
     if len(boundary) < 3:
         return []
 
-    pts = [np.array(p, dtype=float) for p in boundary]
-    n = len(pts)
+    verts = [np.array(p, dtype=float) for p in boundary]
+    n = len(verts)
     # Polygonin kiertosuunta (signed area): määrää johdonmukaisen ULOSPÄIN-normaalin
     # myös koveralle (L-muotoiselle) kontuurille — sentroidi epäonnistuu siinä.
-    area2 = sum(pts[i][0] * pts[(i + 1) % n][1] - pts[(i + 1) % n][0] * pts[i][1] for i in range(n))
+    area2 = sum(verts[i][0] * verts[(i + 1) % n][1] - verts[(i + 1) % n][0] * verts[i][1] for i in range(n))
     ccw = area2 > 0.0
+    high_pts = None
+    if pts is not None and len(pts):
+        arr = np.asarray(pts)
+        high_pts = arr[arr[:, 2] >= z_min + _BEYOND_Z_FRAC * height]
     new_walls: list[Wall] = []
     idx = 0
     for i in range(n):
-        a = pts[i]
-        b = pts[(i + 1) % n]
+        a = verts[i]
+        b = verts[(i + 1) % n]
         seg = b - a
         seg_len = float(np.linalg.norm(seg))
         if seg_len < _MIN_EDGE:
@@ -59,6 +73,8 @@ def add_perimeter_walls(
         u = seg / seg_len
         # CCW-polygonissa ulkonormaali on (uy,-ux); CW:ssä (-uy,ux).
         nrm = np.array([u[1], -u[0]]) if ccw else np.array([-u[1], u[0]])
+        if high_pts is not None and _ceiling_continues_beyond(a, u, nrm, seg_len, high_pts):
+            continue  # kalustevarjon reuna keskellä huonetta, ei perimetri
         off = nrm * (_EXT_THICKNESS / 2.0)
         a2 = a + off
         b2 = b + off
@@ -75,6 +91,22 @@ def add_perimeter_walls(
         ))
         idx += 1
     return new_walls
+
+
+def _ceiling_continues_beyond(
+    a: np.ndarray, u: np.ndarray, nrm: np.ndarray, seg_len: float, high_pts: np.ndarray,
+) -> bool:
+    """True jos kattokorkuisia pisteitä on reunan ULKOpuolella ison osan reunan
+    pituudesta → reuna on sisätilassa (kalusteen keilausvarjo), ei ulkoseinä."""
+    rel = high_pts[:, :2] - a
+    along = rel @ u
+    perp = rel @ nrm
+    m = (along >= 0.0) & (along <= seg_len) & (perp >= _BEYOND_MIN) & (perp <= _BEYOND_MAX)
+    if not m.any():
+        return False
+    n_bins = max(int(seg_len / _BEYOND_BIN), 1)
+    hist, _ = np.histogram(along[m], bins=n_bins, range=[0.0, seg_len])
+    return float((hist >= 3).mean()) >= _BEYOND_FRAC
 
 
 _GRID_SNAP = 500.0   # mm — kärjet snäpätään tähän ruudukkoon suoristusta varten

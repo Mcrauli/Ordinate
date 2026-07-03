@@ -20,6 +20,9 @@ _Z_BIN_MM       = 5.0            # histogrammin resoluutio
 _Z_SMOOTH_BINS  = 4              # histogrammin tasoitusikkuna
 _Z_MIN_FRAC     = 0.08           # minimikorkeus päähuipusta
 _SLAB_PAIR_MM   = 450.0          # välipohjan kaksi pintaa (tai naapurikerroksen laatta) tämän sisällä
+_PAIR_MIN_RATIO = 0.7            # parikävely vain vertailukelpoiseen piikkiin: laattaparin pinnat
+                                 # ovat ~yhtä vahvoja; alakatto/kotelo/kaapiston yläpinta on selvästi
+                                 # heikompi eikä siihen saa astua (söisi huonekorkeutta)
 
 
 def detect_slabs(cloud) -> list[Slab]:
@@ -58,7 +61,13 @@ def _find_z_levels(pts: np.ndarray) -> list[tuple[float, str]]:
     z = pts[:, 2]
     z_min, z_max = float(z.min()), float(z.max())
     n_bins = max(int((z_max - z_min) / _Z_BIN_MM), 20)
-    counts, edges = np.histogram(z, bins=n_bins, range=[z_min, z_max])
+    # Pehmustus: lattia/katto ovat pilven ääritasot → niiden piikit osuvat ensimmäiseen/
+    # viimeiseen biniin, eikä find_peaks tunnista reunabiniä piikiksi. Laajenna aluetta
+    # tasoitusikkunan verran molemmista päistä, jolloin reunapiikeillä on nollanaapurit.
+    pad = _Z_SMOOTH_BINS * _Z_BIN_MM
+    counts, edges = np.histogram(
+        z, bins=n_bins + 2 * _Z_SMOOTH_BINS, range=[z_min - pad, z_max + pad]
+    )
     centers = 0.5 * (edges[:-1] + edges[1:])
     smooth = uniform_filter1d(counts.astype(float), size=_Z_SMOOTH_BINS)
 
@@ -66,22 +75,30 @@ def _find_z_levels(pts: np.ndarray) -> list[tuple[float, str]]:
     if len(peaks) < 2:
         return [(z_min, "floor"), (z_max, "ceiling")]
 
-    peak_z = np.sort(centers[peaks])
+    order = np.argsort(centers[peaks])
+    peak_z = centers[peaks][order]
+    peak_h = smooth[peaks][order]
 
     # Lattia = alimman laattaparin YLÄpinta (kävelytaso); jos siivussa on naapurikerroksen
-    # välipohja, alimmat kaksi huippua ovat lähekkäin → otetaan ylempi.
+    # välipohja, alimmat kaksi huippua ovat lähekkäin → otetaan ylempi. Astutaan vain
+    # VERTAILUKELPOISEEN piikkiin (laattaparin pinnat ~yhtä vahvoja) — selvästi heikompi
+    # lähipiikki on kalustetaso/koroke, ei laattapari.
     floor = float(peak_z[0])
-    for p in peak_z[1:]:
-        if p - floor <= _SLAB_PAIR_MM:
-            floor = float(p)
+    floor_h = float(peak_h[0])
+    for p, h in zip(peak_z[1:], peak_h[1:]):
+        if p - floor <= _SLAB_PAIR_MM and h >= _PAIR_MIN_RATIO * floor_h:
+            floor, floor_h = float(p), float(h)
         else:
             break
 
-    # Katto = ylimmän laattaparin ALApinta (huoneesta näkyvä pinta)
+    # Katto = ylimmän laattaparin ALApinta (huoneesta näkyvä pinta). Sama vahvuusehto:
+    # selvästi heikompi lähipiikki alapuolella on alakatto/kotelo/kaapiston yläpinta —
+    # siihen astuminen söisi huonekorkeutta (tunnettu alakatto-ansa).
     ceiling = float(peak_z[-1])
-    for p in peak_z[-2::-1]:
-        if ceiling - p <= _SLAB_PAIR_MM:
-            ceiling = float(p)
+    ceiling_h = float(peak_h[-1])
+    for p, h in zip(peak_z[-2::-1], peak_h[-2::-1]):
+        if ceiling - p <= _SLAB_PAIR_MM and h >= _PAIR_MIN_RATIO * ceiling_h:
+            ceiling, ceiling_h = float(p), float(h)
         else:
             break
 

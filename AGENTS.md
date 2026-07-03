@@ -107,8 +107,12 @@ Tarkkuus mitataan erillisillä QA-skripteillä — **aja tuotantomallia (`model.
 | `data/_height_qa.py` | Lattia/katto/korkeus vs pilvi-sub-bin |
 | `data/_length_qa.py` | Seinän pituus (nurkkaväli) |
 | `data/_overlay_prod.py`, `data/_plan_qa.py`, `data/_vision_tol.py` | Vision-overlayt (malli vs pilvi) |
+| `data/_spatiallm_qa.py` | **Ground-truth-vertailu**: SpatialLM-scenet (PLY + .txt-annotaatio) → seinien lateraali-/kulmavirhe + aukkomäärät GT:tä vasten |
 
 **Käytä visionia aina tarkkuusvertailuissa.** Kuvat: `data/_*.png`.
+**GT-testidata:** SpatialLM-Dataset (HuggingFace manycore-research) — yksittäiset
+scenet saa ulos 4.8GB-chunkeista `remotezip`illä (range-request, ei koko latausta);
+layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille sceneille.
 
 ## Kovalla työllä opitut asiat — ÄLÄ keksi uudelleen
 
@@ -149,6 +153,25 @@ Tarkkuus mitataan erillisillä QA-skripteillä — **aja tuotantomallia (`model.
 - **Standardipaksuus-snäppäys MITATUILLE seinille hylätty kerran** (2.6→6.0 mm):
   todelliset paksuudet eivät ole oletettuja vakioita. Snäppäys vain TOIMITUS-
   vaiheessa, mitattu arvo aina talteen.
+- **Katto/lattia ovat histogrammin REUNAbinejä** — `find_peaks` ei tunnista reunaa
+  piikiksi ilman nollapehmustusta → katoksi valikoitui alempi rakenne (−500 mm).
+  Parikävely (450 mm) vain VERTAILUKELPOISEEN piikkiin (≥0.7×): laattaparin pinnat
+  ovat ~yhtä vahvoja, alakatto/kotelo/kaapinpäällys on selvästi heikompi.
+- **Lattiakontuurin lovi voi olla kalusteen keilausvarjo** (sänky/sohva): siitä
+  tehty perimetriseinä risteilee huoneen halki. Testi: jos katto jatkuu reunan
+  ULKOpuolella, reuna on sisätilassa → ei seinää (`perimeter._ceiling_continues_beyond`).
+- **Valeseinät toimivat snap-ankkureina** — kaskadi: valeseinä → `snap_corners`
+  venyttää naapurit sen risteyksiin → oikea seinä jää orvoksi → `remove_dangling_walls`
+  poisti sen (3.4 m seinä, 34 k pisteen evidenssi!). Siksi dangling-poisto koskee
+  vain <2.5 m tynkiä. Juurisyy on AINA valeseinä, ei snap.
+- **Aidosti vino seinä (3–8°)**: `refine_skew_walls` (toinen passi täysipitkällä
+  akselilla) palauttaa kulman PCA + pintaverifioinnilla (ohut pinta + kate).
+  Ensimmäinen fine_rotate ei voi — vino detektiopätkä on usein <1.5 m ennen snappia
+  ja leveä kaista poimii verhot/karmit (PCA laimenee; viimeistely kapealla kaistalla).
+- **SpatialLM-GT:n viivat ovat seinäpintoja** — ~100 mm (puolikas paksuus) ero
+  akseliin on konventio, ei virhe. Synteettisissä sceneissä kiintokomerot ovat
+  täyskorkeita → näkyvät "seininä" (PointNet ei erota) — käytävän eteläseinä voi
+  detektoitua komeron etupintaan (~500 mm sisään). Tunnettu jäännösvirhe.
 
 ## Tunnetut rajoitukset
 

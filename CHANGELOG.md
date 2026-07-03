@@ -4,6 +4,28 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 [`Mcrauli/scan2bim-web`](https://github.com/Mcrauli/scan2bim-web/releases):iin;
 sovellus päivittää itsensä sieltä.
 
+## v0.5.1 — seinä- ja aukkotarkkuus (SpatialLM-GT-validointi)
+- **Katto histogrammin reunabinistä**: `find_peaks` ei tunnista pilven ylintä
+  tasoa (viimeinen bin) piikiksi → katoksi valikoitui alempi rakenne (−500 mm
+  huonekorkeutta). Korjaus: histogrammin reunapehmustus + parikävely vain
+  vertailukelpoiseen piikkiin (alakatto/kotelo/kaapinpäällys ei enää nappaa).
+- **Kalustevarjot eivät enää tuota valeseiniä**: sängyn/sohvan varjolovi
+  lattiakontuurissa hylätään perimetriseinänä jos katto jatkuu reunan
+  ulkopuolella. Poisti huoneen halki risteilevät valeseinät.
+- **`remove_dangling_walls` ei poista pitkiä seiniä** (≥2.5 m): aito detektoitu
+  seinä jonka naapurit jäivät vajaiksi säilyy (nurkkien sulku yhdistää sen);
+  aiemmin oikea yläseinä katosi ja tilalle jäi kaapiston etupinta (−525 mm).
+- **Aidosti vinot seinät** (ei-Manhattan, 3–8°): uusi skew-polku
+  (`orthogonal.refine_skew_walls`) palauttaa `regularize_orthogonal`in
+  pakottaman kulman PCA-sovituksella + pintaverifioinnilla. GT-vertailussa
+  vino ulkoseinä 5.7° → 0.3°, ja sen 2 m ikkuna löytyy nyt.
+- **Aukkoluokittelu**: ovi vaatii lattiatason sokkelin (<250 mm, oli 500) ja
+  saa olla 1800 mm leveä (pari-/liukuovi, oli 1500). Korkeasokkelinen aukko on
+  ikkuna, leveä lattiatason aukko huoneiden välillä on ovi.
+- Nolla-/jäämäseinät (<300 mm trim/snap-romahdus) siivotaan mallista.
+- Uudet testit: `test_slab_detector.py`, `test_perimeter.py`,
+  `test_orthogonal.py`, `test_wall_semantics.py`.
+
 ## v0.5.0 — kalustesuodatin (PointNet, Vaihe 2)
 - **Uusi: ML-pohjainen kalustesuodatin** (`segmentation/pointnet_filter.py`).
   S3DIS PointNet ONNX-malli (CPU, ~3.4 MB) luokittelee jokaisen pisteen 13

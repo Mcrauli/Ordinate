@@ -183,15 +183,23 @@ def _wall_length(wall: Wall) -> float:
     return float(np.hypot(p1[0] - p0[0], p1[1] - p0[1]))
 
 
+_DANGLING_MAX_LEN = 2500.0   # mm — tätä pidempi kelluva seinä on aito detektio, ei tynkä
+                             # (esim. seinä jonka naapurit jäivät vajaiksi — nurkkien
+                             # sulku yhdistää sen myöhemmin; poisto hävittäisi oikean seinän)
+
+
 def remove_dangling_walls(walls: list[Wall], free_tol: float = 400.0) -> list[Wall]:
     """Poistaa irralliset tynkäseinät: sisäseinä jonka jompikumpi pää on ilmassa
     (>free_tol kaikista muista seinistä) ei rajaa huonetta → roskaa. Perimetri
-    (method=floorplan) säilytetään aina."""
+    (method=floorplan) ja pitkät seinät (≥ _DANGLING_MAX_LEN) säilytetään aina."""
     if len(walls) < 2:
         return walls
     kept: list[Wall] = []
     for i, w in enumerate(walls):
         if w.source.method == "floorplan":  # perimetriseinä → säilytä
+            kept.append(w)
+            continue
+        if _wall_length(w) >= _DANGLING_MAX_LEN:
             kept.append(w)
             continue
         if len(w.axis) < 2:
