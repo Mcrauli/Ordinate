@@ -21,7 +21,8 @@ _COVER_COS = 0.94          # suuntien yhdensuuntaisuus (~20°)
 _COVER_OVERLAP = 0.35      # vaadittu pituuspeitto jotta reuna katsotaan katetuksi
 _SIMPLIFY_TOL = 400.0      # mm — kontuurin yksinkertaistus (rosoiset reunat pois)
 _BEYOND_MIN = 250.0        # mm — varjotestin kaista alkaa tästä reunan ulkopuolelta
-_BEYOND_MAX = 1200.0       # mm — ja päättyy tähän
+_BEYOND_SCAN = 2500.0      # mm — kuinka kauas katon jatkumista skannataan
+_BEYOND_SKIP = 1500.0      # mm — katto jatkuu tätä kauemmas → kalustevarjo, ei perimetri
 _BEYOND_Z_FRAC = 0.7       # katoksi lasketaan pisteet z > z_min + 0.7*height
 _BEYOND_BIN = 250.0        # mm — peittobinin leveys reunaa pitkin
 _BEYOND_FRAC = 0.4         # ≥ tämä osuus binejä täynnä → reunan takana jatkuu sisätila
@@ -73,9 +74,14 @@ def add_perimeter_walls(
         u = seg / seg_len
         # CCW-polygonissa ulkonormaali on (uy,-ux); CW:ssä (-uy,ux).
         nrm = np.array([u[1], -u[0]]) if ccw else np.array([-u[1], u[0]])
-        if high_pts is not None and _ceiling_continues_beyond(a, u, nrm, seg_len, high_pts):
-            continue  # kalustevarjon reuna keskellä huonetta, ei perimetri
-        off = nrm * (_EXT_THICKNESS / 2.0)
+        push = 0.0
+        if high_pts is not None:
+            push = _ceiling_extent_beyond(a, u, nrm, seg_len, high_pts)
+            if push > _BEYOND_SKIP:
+                continue  # sisätila jatkuu kauas reunan yli = kalustevarjo, ei perimetri
+            # 0 < push <= _BEYOND_SKIP: reunan takana on komero/syvennys jonka
+            # katto kattaa — oikea seinä on katon reunassa → työnnä reuna sinne.
+        off = nrm * (push + _EXT_THICKNESS / 2.0)
         a2 = a + off
         b2 = b + off
         new_walls.append(Wall(
@@ -93,20 +99,42 @@ def add_perimeter_walls(
     return new_walls
 
 
-def _ceiling_continues_beyond(
+def _ceiling_extent_beyond(
     a: np.ndarray, u: np.ndarray, nrm: np.ndarray, seg_len: float, high_pts: np.ndarray,
-) -> bool:
-    """True jos kattokorkuisia pisteitä on reunan ULKOpuolella ison osan reunan
-    pituudesta → reuna on sisätilassa (kalusteen keilausvarjo), ei ulkoseinä."""
+) -> float:
+    """Kuinka pitkälle katto jatkuu reunan ULKOpuolelle (mm).
+
+    0 = ei jatku → aito perimetrireuna.
+    pieni (≤_BEYOND_SKIP) = reunan takana on komero/syvennys jonka katto kattaa
+      → oikea seinäpinta on katon reunassa (palautettu etäisyys).
+    iso (>_BEYOND_SKIP) = reuna on keskellä sisätilaa (kalusteen keilausvarjo)."""
     rel = high_pts[:, :2] - a
     along = rel @ u
     perp = rel @ nrm
-    m = (along >= 0.0) & (along <= seg_len) & (perp >= _BEYOND_MIN) & (perp <= _BEYOND_MAX)
+    m = (along >= 0.0) & (along <= seg_len) & (perp >= _BEYOND_MIN) & (perp <= _BEYOND_SCAN)
     if not m.any():
-        return False
+        return 0.0
     n_bins = max(int(seg_len / _BEYOND_BIN), 1)
     hist, _ = np.histogram(along[m], bins=n_bins, range=[0.0, seg_len])
-    return float((hist >= 3).mean()) >= _BEYOND_FRAC
+    if float((hist >= 3).mean()) < _BEYOND_FRAC:
+        return 0.0   # vain paikallista roinaa reunan takana, ei jatkuvaa sisätilaa
+    # Katon ulottuma: kävele 100mm-koreja ulospäin kunnes tulee ≥300mm tyhjä väli.
+    p = perp[m]
+    step = 100.0
+    edges = np.arange(_BEYOND_MIN, _BEYOND_SCAN + step, step)
+    h, edges = np.histogram(p, bins=edges)
+    dens_min = max(3, int(seg_len / _BEYOND_BIN * 0.1))
+    extent = _BEYOND_MIN
+    gap = 0
+    for k in range(len(h)):
+        if h[k] >= dens_min:
+            extent = float(edges[k + 1])
+            gap = 0
+        else:
+            gap += 1
+            if gap >= 3:   # ≥300mm tyhjää → katto loppui
+                break
+    return extent
 
 
 _GRID_SNAP = 500.0   # mm — kärjet snäpätään tähän ruudukkoon suoristusta varten
