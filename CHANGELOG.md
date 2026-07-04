@@ -4,6 +4,32 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 [`Mcrauli/scan2bim-web`](https://github.com/Mcrauli/scan2bim-web/releases):iin;
 sovellus päivittää itsensä sieltä.
 
+## Julkaisematon — pintatarkkuus todennettuna RAAKAPILVEÄ vasten
+Rohbau3D-työmaaskannilla (oikea TLS, 11 M pistettä) mallin pinnat olivat
+jopa 21 mm pielessä vaikka QA väitti 0.2 mm — QA ja pintalinjaus mittasivat
+12 mm voxel-suodatettua pilveä. Nyt molemmat käyttävät 5 mm raakapilveä ja
+virheet korjattu: työmaaseinät 0.5–5 mm raakaa vasten (oli 3–21 mm), GT-asunto
+0.03 mm, talo 000035 mediaani 0.07 mm (12/13 ≤ 1.5 mm; ainoa ylitys flägätään).
+- **Epäsymmetrinen näkyvyys**: aito takapinta 27 % etupinnan tiheydestä jäi
+  25 % piikkikynnyksen alle → yksipinta-polku jätti seinän 22 mm pieleen.
+  Heikompi piikki (≥8 %) hyväksytään jos se istuu odotetun vastapinnan
+  kohdalla (±60 mm) → 219 mm betoniseinä mitataan oikein (GT-labelit
+  vahvistivat molemmat pinnat 100 % Wall-luokaksi).
+- **Toimituspaksuus-snap vain ±12 mm sisältä**: 215 mm mitattu seinä EI ole
+  200 mm — pakkosnap vei pinnan 9.5 mm pieleen. Kauempana standardista
+  mitattu arvo jää toimitusarvoksi.
+- **Pinnaton seinä flägätään**: jos seinäkaistassa on massaa muttei pintaa
+  (MAD > 20 mm — telineet/tavara), confidence puolitetaan → QA nostaa
+  "TARKISTA MANUAALISESTI" -listalle (ennen 46 mm fiktioseinä meni läpi
+  ilman varoitusta).
+- **run_floors lataa nyt 5 mm refine-pilven**: pintalukitus, trim, linjaus
+  ja QA mittaavat samaa raakadataa (12 mm voxelin sentroidi-bias pois).
+- **Perimetriseinän linjauskorjaus max 90 mm** (mitatuilla 25 mm):
+  lattiakontuurigrid (25 mm ruutu + dilaatio) tuottaa kymmenien mm biasta —
+  49 mm pielessä ollut perimetriseinä nyt 0.26 mm.
+- **Perimetri-id:t uniikit** monikontuuritilanteessa (kaksi eri seinää oli
+  molemmat wall_ext_001).
+
 ## Julkaisematon — robustisuus mielivaltaisille skanneille
 Moniosaisella GT-talolla (000035, 8 skannia / 2 asuntoa) pipeline tuhosi
 9/17 seinää → 0 tilaa. Viisi juurisyytä korjattu; nyt 14 seinää, 2 tilaa

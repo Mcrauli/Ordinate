@@ -208,6 +208,26 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
 - **Lattiakontuureja voi olla monta** (`detect_floor_contours`): paksun seinän
   takainen huone on OMA polygoninsa — pelkkä suurin kontuuri → toinen asunto ei
   koskaan saanut perimetriä eikä sulkeutunut tilaksi. Kaikki ≥1.5 m² alueet käsitellään.
+- **QA:n ja linjauksen on mitattava RAAKAA pilveä, ei suodatettua** — 12 mm
+  voxel + PointNet piilotti 21 mm pintavirheen (QA väitti 0.2 mm; lämpökartta
+  raakaa vasten paljasti). `run_floors` lataa 5 mm refine-pilven; QA-raportti ja
+  `_align_faces_to_surface_median` käyttävät sitä. Todellinen mittari on AINA
+  `_tol_heatmap.py` raakapilveä vasten.
+- **Epäsymmetrinen näkyvyys rikkoo parikynnyksen**: takapinta kauempaa skannattuna
+  on ~10–30 % etupinnan tiheydestä → 25 % piikkikynnys hylkää AIDON pinnan ja
+  yksipinta-polku lukitsee väärin. Heikko piikki (≥`_TL_WEAK_FRAC` 8 %) kelpaa
+  jos se istuu odotetun vastapinnan kohdalla (±60 mm). Rohbaun 219 mm seinä
+  varmistettiin GT-labeleista (molemmat pinnat 100 % Wall).
+- **Toimituspaksuus-snap vain ±12 mm sisältä** (`_STD_SNAP_TOL`): 215 mm
+  betoniseinä pakkosnapattuna 200:aan vie pinnan 9.5 mm pieleen — 1.5 mm
+  pintalupaus voittaa siistin paksuuslistan kun todellisuus poikkeaa selvästi.
+- **Pinnaton kaista = fiktioseinä, flägää älä linjaa**: jos dominantin puolen
+  MAD > 20 mm, kaistassa on massaa (telineet/tavara) muttei seinäpintaa —
+  mediaanilinjaus olisi fiktiota → confidence ×0.5 (perimetri 0.5→0.25 < 0.4
+  → QA:n TARKISTA-lista).
+- **Perimetriseinän sijaintiprior on heikko**: lattiakontuurigrid (25 mm ruutu +
+  3 px dilaatio) tuottaa kymmenien mm systemaattista biasta → linjauskorjaus
+  floorplan-seinille max 90 mm (mitatuilla 25 mm pitää — niiden akseli on jo oikein).
 
 ## Tunnetut rajoitukset
 

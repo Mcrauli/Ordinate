@@ -279,6 +279,8 @@ _TL_MIN_PTS = 500        # min raakapisteitä kaistassa (= QA 500)
 _TL_MIN_THICK = 50.0     # mm (= QA 50)
 _TL_MAX_THICK = 400.0    # mm (= QA 400)
 _TL_PEAK_FRAC = 0.25     # huipun min korkeus suhteessa maksimiin (= QA 0.25)
+_TL_WEAK_FRAC = 0.08     # heikko vastapinta hyväksytään jos istuu odotetussa paikassa
+                         # (epäsymmetrinen näkyvyys: toinen puoli skannattu kauempaa)
 _TL_ALONG_MARGIN = 400.0 # mm — along-suunnan ylitys (= QA -400..L+400)
 _TL_FACE_WIN = 60.0      # mm — yksipuolinen: huipun oltava näin lähellä odotettua
                          # mallipintaa (±th/2), muuten se on naapuri/kaluste → ei lukita
@@ -375,16 +377,34 @@ def _thickness_lock_wall(wall, pts: np.ndarray):
     hist, edges = np.histogram(d, bins=edges)
     centers = 0.5 * (edges[:-1] + edges[1:])
     pks, _ = find_peaks(hist, height=hist.max() * _TL_PEAK_FRAC, distance=int(20.0 / _TL_BIN))
-    if len(pks) < 2:
+    if len(pks) == 0:
         return _single_face_lock(wall, hist, centers, pks, normal, p0, p1)
 
     # Seinän kaksi pintaa = kaksi vahvinta huippua (sama valinta kuin QA-mittari
     # _element_qa.py, jotta malli ja mittari ovat samaa mieltä). Ali-bin tarkkuus
     # parabolisella interpoloinnilla → <1.5mm vaikka bini on 2mm.
-    top = sorted(pks, key=lambda p: hist[p], reverse=True)[:2]
-    dom, second = int(top[0]), int(top[1])
-    t_bin = abs(float(centers[dom]) - float(centers[second]))
-    if not (_TL_MIN_THICK <= t_bin <= _TL_MAX_THICK):
+    dom = int(max(pks, key=lambda p: hist[p]))
+    second: int | None = None
+    if len(pks) >= 2:
+        cand = sorted((int(p) for p in pks if int(p) != dom), key=lambda p: hist[p], reverse=True)[0]
+        if _TL_MIN_THICK <= abs(float(centers[dom]) - float(centers[cand])) <= _TL_MAX_THICK:
+            second = cand
+
+    if second is None:
+        # Epäsymmetrinen näkyvyys: takapinta skannattu kauempaa/harvemmin ja jää
+        # 25%-kynnyksen alle vaikka on aito (rohbau: 27% vs 550k etupistettä →
+        # 22mm virhe). Hyväksy heikompi piikki (≥_TL_WEAK_FRAC) jos se istuu
+        # odotetun VASTAPINNAN kohdalla (±_TL_FACE_WIN detektoidusta paksuudesta).
+        weak, _ = find_peaks(hist, height=hist.max() * _TL_WEAK_FRAC, distance=int(20.0 / _TL_BIN))
+        expected = (float(centers[dom]) - wall.thickness, float(centers[dom]) + wall.thickness)
+        cands = [
+            int(p) for p in weak
+            if int(p) != dom and min(abs(float(centers[p]) - e) for e in expected) <= _TL_FACE_WIN
+        ]
+        if cands:
+            second = max(cands, key=lambda p: hist[p])
+
+    if second is None:
         return _single_face_lock(wall, hist, centers, pks, normal, p0, p1)
 
     f_dom = _parabolic_peak(hist, centers, dom)
@@ -436,6 +456,7 @@ def _align_faces_to_surface_median(walls, cloud) -> list:
     Histogrammihuippu (thickness_lock) ja mediaani eroavat 3–6 mm kun seinä on
     kallellaan tai kohina vinoa — pystyprisman paras sovitus koko korkeudelle
     on mediaani, ja QA mittaa sitä. Siirtää akselia vain sivusuunnassa."""
+    _FACE_MAD_MAX = 20.0   # mm — pisteiden mediaanihajonta pinnan ympärillä; yli = ei pintaa
     pts = np.asarray(cloud.points)
     if len(pts) == 0:
         return walls
@@ -464,12 +485,26 @@ def _align_faces_to_surface_median(walls, cloud) -> list:
         side = s > 0
         dom = s[side] if side.sum() >= (~side).sum() else s[~side]
         med = float(np.median(dom))
+        # Pintaevidenssi: aidolla pinnalla pisteet keskittyvät mediaanin
+        # ympärille (MAD ≈ 0.7×kohina-RMS ≤ ~13mm); tasainen jakauma = kaistassa
+        # on massoa muttei seinäpintaa (telineet/tavara) → mediaanilinjaus olisi
+        # fiktiota. Puolitetaan confidence → QA nostaa tarkistettavaksi
+        # (perimetri 0.5 → 0.25 < 0.4).
+        mad = float(np.median(np.abs(dom - med)))
+        if mad > _FACE_MAD_MAX:
+            out.append(w.model_copy(update={"confidence": round(w.confidence * 0.5, 3)}))
+            continue
         core = dom[np.abs(dom - med) < 60.0]
         if len(core) > 50:
             med = float(np.median(core))
         face = w.thickness / 2.0 if med > 0 else -w.thickness / 2.0
         shift = med - face
-        if abs(shift) < 0.2 or abs(shift) > 25.0:
+        # Mitatun seinän akseli on jo ~oikein → iso siirto olisi väärä pinta
+        # (cap 25mm). Perimetriseinän sijainti tulee lattiakontuurigridistä
+        # (25mm ruutu + dilaatio ~75mm biasta) → salli isompi korjaus puhtaalle
+        # pinnalle, muuten seinä jää kymmeniä mm pieleen eikä mikään flägää sitä.
+        max_shift = 90.0 if w.source.method == "floorplan" else 25.0
+        if abs(shift) < 0.2 or abs(shift) > max_shift:
             out.append(w)
             continue
         sv = shift * n
@@ -481,6 +516,9 @@ def _align_faces_to_surface_median(walls, cloud) -> list:
 
 
 _STD_THICK = [66.0, 92.0, 120.0, 150.0, 200.0, 250.0, 300.0]
+_STD_SNAP_TOL = 12.0     # mm — snap standardiin vain tämän sisältä; kauempana
+                         # mitattu arvo jää toimitusarvoksi (pinnat ≤1.5mm voittaa
+                         # "siistin" paksuuslistan kun todellisuus poikkeaa selvästi)
 
 
 def _snap_delivery_thickness(walls, cloud) -> list:
@@ -496,6 +534,11 @@ def _snap_delivery_thickness(walls, cloud) -> list:
     for w in walls:
         measured = round(w.thickness, 1)
         snapped = min(_STD_THICK, key=lambda s: abs(s - w.thickness))
+        # Snap vain kun mitattu on USKOTTAVASTI standardi: 219mm betoniseinä
+        # EI ole 200mm — pakotettu snap veisi pinnan 9.5mm pieleen (>1.5mm
+        # toleranssi). Kaukana standardista mitattu arvo on toimitusarvo.
+        if abs(snapped - measured) > _STD_SNAP_TOL:
+            snapped = measured
         updates = {"measured_thickness": measured, "thickness": snapped}
         delta = snapped - w.thickness
         if abs(delta) >= 0.5 and len(w.axis) >= 2 and len(pts):
@@ -677,11 +720,18 @@ class Pipeline:
                 paths, band_lo, band_hi, voxel_size=0.0, progress_cb=None,
                 icp_refine=self.config.icp_refine,
             )
+            # 5mm koko korkeuden pilvi pintalukitukseen/linjaukseen — detektiovoxelin
+            # (12mm) sentroidi-bias siirtää pintamediaania useita mm (sama syy kuin
+            # convert-polun refine_cloud).
+            refine_cloud = _lfs(
+                paths, z_lo, z_hi, voxel_size=5.0, progress_cb=None,
+                icp_refine=self.config.icp_refine,
+            )
 
             cloud = self._semantic_filter(cloud)
 
             self._progress(f"  Seinädetektio ({self.config.detector})…")
-            model = self._detect(cloud, source, thick_cloud=thick_cloud)
+            model = self._detect(cloud, source, refine_cloud=refine_cloud, thick_cloud=thick_cloud)
             model.metadata.floor_index = floor_idx
             model.metadata.floor_count = len(floors)
 
@@ -694,8 +744,11 @@ class Pipeline:
                 if self.config.export_qa:
                     try:
                         from scan2bim.core.qa.deviation import write_qa_report
+                        # QA mittaa 5mm raakapilveä vasten (sama kuin pintalinjaus) —
+                        # 12mm suodatettu voxel-pilvi piilotti 20mm+ pintavirheen
+                        # (sentroidi-bias + PointNet vei osan pinnoista).
                         res = write_qa_report(
-                            model, cloud, floor_dir / "model.ifc",
+                            model, refine_cloud, floor_dir / "model.ifc",
                             floor_dir / "qa_report.txt", tol=self.config.qa_tolerance,
                         )
                         ov = res["deviation"].get("overall", {})
@@ -811,6 +864,9 @@ class Pipeline:
                     boundary, model.walls + perim, floor_z_w, wall_h,
                     pts=np.asarray(cloud.points),
                 )
+            # add_perimeter_walls numeroi id:t polygonikohtaisesti alusta →
+            # uniikit id:t koko joukolle (QA/IFC sekoaa duplikaateista)
+            perim = [w.model_copy(update={"id": f"wall_ext_{i:03d}"}) for i, w in enumerate(perim)]
             perim = _recenter_wall_axes(perim, lock_cloud, band=300.0, keep_thickness=True)
             model.walls = model.walls + perim
 
@@ -924,7 +980,7 @@ class Pipeline:
         # korkeudelta (sama estimaattori kuin QA — huippu ja mediaani eroavat
         # kallellaan olevalla seinällä) ja sulje nurkat linjoja säilyttäen:
         # päät liikkuvat vain oman akselin suunnassa linja-linja-leikkauksiin.
-        model.walls = _align_faces_to_surface_median(model.walls, cloud)
+        model.walls = _align_faces_to_surface_median(model.walls, lock_cloud)
         model.walls = snap_corners(model.walls, preserve_lines=True)
 
         # Normalisoi seinien korkeus lattia-katto-välille (tarkka arkkitehtimalli)
