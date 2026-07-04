@@ -106,14 +106,17 @@ def merge_collinear_walls(walls: list[Wall]) -> list[Wall]:
 
 
 def _deduplicate(walls: list[Wall]) -> list[Wall]:
-    """Poistaa lähes päällekkäiset seinät — pitää korkeimman confidence-arvon."""
+    """Poistaa lähes päällekkäiset seinät — pitää pisimmän jänteen."""
     kept: list[Wall] = []
     used = [False] * len(walls)
-    # Pidä korkein confidence; lähes yhtä pitkien duplikaattien kesken pidä OHUEMPI
-    # (perimetri-swell paisuttaa saman seinän paksuudeksi esim. 266mm vaikka pinta
-    # on 77mm). Pituus pyöristetään 500mm-koreihin jottei 1mm ero voita ohuempaa.
+    # Pidä PISIN jänne: lyhyt korkean confidencen fragmentti ei saa syrjäyttää
+    # koko seinää (kadonnut jänne ei korjaannu; lateraalisijainti korjataan
+    # myöhemmin pintalukituksessa). Lähes yhtä pitkien kesken korkein confidence,
+    # sitten OHUEMPI (perimetri-swell paisuttaa saman seinän paksuudeksi esim.
+    # 266mm vaikka pinta on 77mm). Pituus pyöristetään 500mm-koreihin jottei
+    # 1mm ero ratkaise.
     walls_sorted = sorted(
-        walls, key=lambda w: (-w.confidence, -round(_wall_length(w) / 500.0), w.thickness)
+        walls, key=lambda w: (-round(_wall_length(w) / 500.0), -w.confidence, w.thickness)
     )
     cos_thresh = float(np.cos(np.radians(_DEDUP_ANGLE_DEG)))
 
@@ -188,10 +191,17 @@ _DANGLING_MAX_LEN = 2500.0   # mm — tätä pidempi kelluva seinä on aito dete
                              # sulku yhdistää sen myöhemmin; poisto hävittäisi oikean seinän)
 
 
+_DANGLING_REACH = 2300.0   # mm — sama kuin corner_snap._CLOSE_MAX_EXT: näin kauas
+                           # close_open_corners voi vielä yhdistää avoimen pään
+
+
 def remove_dangling_walls(walls: list[Wall], free_tol: float = 400.0) -> list[Wall]:
     """Poistaa irralliset tynkäseinät: sisäseinä jonka jompikumpi pää on ilmassa
     (>free_tol kaikista muista seinistä) ei rajaa huonetta → roskaa. Perimetri
-    (method=floorplan) ja pitkät seinät (≥ _DANGLING_MAX_LEN) säilytetään aina."""
+    (method=floorplan) ja pitkät seinät (≥ _DANGLING_MAX_LEN) säilytetään aina.
+    Pää ei ole irrallinen jos seinän jatke osuu toiseen seinään ≤_DANGLING_REACH
+    päässä — close_open_corners yhdistää sen myöhemmin (naapurin detektio voi
+    olla vajaa vaikka seinä itse on aito)."""
     if len(walls) < 2:
         return walls
     kept: list[Wall] = []
@@ -206,17 +216,39 @@ def remove_dangling_walls(walls: list[Wall], free_tol: float = 400.0) -> list[Wa
             kept.append(w)
             continue
         others = [o for j, o in enumerate(walls) if j != i and len(o.axis) >= 2]
+        d = _direction(w)
         free_ends = 0
-        for ep in (np.array(w.axis[0], float), np.array(w.axis[1], float)):
+        for e in (0, 1):
+            ep = np.array(w.axis[e], float)
             dmin = min((_pt_seg_dist(ep, np.array(o.axis[0], float), np.array(o.axis[1], float))
                         for o in others), default=1e9)
-            if dmin > free_tol:
+            if dmin > free_tol and not _end_reaches_wall(ep, d if e == 1 else -d, others):
                 free_ends += 1
         # Vain aidosti kelluvat (MOLEMMAT päät irti) poistetaan — huonejakaja
         # yhdistyy vähintään toisesta päästä, joten se säilyy.
         if free_ends < 2:
             kept.append(w)
     return kept
+
+
+def _end_reaches_wall(ep: np.ndarray, out_dir: np.ndarray, others: list[Wall]) -> bool:
+    for o in others:
+        a = np.array(o.axis[0], float)
+        b = np.array(o.axis[1], float)
+        do = b - a
+        Lo = float(np.linalg.norm(do))
+        if Lo < 1.0:
+            continue
+        do /= Lo
+        cross = float(out_dir[0] * do[1] - out_dir[1] * do[0])
+        if abs(cross) < 0.35:   # ~kohtisuoruus, sama raja kuin _CLOSE_PERP_COS
+            continue
+        rel = a - ep
+        s = float(rel[0] * do[1] - rel[1] * do[0]) / cross
+        t = float(rel[0] * out_dir[1] - rel[1] * out_dir[0]) / cross
+        if -120.0 <= s <= _DANGLING_REACH and -120.0 <= t <= Lo + 120.0:
+            return True
+    return False
 
 
 def _pt_seg_dist(p: np.ndarray, a: np.ndarray, b: np.ndarray) -> float:

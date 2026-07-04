@@ -101,3 +101,25 @@ def test_floor_steps_up_to_stronger_walking_surface():
     slabs = detect_slabs(cloud)
     floor = next(s for s in slabs if s.slab_type == "floor")
     assert abs(floor.elevation - 0.0) < 60.0
+
+
+def test_disjoint_floor_regions_all_returned():
+    """Kaksi erillista lattia-aluetta (asunto + viereinen huone paksun seinan
+    takana) → molempien kontuurit talteen, ei vain suurinta (perimetri ei
+    muuten koskaan sulje pienempaa huonetta)."""
+    from scan2bim.core.segmentation.slab_detector import detect_floor_contours
+
+    parts = [
+        _plane(0, 6000, 0, 6000, 0.0),          # iso lattia
+        _plane(6400, 9400, 0, 3000, 0.0),       # pieni huone 400mm seinan takana
+    ]
+    cloud = _cloud(np.vstack(parts))
+
+    polys = detect_floor_contours(cloud, 0.0)
+    assert len(polys) == 2, f"kontuureja {len(polys)}, odotettiin 2"
+    areas = sorted(
+        abs(sum(p[i][0] * p[(i + 1) % len(p)][1] - p[(i + 1) % len(p)][0] * p[i][1]
+                for i in range(len(p)))) / 2.0
+        for p in polys
+    )
+    assert areas[0] > 6_000_000, "pienen huoneen kontuuri puuttuu/vajaa"

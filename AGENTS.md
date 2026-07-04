@@ -135,7 +135,11 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   `measured_thickness`-kentässä.** Älä tulkitse snäpättyä paksuutta accuracyna.
 - **Nurkat: lopullinen `_deduplicate` ajettava AIVAN VIIMEISENÄ** (thickness_lock +
   snap jälkeen) — recenter/snap siirtää seinät päällekkäin vasta välidedupien
-  jälkeen. Duplikaateista pidetään OHUEMPI (perimetri-swell paisuttaa 77→266 mm).
+  jälkeen. Duplikaateista pidetään PISIN jänne (lyhyt korkean confidencen
+  fragmentti EI saa syrjäyttää koko seinää: 2.2 m pätkä söi 6.8 m perimetrin,
+  1.1 m pysty söi 3.4 m aidosti vinon — kadonnut jänne ei korjaannu, lateraali
+  korjataan pintalukituksessa). Yhtä pitkistä korkein confidence, sitten OHUEMPI
+  (perimetri-swell paisuttaa 77→266 mm).
 - **`merge_collinear_walls`** yhdistää saman seinän jaetut pätkät (eri paksuus →
   ohuempi); poisti 300 mm pöhö-artefaktit.
 - **`close_open_corners`** sulkee vajaat nurkat TURVALLISESTI: vain avoimet päät,
@@ -189,6 +193,21 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   komero on ohut taso). Skew-polku vain aidosti vinoille (≥3°).
 - **Korkeasokkeliset ikkunat (sokkeli >~600 mm) eivät löydy** sarakedetektiolla
   (lattiakaista 150–1400, fb_frac 0.45) — roadmap: z-profiilipohjainen haku.
+- **Trim ei saa kutistaa rajattomasti** (`_trim_endpoints`, `_MAX_TRIM` 300/pää):
+  datattoman seinän ±30 mm kaistaan osuu vain RISTEÄVIEN seinien pisteitä
+  risteyskohdissa → 2/98-percentiilit romahduttivat 4.0 m perimetriseinän
+  79 mm:iin. Jatkolla oli cap alusta asti — kutistus unohtui.
+- **Nurkkasulku ei saa kutistaa seinää** (`close_open_corners`,
+  `_CLOSE_MAX_SHRINK` 300): leikkauspiste syvällä janalla = T-liitos keskellä
+  seinää, ei nurkka. Ilman vahtia kaksi eri paria veti saman seinän molemmat
+  päät samaan pisteeseen (2.8 m → 0 mm) ja 0-tyngät myrkyttivät seuraavat passit.
+- **Dangling-pää joka YLTÄÄ toiseen seinään ei ole irrallinen**
+  (`_end_reaches_wall`, reach 2.3 m = `_CLOSE_MAX_EXT`): aidon seinän naapurit
+  voivat puuttua detektiosta → molemmat päät "ilmassa" vaikka close_open_corners
+  yhdistäisi ne myöhemmin. Ilman tätä 1.6 m GT-seinä poistui.
+- **Lattiakontuureja voi olla monta** (`detect_floor_contours`): paksun seinän
+  takainen huone on OMA polygoninsa — pelkkä suurin kontuuri → toinen asunto ei
+  koskaan saanut perimetriä eikä sulkeutunut tilaksi. Kaikki ≥1.5 m² alueet käsitellään.
 
 ## Tunnetut rajoitukset
 

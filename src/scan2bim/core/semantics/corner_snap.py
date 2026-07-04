@@ -45,6 +45,10 @@ def snap_corners(walls: list[Wall], preserve_lines: bool = False) -> list[Wall]:
 # kohtisuorien linjojen leikkaukseen. Sisäseinillä ei ole avoimia päitä → ei gridiä.
 _OPEN_TOL = 60.0          # mm — pää on "avoin" jos näin kaukana lähimmästä seinästä
 _CLOSE_MAX_EXT = 2300.0   # mm — avoimen pään saa jatkaa korkeintaan tämän verran nurkkaan
+_CLOSE_MAX_SHRINK = 300.0 # mm — sulku saa kutistaa seinää korkeintaan tämän: leikkaus
+                          # syvemmällä janalla = T-liitos keskellä seinää, ei nurkka
+                          # (ilman tätä kaksi risteävää paria veti saman seinän
+                          # molemmat päät samaan pisteeseen → 0mm "seinä")
 _CLOSE_PERP_COS = 0.35    # |cos| < tämä → riittävän kohtisuorat muodostamaan nurkan
 
 
@@ -67,6 +71,11 @@ def close_open_corners(walls: list[Wall]) -> list[Wall]:
             (_pt_seg_dist(p, P[j][0], P[j][1]) for j in range(n) if j != i and dirs[j] is not None),
             default=1e9,
         )
+
+    def shrink_ok(i, e, pt):
+        other = np.array(axes[i][1 - e], float)
+        cur = np.array(axes[i][e], float)
+        return float(np.linalg.norm(pt - other)) >= float(np.linalg.norm(cur - other)) - _CLOSE_MAX_SHRINK
 
     # avoimet päät
     open_ends = []
@@ -97,6 +106,8 @@ def close_open_corners(walls: list[Wall]) -> list[Wall]:
             da = float(np.linalg.norm(pt - ea_pt))
             db = float(np.linalg.norm(pt - eb_pt))
             if da > _CLOSE_MAX_EXT or db > _CLOSE_MAX_EXT:
+                continue
+            if not shrink_ok(ia, ea, pt) or not shrink_ok(ib, eb, pt):
                 continue
             score = da + db
             if best is None or score < best[0]:
@@ -131,6 +142,8 @@ def close_open_corners(walls: list[Wall]) -> list[Wall]:
                 continue
             ext = float(np.linalg.norm(pt - ep))
             if ext > _CLOSE_MAX_EXT:
+                continue
+            if not shrink_ok(i, e, pt):
                 continue
             if best is None or ext < best[0]:
                 best = (ext, pt)
@@ -185,6 +198,8 @@ def close_open_corners(walls: list[Wall]) -> list[Wall]:
             jext = float(np.linalg.norm(pt - jend_pt))      # kumppanin venytys
             iext = float(np.linalg.norm(pt - ep))           # avoimen pään venytys
             if jext > _CLOSE_MAX_EXT or iext > _CLOSE_MAX_EXT:
+                continue
+            if not shrink_ok(i, e, pt) or not shrink_ok(j, jend, pt):
                 continue
             # kumppanin venytysmatkan oltava tyhjä (ei gridiä)
             if not _ext_clear(jend_pt, pt, ignore={i, j}):

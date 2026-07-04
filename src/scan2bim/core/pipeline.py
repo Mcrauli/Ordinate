@@ -96,13 +96,16 @@ def _trim_endpoints(wall, pts: np.ndarray):
 
     _MARGIN = 5.0        # mm — pieni reuna päätepisteiden ympärillä
     _MAX_EXTEND = 300.0  # mm — älä pidennä yli tämän (T-liitos tai dataaukko)
+    _MAX_TRIM = 300.0    # mm/pää — älä kutista enempää: datattoman seinän kaistaan
+                         # osuu vain RISTEÄVIEN seinien pisteitä → percentiilit
+                         # romahduttaisivat koko seinän risteyskohtaan
 
     ax = [list(wall.axis[0]), list(wall.axis[1])]
     changed = False
 
     # p0: trimmaa jos data alkaa sisempänä, pidennä jos data alkaa ulompana
     if lo > _MARGIN:
-        new_p0 = p0 + (lo - _MARGIN) * along
+        new_p0 = p0 + min(lo - _MARGIN, _MAX_TRIM) * along
         ax[0] = [round(float(new_p0[0]), 1), round(float(new_p0[1]), 1)]
         changed = True
     elif lo < -_MARGIN and abs(lo) <= _MAX_EXTEND:
@@ -112,7 +115,7 @@ def _trim_endpoints(wall, pts: np.ndarray):
 
     # p1: trimmaa jos data loppuu sisempänä, pidennä jos data jatkuu ulompana
     if hi < length - _MARGIN:
-        new_p1 = p0 + (hi + _MARGIN) * along
+        new_p1 = p0 + max(hi + _MARGIN, length - _MAX_TRIM) * along
         ax[1] = [round(float(new_p1[0]), 1), round(float(new_p1[1]), 1)]
         changed = True
     elif hi > length + _MARGIN and (hi - length) <= _MAX_EXTEND:
@@ -771,11 +774,16 @@ class Pipeline:
         model = detector.detect(cloud)
         model.slabs = detect_slabs(cloud)
 
-        # Lattian todellinen ulkokontuuri (ennen kuin room_polygon korvaa sen
-        # konveksilla kuorella) → perimetriseinien lähde.
-        floor_contour = next(
-            (s.boundary for s in model.slabs if s.slab_type == "floor"), None
-        )
+        # Lattian todelliset ulkokontuurit (KAIKKI erilliset lattia-alueet, ei
+        # vain suurin — paksun seinän takainen huone on oma polygoninsa) →
+        # perimetriseinien lähde.
+        floor_slab = next((s for s in model.slabs if s.slab_type == "floor"), None)
+        floor_contours: list = []
+        if floor_slab is not None:
+            from scan2bim.core.segmentation.slab_detector import detect_floor_contours
+            floor_contours = detect_floor_contours(cloud, floor_slab.elevation)
+            if not floor_contours:
+                floor_contours = [floor_slab.boundary]
 
         # Pintalukitus tarvitsee mahd. tarkan pilven: 12mm-detektiovoxelin
         # sentroidi-bias siirtää yksipuolisen pinnan ~sisäänpäin. Hienompi
@@ -790,17 +798,19 @@ class Pipeline:
         # seiniä samalle akselille (kuten wall_105/wall_108 jotka ovat saman seinän pinnat)
         # Täydennä perimetri lattian ulkorajasta — sulkee ulkoseinät joita
         # detektori ei nappaa (keilausvarjot/ikkunat/kalusteet).
-        if floor_contour:
+        if floor_contours:
             floor_z_w = min((w.z_min for w in model.walls), default=0.0)
             wall_h = max((w.height for w in model.walls), default=2700.0)
             from scan2bim.core.semantics.perimeter import add_perimeter_walls
             # add_perimeter_walls siirtää akselin ulospäin thickness/2 → sisäpinta
             # osuu lattiakontuuriin. Tarkennetaan vielä todelliseen sisäpintaan:
             # keep_thickness säilyttää 300mm-paksuuden eikä nappaa naapuriseinää.
-            perim = add_perimeter_walls(
-                floor_contour, model.walls, floor_z_w, wall_h,
-                pts=np.asarray(cloud.points),
-            )
+            perim: list = []
+            for boundary in floor_contours:
+                perim += add_perimeter_walls(
+                    boundary, model.walls + perim, floor_z_w, wall_h,
+                    pts=np.asarray(cloud.points),
+                )
             perim = _recenter_wall_axes(perim, lock_cloud, band=300.0, keep_thickness=True)
             model.walls = model.walls + perim
 

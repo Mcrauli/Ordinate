@@ -160,14 +160,29 @@ def _measure_thickness(pts: np.ndarray, z: float, slab_type: str) -> float:
     return thickness if 180.0 < thickness < 600.0 else _THICKNESS_DEFAULT
 
 
+def detect_floor_contours(cloud, elevation: float, min_area_m2: float = 1.5) -> list[list[tuple[float, float]]]:
+    """Kaikki lattia-alueiden kontuurit (suurin ensin) — erilliset huoneet paksun
+    seinän takana ovat omia polygonejaan eikä niitä saa pudottaa (perimetri ei
+    muuten koskaan sulje niitä)."""
+    pts = np.asarray(cloud.points)
+    return _contour_boundaries(pts, elevation, min_area_m2 * 1e6)
+
+
 def _contour_boundary(
     pts: np.ndarray, z: float
 ) -> list[tuple[float, float]] | None:
-    """Pisteet z-tasolla → OpenCV-kontuuri → monikulmio."""
+    """Pisteet z-tasolla → OpenCV-kontuuri → suurin monikulmio."""
+    polys = _contour_boundaries(pts, z, min_area_mm2=0.0)
+    return polys[0] if polys else None
+
+
+def _contour_boundaries(
+    pts: np.ndarray, z: float, min_area_mm2: float
+) -> list[list[tuple[float, float]]]:
     mask = np.abs(pts[:, 2] - z) < _Z_BAND_MM
     slab_pts = pts[mask, :2]
     if len(slab_pts) < 10:
-        return None
+        return []
 
     x_min = float(slab_pts[:, 0].min())
     y_min = float(slab_pts[:, 1].min())
@@ -188,19 +203,20 @@ def _contour_boundary(
     binary = cv2.dilate(binary, dilate_k)
 
     contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    if not contours:
-        return None
+    px_area = _GRID_MM * _GRID_MM
+    polys: list[tuple[float, list[tuple[float, float]]]] = []
+    for c in sorted(contours, key=cv2.contourArea, reverse=True):
+        area = float(cv2.contourArea(c)) * px_area
+        if polys and area < min_area_mm2:
+            break
+        epsilon = _CONTOUR_SIMPLIFY * cv2.arcLength(c, True)
+        approx = cv2.approxPolyDP(c, epsilon, True)
+        poly = [(x_min + float(pt[0][0]) * _GRID_MM, y_min + float(pt[0][1]) * _GRID_MM)
+                for pt in approx]
+        if len(poly) >= 3:
+            polys.append((area, poly))
 
-    largest = max(contours, key=cv2.contourArea)
-    epsilon = _CONTOUR_SIMPLIFY * cv2.arcLength(largest, True)
-    approx = cv2.approxPolyDP(largest, epsilon, True)
-
-    result = []
-    for pt in approx:
-        px, py = pt[0]
-        result.append((x_min + px * _GRID_MM, y_min + py * _GRID_MM))
-
-    return result if len(result) >= 3 else None
+    return [p for _, p in polys]
 
 
 def _polygon_area(pts: list[tuple[float, float]]) -> float:

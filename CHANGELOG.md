@@ -4,6 +4,25 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 [`Mcrauli/scan2bim-web`](https://github.com/Mcrauli/scan2bim-web/releases):iin;
 sovellus päivittää itsensä sieltä.
 
+## Julkaisematon — robustisuus mielivaltaisille skanneille
+Moniosaisella GT-talolla (000035, 8 skannia / 2 asuntoa) pipeline tuhosi
+9/17 seinää → 0 tilaa. Viisi juurisyytä korjattu; nyt 14 seinää, 2 tilaa
+(GT: 2), pintamediaani 0.11 mm (13/14 ≤ 1.5 mm). GT-asunnon tarkkuus
+ennallaan (6/6 ≤ 1.5 mm, mediaani 0.10 mm) ja +2 aiemmin kadonnutta seinää.
+- **Trim-romahdus**: risteävän seinän pisteet ±30 mm kaistassa romahduttivat
+  datattoman seinän risteyskohtaan (4.0 m → 79 mm) → kutistus max 300 mm/pää.
+- **Nurkkasulku-romahdus**: kaksi eri paria veti saman seinän molemmat päät
+  samaan leikkauspisteeseen (2.8 m → 0 mm) → sulku saa kutistaa max 300 mm
+  (syvempi leikkaus = T-liitos, ei nurkka).
+- **Dedup söi pitkän seinän**: lyhyt korkean confidencen fragmentti syrjäytti
+  koko seinän (2.2 m pätkä voitti 6.8 m perimetrin; 1.1 m pysty voitti 3.4 m
+  vinon) → pisin jänne voittaa (lateraali korjataan pintalukituksessa).
+- **Dangling-poisto söi oikean seinän**: pää jonka jatke yltää toiseen seinään
+  (≤2.3 m, close_open_corners yhdistää sen) ei ole enää "irrallinen".
+- **Vain suurin lattiakontuuri käsiteltiin**: paksun seinän takainen erillinen
+  huone ei koskaan saanut perimetriseiniä → kaikki ≥1.5 m² lattia-alueet
+  perimetrilähteiksi (`detect_floor_contours`).
+
 ## v0.5.2 — pintatarkkuus millitasolle + syötevahti
 - **Seinäpinnat ≤0.2 mm skannatusta pinnasta** (oli 2–4 mm; GT-asunnolla mitattu
   0.00–0.18 mm): yksipuolisetkin seinät saavat raakapiste-pintalukituksen,
