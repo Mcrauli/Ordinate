@@ -144,7 +144,7 @@ def _gen_room(rng, n_pts: int = 80_000):
         kind = rng.integers(0, 3)      # 0=pöytä, 1=tuoli, 2=kaappi
         if kind == 0:                   # pöytä
             fw, fd = rng.uniform(0.6, 1.6), rng.uniform(0.6, 1.0)
-            fh_bot, fh_top = rng.uniform(0.68, 0.75), rng.uniform(0.68, 0.75)
+            fh_bot, fh_top = sorted((rng.uniform(0.68, 0.75), rng.uniform(0.68, 0.75)))
             label = 7
         elif kind == 1:                 # tuoli
             fw, fd = rng.uniform(0.4, 0.6), rng.uniform(0.4, 0.6)
