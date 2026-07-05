@@ -100,6 +100,11 @@ class PointNetFilter:
             return cloud
 
         keep = self._classify(pts_full)
+        # Laattakaistat pakkosäilytetään: lattia/katto ovat z-histogrammin
+        # dominantit piikit eikä niiden poisto ole koskaan oikein (rouhea
+        # holvipinta luokittui työmaalla 55 % roskaksi → slab/perimetri
+        # menettäisi evidenssin). Malli päättää vain kaistan ULKOpuolelta.
+        keep |= _slab_bands(pts_full)
         if keep.sum() < 200:
             return cloud
 
@@ -112,12 +117,17 @@ class PointNetFilter:
         # Deterministinen näytteistys: sama syöte → sama malli joka ajolla.
         # Globaali np.random heilutti seinien pintalukitusta ±6mm ajojen välillä.
         rng = np.random.RandomState(0)
-        # Työ-voxel: normalisoi pistemäärä → nopea lohkoprosessointi
+        # Työ-voxel OMALLA gridillä (ei o3d voxel_down_sample): o3d:n grid on
+        # ankkuroitu eri origoon → sentroidi voi pudota eri soluun kuin
+        # lähdepisteensä, jolloin avainpohjainen maskinsiirto hukkaa
+        # tasopinnoilta ~20–30 % pisteistä (mitattu: Wall 89 % → 66 %).
+        # Sama grid molempiin suuntiin = jokainen piste perii täsmälleen
+        # oman voxelinsa päätöksen.
         origin = pts_full.min(axis=0)
-        wc = o3d.geometry.PointCloud()
-        wc.points = o3d.utility.Vector3dVector(pts_full)
-        wc = wc.voxel_down_sample(_WORK_VOXEL)
-        wpts = np.asarray(wc.points)
+        vox = np.floor((pts_full - origin) / _WORK_VOXEL).astype(np.int64)
+        vkey = (vox[:, 0] * 100_003 + vox[:, 1]) * 100_003 + vox[:, 2]
+        _, first, inv = np.unique(vkey, return_index=True, return_inverse=True)
+        wpts = pts_full[first]
         if len(wpts) < 64:
             return np.ones(len(pts_full), dtype=bool)
 
@@ -179,15 +189,34 @@ class PointNetFilter:
         structural = np.isin(pred, list(_KEEP_CLASSES))
         structural[no_vote] = True
 
-        # Siirrä maski täydelle pilvelle voxel-grid-hashilla
-        def _vkey(p: np.ndarray) -> np.ndarray:
-            v = np.floor((p - origin) / _WORK_VOXEL).astype(np.int64)
-            return (v[:, 0] * 100_003 + v[:, 1]) * 100_003 + v[:, 2]
-
-        kept_keys = np.unique(_vkey(wpts[structural]))
-        return np.isin(_vkey(pts_full), kept_keys)
+        # Siirrä maski täydelle pilvelle: piste perii oman voxelinsa päätöksen
+        return structural[inv]
 
 
 def _softmax(x: np.ndarray) -> np.ndarray:
     e = np.exp(x - x.max(axis=-1, keepdims=True))
     return e / e.sum(axis=-1, keepdims=True)
+
+
+_SLAB_BAND_MM = 90.0     # ± piikin ympärillä
+_SLAB_BIN_MM = 20.0
+
+
+def _slab_bands(pts: np.ndarray) -> np.ndarray:
+    """True pisteille jotka ovat dominanttien lattia/katto-z-piikkien kaistoissa."""
+    z = pts[:, 2]
+    z0, z1 = float(z.min()), float(z.max())
+    if z1 - z0 < 500.0:
+        return np.zeros(len(pts), dtype=bool)
+    nbins = max(int((z1 - z0) / _SLAB_BIN_MM), 10)
+    hist, edges = np.histogram(z, bins=nbins)
+    centers = 0.5 * (edges[:-1] + edges[1:])
+    third = (z1 - z0) / 3.0
+    mask = np.zeros(len(pts), dtype=bool)
+    for lo, hi in ((z0, z0 + third), (z1 - third, z1)):
+        sel = (centers >= lo) & (centers <= hi)
+        if not sel.any() or hist[sel].max() == 0:
+            continue
+        peak_z = float(centers[sel][int(np.argmax(hist[sel]))])
+        mask |= np.abs(z - peak_z) < _SLAB_BAND_MM
+    return mask
