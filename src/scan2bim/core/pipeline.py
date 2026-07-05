@@ -953,9 +953,12 @@ class Pipeline:
         # ext_004 266mm = sama yläseinä) ovat vasta NYT lopullisilla, päällekkäisillä
         # paikoillaan. Aiemmat dedupit eivät napanneet niitä koska sijainnit muuttuivat
         # vielä. Tehdään ennen huone/aukko-detektiota jotta ne käyttävät puhdasta joukkoa.
-        from scan2bim.core.semantics.wall_semantics import merge_collinear_walls
+        from scan2bim.core.semantics.wall_semantics import bridge_lintel_gaps, merge_collinear_walls
         model.walls = merge_collinear_walls(model.walls)   # yhdistä sama seinä jaettuna (poistaa pöhö-pätkät)
         model.walls = _deduplicate(model.walls)
+        # Silloita oviaukkojen katkaisemat seinät (railo + ylitysevidenssi) —
+        # ovi kollineaaristen pätkien VÄLISSÄ ei muuten löydy koskaan.
+        model.walls = bridge_lintel_gaps(model.walls, np.asarray(lock_cloud.points))
         model.walls = snap_corners(model.walls)
         # Sulje vajaat perimetrinurkat: yhdistä avoimet päät PAREITTAIN (vain avoimet
         # päät, vain toisiinsa) → ei gridiä kuten iso _resolve_corners-extend tekisi.

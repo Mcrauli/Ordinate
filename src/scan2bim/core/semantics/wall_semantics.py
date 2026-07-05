@@ -105,6 +105,113 @@ def merge_collinear_walls(walls: list[Wall]) -> list[Wall]:
     return work
 
 
+_BRIDGE_MIN_GAP = 300.0     # mm — kapeampi railo on nurkkasnapin heiniä, ei ovi
+_BRIDGE_MAX_GAP = 2200.0    # mm — levein oviaukko (pariovi ~1900 + karmivara)
+_BRIDGE_PERP = 25.0         # mm — sama linja: pintalukitut pätkät samasta seinästä
+                            # ovat mm-tasolla; GT-pohjat porrastavat seinälinjaa 60mm
+                            # (jog) — porrastetut EIVÄT ole sama seinä (merge → 64mm virhe)
+_BRIDGE_BIN = 100.0         # mm — railon kattavuusbinit
+_BRIDGE_LINTEL_FRAC = 0.6   # ylityksen katettava ≥ tämä osuus railosta
+
+
+def bridge_lintel_gaps(walls: list[Wall], pts: np.ndarray) -> list[Wall]:
+    """Silloita oviaukon katkaisema seinä: pystymaski pudottaa oviaukon kohdan
+    (ei seinää 0–2 m) → kontuuri tuottaa kaksi kollineaarista pätkää joiden
+    väliin ovi jää — eikä aukkodetektio etsi seinäjänteiden ULKOpuolelta.
+    Oven päällä on aina ylitys (palkki ~2 m → katto): jos railon yllä on
+    ylitysevidenssi, railo on saman seinän aukko → pätkät yhdistetään ja
+    aukkodetektio luokittelee aukon normaalisti. Lattiakaistaa EI tutkita:
+    suljettu ovilehti täyttää sen (synteettiset scenet skannataan ovet kiinni,
+    lehti ±50 mm akselista) eikä ohuella seinällä lehteä voi erottaa pinnasta."""
+    if len(walls) < 2 or len(pts) == 0:
+        return walls
+    work = list(walls)
+    merged = True
+    while merged:
+        merged = False
+        n = len(work)
+        for i in range(n):
+            for j in range(i + 1, n):
+                a, b = work[i], work[j]
+                if len(a.axis) < 2 or len(b.axis) < 2:
+                    continue
+                da, db = _direction(a), _direction(b)
+                ang = np.degrees(np.arccos(min(1.0, abs(float(np.dot(da, db))))))
+                if ang > _COLIN_ANGLE_DEG:
+                    continue
+                p0a = np.array(a.axis[0], float); p1a = np.array(a.axis[1], float)
+                p0b = np.array(b.axis[0], float); p1b = np.array(b.axis[1], float)
+                na = np.array([-da[1], da[0]])
+                if abs(float(np.dot(p0b - p0a, na))) > _BRIDGE_PERP:
+                    continue
+                ts = [float(np.dot(p - p0a, da)) for p in (p0a, p1a, p0b, p1b)]
+                ta0, ta1 = sorted(ts[:2]); tb0, tb1 = sorted(ts[2:])
+                gap_lo = min(ta1, tb1); gap_hi = max(ta0, tb0)
+                gap = gap_hi - gap_lo
+                if not (_BRIDGE_MIN_GAP <= gap <= _BRIDGE_MAX_GAP):
+                    continue
+                if not _gap_has_lintel(p0a, da, na, gap_lo, gap_hi, a, pts):
+                    continue
+                # Pintakoherenssi: pätkien SKANNATTUJEN pintojen on oltava samalla
+                # tasolla — akselipäät voivat sattua lähelle vaikka seinälinja
+                # porrastuu (GT-jog 60mm → yhdistetty seinä olisi 64mm pielessä).
+                if not _segments_coplanar(p0a, da, na, (ta0, ta1), (tb0, tb1), a, pts):
+                    continue
+                lo = min(ta0, tb0); hi = max(ta1, tb1)
+                s = p0a + lo * da; e = p0a + hi * da
+                keep = a if _wall_length(a) >= _wall_length(b) else b
+                thin = a if a.thickness <= b.thickness else b
+                work[i] = keep.model_copy(update={
+                    "axis": [[round(float(s[0]), 1), round(float(s[1]), 1)],
+                             [round(float(e[0]), 1), round(float(e[1]), 1)]],
+                    "thickness": thin.thickness,
+                    "measured_thickness": getattr(thin, "measured_thickness", None),
+                })
+                work.pop(j)
+                merged = True
+                break
+            if merged:
+                break
+    return work
+
+
+_BRIDGE_COPLANAR_MM = 15.0  # mm — pätkien pintamediaanien max ero
+
+
+def _segments_coplanar(p0a, da, na, span_a, span_b, wall, pts: np.ndarray) -> bool:
+    rel = pts[:, :2] - p0a
+    t = rel @ da
+    perp = rel @ na
+    z = pts[:, 2]
+    zm = (z > wall.z_min + 200.0) & (z < wall.z_min + wall.height - 200.0)
+    band = float(wall.thickness) / 2.0 + 80.0
+    meds = []
+    for lo, hi in (span_a, span_b):
+        m = zm & (t > lo + 100.0) & (t < hi - 100.0) & (np.abs(perp) < band)
+        if m.sum() < 100:
+            return False
+        s = perp[m]
+        side = s > 0
+        dom = s[side] if side.sum() >= (~side).sum() else s[~side]
+        meds.append(float(np.median(dom)))
+    return abs(meds[0] - meds[1]) <= _BRIDGE_COPLANAR_MM
+
+
+def _gap_has_lintel(p0a, da, na, gap_lo, gap_hi, wall, pts: np.ndarray) -> bool:
+    rel = pts[:, :2] - p0a
+    t = rel @ da
+    perp = rel @ na
+    z = pts[:, 2]
+    in_gap = (t > gap_lo) & (t < gap_hi) & (np.abs(perp) < 150.0)
+    top = wall.z_min + wall.height
+    lintel = in_gap & (z > wall.z_min + 1800.0) & (z < top + 100.0)
+    nbins = max(int((gap_hi - gap_lo) / _BRIDGE_BIN), 1)
+    edges = np.linspace(gap_lo, gap_hi, nbins + 1)
+    lint_cov, _ = np.histogram(t[lintel], bins=edges)
+    lint_frac = float((lint_cov >= 3).sum()) / nbins
+    return lint_frac >= _BRIDGE_LINTEL_FRAC
+
+
 def _deduplicate(walls: list[Wall]) -> list[Wall]:
     """Poistaa lähes päällekkäiset seinät — pitää pisimmän jänteen."""
     kept: list[Wall] = []
