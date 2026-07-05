@@ -4,7 +4,12 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 [`Mcrauli/scan2bim-web`](https://github.com/Mcrauli/scan2bim-web/releases):iin;
 sovellus päivittää itsensä sieltä.
 
-## Julkaisematon — pintatarkkuus todennettuna RAAKAPILVEÄ vasten
+## v0.6.0 — pintatarkkuus todennettuna raakapilveä vasten + robustisuus
+
+Sisältää myös oviaukkosillan: pystymaskin katkaisema seinä (ovi railossa
+kollineaaristen pätkien välissä) yhdistetään ylitysevidenssillä ja
+pintakoherenssiehdolla → ovet löytyvät myös seinäjänteiden väleistä.
+
 Rohbau3D-työmaaskannilla (oikea TLS, 11 M pistettä) mallin pinnat olivat
 jopa 21 mm pielessä vaikka QA väitti 0.2 mm — QA ja pintalinjaus mittasivat
 12 mm voxel-suodatettua pilveä. Nyt molemmat käyttävät 5 mm raakapilveä ja
@@ -30,7 +35,7 @@ virheet korjattu: työmaaseinät 0.5–5 mm raakaa vasten (oli 3–21 mm), GT-as
 - **Perimetri-id:t uniikit** monikontuuritilanteessa (kaksi eri seinää oli
   molemmat wall_ext_001).
 
-## Julkaisematon — robustisuus mielivaltaisille skanneille
+### Robustisuus mielivaltaisille skanneille (sama julkaisu)
 Moniosaisella GT-talolla (000035, 8 skannia / 2 asuntoa) pipeline tuhosi
 9/17 seinää → 0 tilaa. Viisi juurisyytä korjattu; nyt 14 seinää, 2 tilaa
 (GT: 2), pintamediaani 0.11 mm (13/14 ≤ 1.5 mm). GT-asunnon tarkkuus
