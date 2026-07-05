@@ -100,6 +100,76 @@ def load_pretrained(model, path: Path) -> None:
 # Vaihtoehto B — synteettinen harjoitusdata
 # ---------------------------------------------------------------------------
 
+def _gen_retail_room(rng, n_pts: int = 120_000):
+    """Synteettinen LIIKETILA: iso halli + lattia-katto-hyllyrivit (label 10)
+    + tavaraa hyllyillä (label 12). Hyllyrivit läpäisevät geometrisen pysty-
+    maskin ja näyttävät seiniltä — suodattimen on opittava ne pois."""
+    import numpy as np
+
+    W = rng.uniform(10.0, 25.0)
+    D = rng.uniform(8.0, 20.0)
+    H = rng.uniform(3.0, 5.0)
+    density = n_pts / (2 * (W * D + W * H + D * H) + 0.001)
+
+    pts_list, lbl_list = [], []
+
+    def _emit(n, label):
+        pts_list.append(n); lbl_list.append(np.full(len(n), label, dtype=np.int64))
+
+    n_floor = max(200, int(density * W * D))
+    xy = rng.uniform([0, 0], [W, D], (n_floor, 2))
+    _emit(np.c_[xy, rng.normal(0.0, 0.004, n_floor)], 1)
+    _emit(np.c_[xy + rng.uniform(-0.01, 0.01, (n_floor, 2)),
+                rng.normal(H, 0.004, n_floor)], 0)
+
+    for axis, fixed, lo, hi in [(0, 0.0, 0, D), (0, W, 0, D), (1, 0.0, 0, W), (1, D, 0, W)]:
+        n_wall = max(100, int(density * (hi - lo) * H))
+        u = rng.uniform(lo, hi, n_wall)
+        v = rng.uniform(0.0, H, n_wall)
+        noise = rng.normal(0, 0.004, n_wall)
+        w = (np.c_[np.full(n_wall, fixed) + noise, u, v] if axis == 0
+             else np.c_[u, np.full(n_wall, fixed) + noise, v])
+        _emit(w, 2)
+
+    # Hyllyrivit: yhdensuuntaiset, käytävävälein, LÄHES kattoon (myymälähylly
+    # 2.0–2.5m tai varastohylly kattoon asti)
+    n_rows = rng.integers(2, 6)
+    aisle = rng.uniform(1.2, 2.5)
+    shelf_d = rng.uniform(0.4, 1.0)
+    y0 = rng.uniform(1.0, 2.5)
+    for r in range(n_rows):
+        ry = y0 + r * (shelf_d + aisle)
+        if ry + shelf_d > D - 1.0:
+            break
+        sh_h = rng.uniform(2.0, H - rng.uniform(0.0, 0.4))
+        x0 = rng.uniform(0.5, 2.0)
+        x1 = W - rng.uniform(0.5, 2.0)
+        seg_len = x1 - x0
+        if seg_len < 2.0:
+            continue
+        # hyllyn päädyt + molemmat pitkät pystypinnat (kuin ohut "seinä")
+        n_face = max(150, int(density * seg_len * sh_h))
+        for fy in (ry, ry + shelf_d):
+            u = rng.uniform(x0, x1, n_face)
+            v = rng.uniform(0.0, sh_h, n_face)
+            _emit(np.c_[u, np.full(n_face, fy) + rng.normal(0, 0.01, n_face), v], 10)
+        # hyllytasot + tavaraa (epätasainen täyttö)
+        n_lvl = rng.integers(3, 7)
+        for lv in range(n_lvl):
+            lz = (lv + 1) * sh_h / (n_lvl + 1)
+            n_g = max(60, int(density * seg_len * shelf_d * 0.8))
+            gx = rng.uniform(x0, x1, n_g)
+            gy = rng.uniform(ry, ry + shelf_d, n_g)
+            gz = lz + rng.uniform(0.0, 0.35, n_g)
+            keep = rng.random(n_g) < rng.uniform(0.4, 0.9)
+            if keep.any():
+                _emit(np.c_[gx[keep], gy[keep], gz[keep]], 12)
+
+    pts = np.vstack(pts_list).astype(np.float32)
+    lbl = np.concatenate(lbl_list).astype(np.int64)
+    return pts, lbl
+
+
 def _gen_room(rng, n_pts: int = 80_000):
     """Generoi yksi synteettinen huone, palauttaa (pts Nx3, labels N) metreinä."""
     import numpy as np
