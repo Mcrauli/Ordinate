@@ -26,6 +26,33 @@ _MAX_WIDTH_MM = 600.0      # palkin max-leveys (ei katto/laatta)
 _MIN_HEIGHT_MM = 50.0      # palkin min-z-ulottuvuus (depth)
 
 
+_BEAM_WALL_MARGIN = 150.0   # mm — tätä lähempänä seinälinjaa olevat pisteet pois
+                            # (seinän yläosa on pitkänomainen klusteri = valepalkki)
+
+
+def detect_beams(cloud, walls, floor_z: float, ceiling_z: float) -> list[Beam]:
+    """Pipeline-entrypoint: palkit kattovyöhykkeestä seinäeksluusiolla."""
+    from .column_detector import _dist_to_walls
+
+    pts = np.asarray(cloud.points)
+    if len(pts) < _MIN_INLIERS or ceiling_z - floor_z < 1500.0:
+        return []
+    zmask = (pts[:, 2] > floor_z + 0.5 * (ceiling_z - floor_z)) & (pts[:, 2] < ceiling_z - 30.0)
+    band = pts[zmask]
+    if len(band) < _MIN_INLIERS:
+        return []
+    far = _dist_to_walls(band[:, :2], walls) > _BEAM_WALL_MARGIN
+    free = band[far]
+    if len(free) < _MIN_INLIERS:
+        return []
+    sub = o3d.geometry.PointCloud()
+    sub.points = o3d.utility.Vector3dVector(free)
+    beams, _ = BeamDetector(sub_ceiling_mm=float(free[:, 2].max() - free[:, 2].min()) + 100.0).detect(sub)
+    for i, b in enumerate(beams):
+        beams[i] = b.model_copy(update={"id": f"beam_{i:03d}"})
+    return beams
+
+
 class BeamDetector(ElementDetector):
     """Löytää palkit kattovyöhykkeen pitkänomaisista klustereista."""
 

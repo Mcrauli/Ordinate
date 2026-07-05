@@ -1017,6 +1017,9 @@ class Pipeline:
         from scan2bim.core.segmentation.column_detector import detect_columns
         model.columns = detect_columns(cloud, model.walls, floor_z, ceiling_z)
 
+        from scan2bim.core.segmentation.beam_detector import detect_beams
+        model.beams = detect_beams(cloud, model.walls, floor_z, ceiling_z)
+
         model.metadata.source_file = source_path.name
         model.metadata.voxel_size = self.config.voxel_size
         return model
