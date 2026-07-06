@@ -35,7 +35,9 @@ def load_floor_slice(
             progress_cb(f"  [{i+1}/{len(paths)}] {path.name}")
         try:
             cloud = load_point_cloud(path)
-        except Exception:
+        except Exception as e:
+            if progress_cb:
+                progress_cb(f"  VAROITUS: {path.name} ohitettiin — {e}")
             continue
 
         # Vapauta normaalit ja värit heti — tarvitaan vain XYZ. Säästää ~1.3 GB/tiedosto.

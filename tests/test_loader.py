@@ -61,3 +61,32 @@ def test_coordinates_preserved(tmp_path):
     cloud = load_point_cloud(p)
     pts = np.asarray(cloud.points)
     np.testing.assert_allclose(pts, raw, atol=1e-3)
+
+
+def test_truncated_ply_warns_or_raises(tmp_path, caplog):
+    """Katkennut lataus/siirto -> vajaa PLY: selkea varoitus (osittainen luku)
+    tai selkovirhe (tyhja luku), ei aanetonta osittaista mallia."""
+    import logging
+    import numpy as np
+    import open3d as o3d
+    from scan2bim.core.geometry.loader import load_point_cloud
+
+    pts = np.random.RandomState(0).uniform(0, 5000, (10000, 3))
+    pc = o3d.geometry.PointCloud()
+    pc.points = o3d.utility.Vector3dVector(pts)
+    full = tmp_path / "full.ply"
+    o3d.io.write_point_cloud(str(full), pc)  # binaari-ply
+
+    data = full.read_bytes()
+    cut = tmp_path / "cut.ply"
+    cut.write_bytes(data[: int(len(data) * 0.6)])   # katkaise 60 %:iin
+
+    with caplog.at_level(logging.WARNING):
+        try:
+            cloud = load_point_cloud(cut)
+        except ValueError as e:
+            assert "vajaa" in str(e) or "vaurioitunut" in str(e)
+            return
+    assert any("vajaa" in r.message for r in caplog.records), \
+        "vajaa tiedosto luettiin ilman varoitusta"
+    assert len(cloud.points) < 10000
