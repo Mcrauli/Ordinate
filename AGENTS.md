@@ -228,6 +228,30 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
 - **Perimetriseinän sijaintiprior on heikko**: lattiakontuurigrid (25 mm ruutu +
   3 px dilaatio) tuottaa kymmenien mm systemaattista biasta → linjauskorjaus
   floorplan-seinille max 90 mm (mitatuilla 25 mm pitää — niiden akseli on jo oikein).
+- **Suodattimen maskinsiirto EI saa käyttää o3d:n voxel_down_samplea** — o3d:n
+  grid on eri origossa kuin oma hash → sentroidi putoaa naapurisoluun ja
+  tasopinnoilta katosi 20–30 % pisteistä avainhaussa (Wall 89 % → 66 %).
+  Tämä oli tuotannossa v0.5.0:sta asti ja söi seiniä salaa. Oma grid molempiin
+  suuntiin (`unique(return_inverse)`) → piste perii täsmälleen voxelinsa päätöksen.
+- **Laattakaistat (lattia/katto ±90 mm z-piikeistä) pakkosäilytetään** ennen
+  suodatusta — rouhea työmaaholvi luokittui 55 % roskaksi ja slab/perimetri
+  näki nälkää. Poisto ei ole koskaan oikein.
+- **Pilarit: pystypeitto, EI DBSCAN** (`column_detector`): työmaalla holvituet/
+  tavara ketjuttavat pilarin ympäristöönsä (eps-ketju) → jättiklusteri → 0/92
+  GT-pilaria. Solu jonka z-binit täynnä lattia→katto = ehdokas; ohut tuki putoaa
+  minimimittaan, seinänpala rengastestiin (linjassa lisää täyttösoluja).
+- **Kerros jossa <2 % pisteistä on haamu** (skannerin harhat rakennuksen alla)
+  — tuotti tyhjän IFC:n floor_00:na. Korkea viipale (> 4.6 m) ilman tyhjää
+  z-kaistaa jaetaan sisäisen laattapiikin kohdalta (portaikko yhdistää tasot,
+  muuten `_floor_ceiling` ottaa väärän katon ja 55 %-maski tappaa kaikki seinät).
+- **Mallikoulutuksen seesaw**: pelkkä Rohbau-koulutus tuhosi asuntosuodatuksen,
+  roskapainot ×3 tuhosi työmaarakenteen (89 → 61 %). Checkpointit AINA talteen
+  versioittain ennen export_onnx:ää (se ylikirjoittaa .pth:n!). Aktiivinen malli
+  varmuuskopioidaan ennen korvaamista, ja korvaus vain jos KOKO gauntlet
+  (asunto + talo35 + rohbau keep-ratet) on vihreä.
+- **Diagnostiikkaraportti** (`qa/diagnostics.py`): joka ajosta `diagnostics.txt`
+  output-hakemistoon (versio, ympäristö, vaihelokit, virhe) — pilottiasiakas ei
+  voi jakaa skanneja, tämän voi. Ei koordinaatteja.
 
 ## Tunnetut rajoitukset
 
