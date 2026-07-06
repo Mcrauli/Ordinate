@@ -10,6 +10,12 @@ _MIN_FLOOR_HEIGHT = 2000.0   # mm
 _Z_BIN_MM = 25.0             # mm — pienet binit, jotta laattavälin sisäosa on aidosti tyhjä
 _MIN_GAP_MM = 150.0          # mm — gap-kaistan minimipituus kerrosjaoksi
 _Z_BUFFER = 200.0            # mm — puskuri kerroksen ylä/alarajalle
+_MIN_FLOOR_FRAC = 0.02       # kerroksessa oltava ≥ 2 % pisteistä (aito parvikin ≥3–5 %; (harhapisteet
+                             # scene_02008: haamu oli 0.07 %) — harha ei ole kerros
+_TALL_SPAN_MM = 4600.0       # tätä korkeampi viipale voi sisältää 2 tasoa
+_SLAB_PEAK_FRAC = 0.30       # laattapiikin min-korkeus (osuus maksimista)
+_SLAB_GROUP_MM = 600.0       # piikit tämän sisällä = sama laatta (kaksi pintaa)
+_SLAB_OVERLAP = 300.0        # jaetun laatan molemmat puolet saavat laatan evidenssin
 
 
 def detect_floors(z: np.ndarray) -> list[tuple[float, float]]:
@@ -54,9 +60,6 @@ def detect_floors(z: np.ndarray) -> list[tuple[float, float]]:
     if gap_start is not None and (n_bins - gap_start) >= min_gap_bins:
         splits.append((float(edges[gap_start]) + z_max) / 2.0)
 
-    if not splits:
-        return [(z_min - _Z_BUFFER, z_max + _Z_BUFFER)]
-
     floors: list[tuple[float, float]] = []
     prev = z_min
     for sp in splits:
@@ -65,8 +68,56 @@ def detect_floors(z: np.ndarray) -> list[tuple[float, float]]:
         prev = sp
     if z_max - prev >= _MIN_FLOOR_HEIGHT:
         floors.append((prev - _Z_BUFFER, z_max + _Z_BUFFER))
+    if not floors:
+        floors = [(z_min - _Z_BUFFER, z_max + _Z_BUFFER)]
 
-    return floors if floors else [(z_min - _Z_BUFFER, z_max + _Z_BUFFER)]
+    # Harhapistesuodatin: "kerros" jossa on alle 1 % pisteistä on skannerin
+    # haamuja rakennuksen ala/yläpuolella — tuottaisi tyhjän mallin IFC:hen.
+    counted = [(lo, hi, int(((z >= lo) & (z <= hi)).sum())) for lo, hi in floors]
+    floors = [(lo, hi) for lo, hi, n in counted if n >= _MIN_FLOOR_FRAC * len(z)]
+    if not floors:
+        floors = [max(counted, key=lambda t: t[2])[:2]]
+
+    # Korkea viipale ilman tyhjää kaistaa voi sisältää KAKSI tasoa (portaikko/
+    # aukot yhdistävät → laattaväli ei ole tyhjä). Jaa sisäisen laattapiikin
+    # kohdalta; molemmat puolet saavat laatan evidenssin (±_SLAB_OVERLAP).
+    out: list[tuple[float, float]] = []
+    for lo, hi in floors:
+        out.extend(_split_tall_slice(z, lo, hi))
+    return out
+
+
+def _split_tall_slice(z: np.ndarray, lo: float, hi: float) -> list[tuple[float, float]]:
+    if hi - lo < _TALL_SPAN_MM:
+        return [(lo, hi)]
+    zz = z[(z >= lo) & (z <= hi)]
+    if len(zz) < 1000:
+        return [(lo, hi)]
+    nb = max(int((hi - lo) / 100.0), 10)
+    hist, edges = np.histogram(zz, bins=nb)
+    centers = 0.5 * (edges[:-1] + edges[1:])
+    strong = centers[hist >= _SLAB_PEAK_FRAC * hist.max()]
+    if len(strong) == 0:
+        return [(lo, hi)]
+    # ryhmittele piikit laatoiksi
+    groups: list[list[float]] = [[float(strong[0])]]
+    for c in strong[1:]:
+        if c - groups[-1][-1] <= _SLAB_GROUP_MM:
+            groups[-1].append(float(c))
+        else:
+            groups.append([float(c)])
+    slabs = [float(np.mean(g)) for g in groups]
+    if len(slabs) < 3:
+        return [(lo, hi)]
+    # sisäiset laatat = jakokohdat; hylkää jako joka tuottaisi <2m tason
+    result: list[tuple[float, float]] = []
+    seg_lo = lo
+    for s in slabs[1:-1]:
+        if s - seg_lo >= _MIN_FLOOR_HEIGHT and hi - s >= _MIN_FLOOR_HEIGHT:
+            result.append((seg_lo, s + _SLAB_OVERLAP))
+            seg_lo = s - _SLAB_OVERLAP
+    result.append((seg_lo, hi))
+    return result if len(result) > 1 else [(lo, hi)]
 
 
 def detect_floors_from_files(paths: list[Path], sample_step: int = 1) -> list[tuple[float, float]]:
