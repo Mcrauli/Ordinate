@@ -4,6 +4,26 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 [`Mcrauli/scan2bim-web`](https://github.com/Mcrauli/scan2bim-web/releases):iin;
 sovellus päivittää itsensä sieltä.
 
+## Julkaisematon — liiketilamoodi + suodattimen isot korjaukset + pilarit/palkit
+- **Kohdetyyppi-valinta (GUI): "Liiketila / työmaa"** — oma suodatinmalli joka
+  poistaa lattia-katto-hyllyrivit (synteettinen halli: 4 hyllyriviseinää → 0;
+  hyllynpoisto 17 % → 95 %). Asunnoissa oletusmalli on tarkempi — siksi valinta,
+  ei automatiikka. Molemmat mallit bundlataan exe:hen.
+- **Suodattimen maskinsiirtobugi korjattu** (tuotannossa v0.5.0:sta): tasopinnat
+  menettivät 20–30 % pisteistä voxel-avainhaussa → työmaaseinistä säilyy nyt
+  98 % (oli 60 %). Lattia/katto-kaistat pakkosäilytetään aina.
+- **Pilaridetektio uusiksi** (pystypeitto, ei DBSCAN): työmaa-GT 0/92 → 14/38
+  ilman että holvituet/tavara sotkevat; väärät seinänpalat karsitaan rengastestillä.
+- **Palkkidetektori kytketty pipelineen** (oli irrallaan — palkit olivat aina 0)
+  seinäeksluusiolla.
+- **Kerrosjako**: haamukerrokset (harhapisteet, <2 % pisteistä) hylätään — 4
+  työmaasceneä tuotti aiemmin tyhjän mallin; korkea viipale ilman tyhjää
+  z-kaistaa jaetaan sisäisen laattapiikin kohdalta.
+- **Diagnostiikkaraportti**: joka ajosta jaettava diagnostics.txt (versio,
+  ympäristö, vaihelokit, virheet — ei geometriaa) etätuen tarpeisiin.
+- E57-stressitesti: 46 M pisteen Matterport-moniskanni (9 asemaa) läpi
+  kaatumatta, mediaani 0.21 mm, roskaseinät flägättyinä.
+
 ## v0.6.0 — pintatarkkuus todennettuna raakapilveä vasten + robustisuus
 
 Sisältää myös oviaukkosillan: pystymaskin katkaisema seinä (ovi railossa

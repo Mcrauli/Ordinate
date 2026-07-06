@@ -250,3 +250,12 @@ def test_diagnostics_report_written(tmp_path):
     txt = rep.read_text(encoding="utf-8")
     assert "versio:" in txt and "syötteet:" in txt
     assert "Seinädetektio" in txt or "kerros" in txt.lower()
+
+
+def test_retail_filter_variant_loads():
+    """pointnet-retail-variantti lataa oman mallinsa ja poistaa hyllyt;
+    puuttuessa fallback oletusmalliin."""
+    from scan2bim.core.segmentation.pointnet_filter import PointNetFilter, _find_model_path
+    assert _find_model_path("retail") is not None, "retail-mallia ei loydy"
+    f = PointNetFilter(variant="retail")
+    assert f.is_available()

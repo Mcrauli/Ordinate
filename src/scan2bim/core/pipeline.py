@@ -31,7 +31,9 @@ class PipelineConfig:
     icp_refine: bool = False                                   # ICP-hienorekisteröinti monoskannauksille
     save_intermediate: bool = False
     semantic_filter: bool = False          # Vaihe 2 legacy (geometric); käytä semantic_filter_mode
-    semantic_filter_mode: Literal["off", "geometric", "pointnet"] = "off"
+    semantic_filter_mode: Literal["off", "geometric", "pointnet", "pointnet-retail"] = "off"
+    # pointnet-retail: liiketila/tyomaa-malli — poistaa lattia-katto-hyllyrivit
+    # (95% vs oletusmallin 17%); asunnoissa oletusmalli on tarkempi.
 
 
 _AUTO_TARGET_POINTS = 4_000_000
@@ -820,11 +822,11 @@ class Pipeline:
             return cloud
 
         n0 = len(cloud.points)
-        if mode == "pointnet":
+        if mode in ("pointnet", "pointnet-retail"):
             from scan2bim.core.segmentation.pointnet_filter import PointNetFilter  # noqa: PLC0415
-            filt = PointNetFilter()
+            filt = PointNetFilter(variant="retail" if mode == "pointnet-retail" else "default")
             out = filt.filter(cloud)
-            label = "PointNet" if filt.is_available() else "geometrinen (PointNet-fallback)"
+            label = ("PointNet-liiketila" if mode == "pointnet-retail" else "PointNet")                 if filt.is_available() else "geometrinen (PointNet-fallback)"
         else:
             from scan2bim.core.segmentation.semantic_filter import SemanticFilter  # noqa: PLC0415
             out = SemanticFilter().filter(cloud)

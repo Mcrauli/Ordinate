@@ -24,6 +24,9 @@ import open3d as o3d
 log = logging.getLogger(__name__)
 
 _MODEL_FILENAME = "s3dis_pointnet.onnx"
+_MODEL_FILENAME_RETAIL = "s3dis_pointnet_retail.onnx"   # liiketila/tyomaa-variantti
+                                                        # (hyllynpoisto 95% vs 17%;
+                                                        # asuntokaytossa oletusmalli on tarkempi)
 
 # S3DIS 13 luokkaa: 0-6 rakenteellisia, 7-12 kalusteet/krääsä
 _KEEP_CLASSES: frozenset[int] = frozenset(range(7))  # ceiling,floor,wall,beam,column,window,door
@@ -39,10 +42,11 @@ _N_CLASSES    = 13
 _WORK_VOXEL = 30.0       # mm
 
 
-def _find_model_path() -> Path | None:
+def _find_model_path(variant: str = "default") -> Path | None:
     """Palauttaa mallin polun tai None jos ei löydy."""
+    fname = _MODEL_FILENAME_RETAIL if variant == "retail" else _MODEL_FILENAME
     if getattr(sys, "frozen", False):
-        p = Path(sys._MEIPASS) / "models" / _MODEL_FILENAME  # type: ignore[attr-defined]
+        p = Path(sys._MEIPASS) / "models" / fname  # type: ignore[attr-defined]
         return p if p.exists() else None
 
     # Dev: kävele ylös kunnes löytyy pyproject.toml (repo root)
@@ -50,7 +54,7 @@ def _find_model_path() -> Path | None:
     for _ in range(8):
         candidate = candidate.parent
         if (candidate / "pyproject.toml").exists():
-            p = candidate / "models" / _MODEL_FILENAME
+            p = candidate / "models" / fname
             return p if p.exists() else None
     return None
 
@@ -58,8 +62,10 @@ def _find_model_path() -> Path | None:
 class PointNetFilter:
     """S3DIS PointNet ONNX -kalustesuodatin. Fallback geometriseen jos malli puuttuu."""
 
-    def __init__(self, model_path: Path | None = None) -> None:
-        path = model_path or _find_model_path()
+    def __init__(self, model_path: Path | None = None, variant: str = "default") -> None:
+        path = model_path or _find_model_path(variant)
+        if path is None and variant != "default":
+            path = _find_model_path()   # retail-mallia ei bundlattu → oletusmalli
         self._session = self._load_session(path)
         if self._session is not None:
             log.debug("PointNetFilter: malli ladattu %s", path)

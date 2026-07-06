@@ -178,6 +178,16 @@ class FilePanel(QtWidgets.QWidget):
             self._sem_filter.setEnabled(False)
         form.addRow("Kalustesuodatus:", self._sem_filter)
 
+        self._site_type = QtWidgets.QComboBox()
+        self._site_type.addItems(["Asunto / toimisto", "Liiketila / työmaa"])
+        self._site_type.setToolTip(
+            "Liiketila / työmaa: suodatinmalli joka poistaa lattiasta kattoon\n"
+            "ulottuvat hyllyrivit ja työmaakrääsän (myymälät, varastot, runko-\n"
+            "vaiheen kohteet). Asunnoissa ja toimistoissa oletus on tarkempi."
+        )
+        self._site_type.setEnabled(_MODEL_AVAILABLE)
+        form.addRow("Kohdetyyppi:", self._site_type)
+
         self._ifc = QtWidgets.QCheckBox("IFC")
         self._ifc.setChecked(True)
         self._dxf = QtWidgets.QCheckBox("DXF")
@@ -222,7 +232,10 @@ class FilePanel(QtWidgets.QWidget):
             export_qa=self._qa.isChecked(),
             qa_tolerance=self._qa_tol.value(),
             icp_refine=self._icp.isChecked(),
-            semantic_filter_mode="pointnet" if self._sem_filter.isChecked() else "off",
+            semantic_filter_mode=(
+                ("pointnet-retail" if self._site_type.currentIndex() == 1 else "pointnet")
+                if self._sem_filter.isChecked() else "off"
+            ),
         )
         self.convert_requested.emit(
             self._input_paths,
