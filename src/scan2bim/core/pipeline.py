@@ -630,6 +630,29 @@ class Pipeline:
         """Kerrosjako-putki: lataa yhden kerroksen kerrallaan, ei muistirajoitusta."""
         output_dir.mkdir(parents=True, exist_ok=True)
 
+        # Diagnostiikka: kerää kaikki vaihelokit jaettavaan raporttiin (ei
+        # geometriaa) — pilottiasiakas ei voi jakaa skanneja, tämän voi.
+        from scan2bim.core.qa.diagnostics import DiagnosticsLog
+        diag = DiagnosticsLog()
+        for p in paths:
+            diag.add_input(p)
+        _user_progress = self._progress
+
+        def _tee(msg: str) -> None:
+            diag.log(msg)
+            _user_progress(msg)
+        self._progress = _tee
+
+        try:
+            return self._run_floors_inner(paths, output_dir, diag)
+        except Exception as e:
+            diag.error = f"{type(e).__name__}: {e}"
+            raise
+        finally:
+            self._progress = _user_progress
+            diag.write(output_dir / "diagnostics.txt")
+
+    def _run_floors_inner(self, paths: list[Path], output_dir: Path, diag) -> list[StructuralModel]:
         self._progress(f"Skannaustiedostoja: {len(paths)}")
         self._progress("Havaitaan kerroksia Z-histogrammista…")
 

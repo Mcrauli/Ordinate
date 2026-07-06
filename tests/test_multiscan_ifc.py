@@ -215,3 +215,38 @@ def test_multiscan_pipeline_produces_ifc():
 
 if __name__ == "__main__":
     test_multiscan_pipeline_produces_ifc()
+
+
+def test_diagnostics_report_written(tmp_path):
+    """Jaettava diagnostiikkaraportti syntyy joka ajosta eika sisalla
+    koordinaatteja (pilotti ei voi jakaa skanneja — taman voi)."""
+    import numpy as np
+    import open3d as o3d
+    from scan2bim.core.pipeline import Pipeline, PipelineConfig
+
+    rng = np.random.RandomState(4)
+    parts = []
+    for axis, fixed, lo, hi in [(0, 0, 0, 4000), (0, 5000, 0, 4000),
+                                (1, 0, 0, 5000), (1, 4000, 0, 5000)]:
+        n = 20000
+        u = rng.uniform(lo, hi, n); v = rng.uniform(0, 2700, n)
+        w = (np.column_stack([np.full(n, fixed) + rng.normal(0, 3, n), u, v]) if axis == 0
+             else np.column_stack([u, np.full(n, fixed) + rng.normal(0, 3, n), v]))
+        parts.append(w)
+    xy = rng.uniform([0, 0], [5000, 4000], (30000, 2))
+    parts.append(np.column_stack([xy, rng.normal(0, 3, 30000)]))
+    parts.append(np.column_stack([xy, 2700 + rng.normal(0, 3, 30000)]))
+    pc = o3d.geometry.PointCloud()
+    pc.points = o3d.utility.Vector3dVector(np.vstack(parts))
+    ply = tmp_path / "huone.ply"
+    o3d.io.write_point_cloud(str(ply), pc)
+
+    cfg = PipelineConfig(auto_voxel=True, detector="contour", export_ifc=False,
+                         export_dxf=False, export_qa=False, semantic_filter_mode="off")
+    Pipeline(cfg).run_floors([ply], tmp_path / "out")
+
+    rep = tmp_path / "out" / "diagnostics.txt"
+    assert rep.exists(), "diagnostics.txt puuttuu"
+    txt = rep.read_text(encoding="utf-8")
+    assert "versio:" in txt and "syötteet:" in txt
+    assert "Seinädetektio" in txt or "kerros" in txt.lower()
