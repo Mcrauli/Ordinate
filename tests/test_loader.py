@@ -63,6 +63,76 @@ def test_coordinates_preserved(tmp_path):
     np.testing.assert_allclose(pts, raw, atol=1e-3)
 
 
+def _write_binary_ply(path: Path, xyz: np.ndarray) -> None:
+    cloud = o3d.geometry.PointCloud()
+    cloud.points = o3d.utility.Vector3dVector(xyz)
+    o3d.io.write_point_cloud(str(path), cloud, write_ascii=False)
+
+
+def test_read_ply_xyz_band_matches_full(tmp_path):
+    """Lohkoluku antaa saman Z-kaistan kuin koko tiedoston luku + suodatus."""
+    from scan2bim.core.geometry.loader import read_ply_xyz_band
+    rng = np.random.default_rng(3)
+    xyz = rng.uniform(0, 10000, (50000, 3))
+    p = tmp_path / "b.ply"
+    _write_binary_ply(p, xyz)
+
+    lo, hi = 3000.0, 6000.0
+    # pieni chunk pakottaa monta lohkoa → testaa lohkorajat
+    got = read_ply_xyz_band(p, lo, hi, chunk=7000)
+    assert got is not None
+    m = (xyz[:, 2] >= lo) & (xyz[:, 2] <= hi)
+    exp = xyz[m]
+    assert len(got) == len(exp)
+    # järjestys säilyy → suora vertailu (o3d float32-tallennus → löysä tol)
+    order_got = got[np.lexsort(got.T)]
+    order_exp = exp[np.lexsort(exp.T)]
+    np.testing.assert_allclose(order_got, order_exp, atol=0.5)
+
+
+def test_read_ply_xyz_band_truncated(tmp_path):
+    """Katkennut PLY: lohkoluku lukee roskattoman osan eikä kaadu."""
+    from scan2bim.core.geometry.loader import read_ply_xyz_band
+    rng = np.random.default_rng(4)
+    xyz = rng.uniform(0, 10000, (40000, 3))
+    full = tmp_path / "f.ply"
+    _write_binary_ply(full, xyz)
+    data = full.read_bytes()
+    cut = tmp_path / "c.ply"
+    cut.write_bytes(data[: int(len(data) * 0.6)])
+    got = read_ply_xyz_band(cut, 0.0, 10000.0, chunk=5000)
+    assert got is not None
+    assert 0 < len(got) < 40000
+
+
+def test_ply_z_range_and_z(tmp_path):
+    from scan2bim.core.geometry.loader import ply_z_range, read_ply_z
+    rng = np.random.default_rng(5)
+    xyz = rng.uniform(-2000, 8000, (30000, 3))
+    p = tmp_path / "z.ply"
+    _write_binary_ply(p, xyz)
+    rng_z = ply_z_range(p)
+    assert rng_z is not None
+    assert abs(rng_z[0] - xyz[:, 2].min()) < 1.0
+    assert abs(rng_z[1] - xyz[:, 2].max()) < 1.0
+    z = read_ply_z(p)
+    assert z is not None and len(z) > 0
+
+
+def test_ply_autoscale_factor_metres(tmp_path):
+    """Metreissä oleva pilvi (laajuus < 200) → kerroin 1000."""
+    from scan2bim.core.geometry.loader import ply_autoscale_factor
+    rng = np.random.default_rng(6)
+    xyz_m = rng.uniform(0, 30, (5000, 3))   # metrit
+    pm = tmp_path / "m.ply"
+    _write_binary_ply(pm, xyz_m)
+    assert ply_autoscale_factor(pm) == 1000.0
+    xyz_mm = rng.uniform(0, 30000, (5000, 3))  # millimetrit
+    pmm = tmp_path / "mm.ply"
+    _write_binary_ply(pmm, xyz_mm)
+    assert ply_autoscale_factor(pmm) == 1.0
+
+
 def test_truncated_ply_warns_or_raises(tmp_path, caplog):
     """Katkennut lataus/siirto -> vajaa PLY: selkea varoitus (osittainen luku)
     tai selkovirhe (tyhja luku), ei aanetonta osittaista mallia."""

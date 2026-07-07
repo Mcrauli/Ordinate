@@ -26,34 +26,58 @@ def load_floor_slice(
     sample_out: jos annettu, siihen lisätään (tiedostonimi, karkea 100mm-otos)
     per tiedosto — skannien keskinäisen yhteensopivuuden tarkistukseen.
     """
-    from scan2bim.core.geometry.loader import load_point_cloud
+    from scan2bim.core.geometry.loader import (
+        load_point_cloud, read_ply_xyz_band, ply_autoscale_factor,
+    )
 
     merged = o3d.geometry.PointCloud()
     ref: o3d.geometry.PointCloud | None = None  # kevyt referenssi ICP:lle
     for i, path in enumerate(paths):
         if progress_cb:
             progress_cb(f"  [{i+1}/{len(paths)}] {path.name}")
-        try:
-            cloud = load_point_cloud(path)
-        except Exception as e:
-            if progress_cb:
-                progress_cb(f"  VAROITUS: {path.name} ohitettiin — {e}")
-            continue
 
-        # Vapauta normaalit ja värit heti — tarvitaan vain XYZ. Säästää ~1.3 GB/tiedosto.
-        cloud.normals = o3d.utility.Vector3dVector()
-        cloud.colors = o3d.utility.Vector3dVector()
+        # Binääri-PLY luetaan LOHKOISSA Z-kaista suoraan suodattaen — iso skanni
+        # (satoja M pisteitä) ei mahdu muistiin kokonaan. Muut formaatit / ascii-
+        # PLY: koko tiedosto (E57 lukee jo skanneittain, muut ovat pienempiä).
+        band: np.ndarray | None = None
+        if path.suffix.lower() == ".ply":
+            try:
+                scale = ply_autoscale_factor(path)
+                raw = read_ply_xyz_band(path, z_lo / scale, z_hi / scale)
+                if raw is not None:
+                    band = raw * scale if scale != 1.0 else raw
+            except Exception as e:
+                if progress_cb:
+                    progress_cb(f"  VAROITUS: {path.name} kaistaluku epäonnistui — {e}")
+                band = None
 
-        pts = np.asarray(cloud.points)
-        mask = (pts[:, 2] >= z_lo) & (pts[:, 2] <= z_hi)
-        n = int(mask.sum())
-        if n < 50:
-            del cloud
-            continue
+        if band is not None:
+            if len(band) < 50:
+                continue
+            slice_cloud = o3d.geometry.PointCloud()
+            slice_cloud.points = o3d.utility.Vector3dVector(band)
+        else:
+            try:
+                cloud = load_point_cloud(path)
+            except Exception as e:
+                if progress_cb:
+                    progress_cb(f"  VAROITUS: {path.name} ohitettiin — {e}")
+                continue
 
-        idx = np.where(mask)[0]
-        slice_cloud = cloud.select_by_index(idx)
-        del cloud  # vapauta muisti ennen downsamplausta
+            # Vapauta normaalit ja värit heti — tarvitaan vain XYZ. Säästää ~1.3 GB/tiedosto.
+            cloud.normals = o3d.utility.Vector3dVector()
+            cloud.colors = o3d.utility.Vector3dVector()
+
+            pts = np.asarray(cloud.points)
+            mask = (pts[:, 2] >= z_lo) & (pts[:, 2] <= z_hi)
+            n = int(mask.sum())
+            if n < 50:
+                del cloud
+                continue
+
+            idx = np.where(mask)[0]
+            slice_cloud = cloud.select_by_index(idx)
+            del cloud  # vapauta muisti ennen downsamplausta
 
         if voxel_size > 0.0:
             slice_cloud = slice_cloud.voxel_down_sample(voxel_size)

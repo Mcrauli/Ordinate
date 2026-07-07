@@ -122,9 +122,20 @@ def _split_tall_slice(z: np.ndarray, lo: float, hi: float) -> list[tuple[float, 
 
 def detect_floors_from_files(paths: list[Path], sample_step: int = 1) -> list[tuple[float, float]]:
     """Käy tiedostot läpi, kerää vain Z-koordinaatit, tunnistaa kerrokset."""
-    from scan2bim.core.geometry.loader import load_point_cloud
+    from scan2bim.core.geometry.loader import (
+        load_point_cloud, read_ply_z, ply_autoscale_factor,
+    )
     all_z: list[np.ndarray] = []
     for path in paths[::max(sample_step, 1)]:
+        # Iso binääri-PLY: vain Z lohkoluvulla + desimointi, ei koko tiedostoa muistiin.
+        if path.suffix.lower() == ".ply":
+            try:
+                z = read_ply_z(path)
+                if z is not None and len(z) > 0:
+                    all_z.append(z * ply_autoscale_factor(path))
+                    continue
+            except Exception:
+                pass
         try:
             cloud = load_point_cloud(path)
         except Exception:

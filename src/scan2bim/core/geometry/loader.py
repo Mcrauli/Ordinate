@@ -53,10 +53,15 @@ _PLY_TYPE_BYTES = {b"float": 4, b"float32": 4, b"double": 8, b"float64": 8,
                    b"ushort": 2, b"short": 2, b"uint16": 2, b"int16": 2,
                    b"uint": 4, b"int": 4, b"uint32": 4, b"int32": 4}
 
+_PLY_TYPE_NP = {b"float": "f4", b"float32": "f4", b"double": "f8", b"float64": "f8",
+                b"uchar": "u1", b"char": "i1", b"uint8": "u1", b"int8": "i1",
+                b"ushort": "u2", b"short": "i2", b"uint16": "u2", b"int16": "i2",
+                b"uint": "u4", b"int": "i4", b"uint32": "u4", b"int32": "i4"}
 
-def _ply_binary_layout(path: Path) -> tuple[int, int, int] | None:
-    """(payload_alku, vertex_count, vertex_stride_bytes) binääri-PLY:lle,
-    None jos ascii/lista-propertyja/parsinta ei onnistu."""
+
+def _ply_fields(path: Path) -> tuple[int, int, list, bool] | None:
+    """(payload_alku, vertex_count, [(name, ply_type)…], little_endian) binääri-
+    PLY:lle. None jos ascii/lista-propertyja/parsinta ei onnistu."""
     try:
         with open(path, "rb") as f:
             head = f.read(65536)
@@ -66,14 +71,16 @@ def _ply_binary_layout(path: Path) -> tuple[int, int, int] | None:
         return None
     offset = 0
     count = None
-    stride = 0
+    fields: list = []
     in_vertex = False
     binary = False
+    little = True
     for line in head.split(b"\n"):
         offset += len(line) + 1
         t = line.strip()
         if t.startswith(b"format"):
-            binary = b"binary_little_endian" in t
+            binary = b"binary_" in t
+            little = b"binary_little_endian" in t
         elif t.startswith(b"element"):
             parts = t.split()
             in_vertex = parts[1] == b"vertex"
@@ -81,17 +88,154 @@ def _ply_binary_layout(path: Path) -> tuple[int, int, int] | None:
                 count = int(parts[2])
         elif t.startswith(b"property") and in_vertex:
             parts = t.split()
-            if parts[1] == b"list":
+            if parts[1] == b"list" or parts[1] not in _PLY_TYPE_BYTES:
                 return None
-            b_ = _PLY_TYPE_BYTES.get(parts[1])
-            if b_ is None:
-                return None
-            stride += b_
+            fields.append((parts[2].decode("ascii", "replace"), parts[1]))
         elif t == b"end_header":
-            if binary and count and stride:
-                return offset, count, stride
+            if binary and count and fields:
+                return offset, count, fields, little
             return None
     return None
+
+
+def _ply_binary_layout(path: Path) -> tuple[int, int, int] | None:
+    """(payload_alku, vertex_count, vertex_stride_bytes) binääri-PLY:lle,
+    None jos ascii/lista-propertyja/parsinta ei onnistu."""
+    parsed = _ply_fields(path)
+    if parsed is None:
+        return None
+    offset, count, fields, _ = parsed
+    stride = sum(_PLY_TYPE_BYTES[t] for _, t in fields)
+    return offset, count, stride
+
+
+def _ply_dtype(path: Path):
+    """(payload_alku, n_real, numpy-structured-dtype) binääri-PLY:lle, None jos
+    ei tue. n_real = tavuista laskettu todellinen pistemäärä (leikkaa roskahännän)."""
+    parsed = _ply_fields(path)
+    if parsed is None:
+        return None
+    offset, declared, fields, little = parsed
+    order = "<" if little else ">"
+    dt = np.dtype([(name, order + _PLY_TYPE_NP[t].encode().decode())
+                   for name, t in fields])
+    names = {n.lower() for n, _ in fields}
+    if not {"x", "y", "z"} <= names:
+        return None
+    try:
+        fsize = path.stat().st_size
+    except OSError:
+        return None
+    n_real = min(declared, max((fsize - offset) // dt.itemsize, 0))
+    return offset, n_real, dt
+
+
+def read_ply_xyz_band(
+    path: Path, z_lo: float, z_hi: float, chunk: int = 4_000_000
+) -> np.ndarray | None:
+    """Lukee binääri-PLY:n LOHKOISSA ja pitää vain Z-kaistan [z_lo, z_hi] pisteet.
+    Huippumuisti = yksi lohko (chunk pistettä), ei koko tiedosto — iso skanni ei
+    kaada muistia. Palauttaa Nx3 float64 (mm-skaalaamaton, sama koordinaatisto kuin
+    tiedostossa). None jos tiedosto ei ole tuettu binääri-PLY → kutsuja fallbackaa
+    o3d:hen."""
+    parsed = _ply_dtype(path)
+    if parsed is None:
+        return None
+    offset, n_real, dt = parsed
+    name_map = {n.lower(): n for n in dt.names}
+    xn, yn, zn = name_map["x"], name_map["y"], name_map["z"]
+    out: list[np.ndarray] = []
+    with open(path, "rb") as f:
+        f.seek(offset)
+        remaining = n_real
+        while remaining > 0:
+            n = min(chunk, remaining)
+            buf = np.fromfile(f, dtype=dt, count=n)
+            if len(buf) == 0:
+                break
+            z = buf[zn].astype(np.float64)
+            m = (z >= z_lo) & (z <= z_hi)
+            if m.any():
+                out.append(np.column_stack(
+                    [buf[xn][m].astype(np.float64),
+                     buf[yn][m].astype(np.float64), z[m]]))
+            remaining -= len(buf)
+    if not out:
+        return np.zeros((0, 3), dtype=np.float64)
+    return np.vstack(out)
+
+
+def ply_autoscale_factor(path: Path) -> float:
+    """Metri→mm-kerroin (_autoscale sama sääntö) ilman koko tiedoston latausta:
+    lukee vain ensimmäisen lohkon ja katsoo laajuuden. Rakennuksen osittainenkin
+    laajuus ylittää 200 mm reippaasti → metri-vs-mm-päätös on turvallinen otoksesta."""
+    parsed = _ply_dtype(path)
+    if parsed is None:
+        return 1.0
+    offset, n_real, dt = parsed
+    nm = {n.lower(): n for n in dt.names}
+    with open(path, "rb") as f:
+        f.seek(offset)
+        buf = np.fromfile(f, dtype=dt, count=min(4_000_000, n_real))
+    if len(buf) == 0:
+        return 1.0
+    xyz = np.column_stack([buf[nm["x"]], buf[nm["y"]], buf[nm["z"]]]).astype(np.float64)
+    span = xyz.max(axis=0) - xyz.min(axis=0)
+    return 1000.0 if span.max() < 200.0 else 1.0
+
+
+def read_ply_z(
+    path: Path, max_keep: int = 8_000_000, chunk: int = 4_000_000
+) -> np.ndarray | None:
+    """Vain Z-koordinaatit binääri-PLY:stä lohkoluvulla, desimoituna enintään
+    max_keep pisteeseen. Kerrostunnistuksen histogrammille riittää otos — ei koko
+    tiedostoa muistiin. None jos ei tuettu binääri-PLY."""
+    parsed = _ply_dtype(path)
+    if parsed is None:
+        return None
+    offset, n_real, dt = parsed
+    zn = {n.lower(): n for n in dt.names}["z"]
+    step = max(1, n_real // max_keep)
+    out: list[np.ndarray] = []
+    with open(path, "rb") as f:
+        f.seek(offset)
+        remaining = n_real
+        while remaining > 0:
+            n = min(chunk, remaining)
+            buf = np.fromfile(f, dtype=dt, count=n)
+            if len(buf) == 0:
+                break
+            out.append(buf[zn][::step].astype(np.float32))
+            remaining -= len(buf)
+    if not out:
+        return np.zeros((0,), dtype=np.float32)
+    return np.concatenate(out)
+
+
+def ply_z_range(path: Path, chunk: int = 4_000_000) -> tuple[float, float] | None:
+    """Z-min/max binääri-PLY:stä lohkoluvulla — ei lataa koko tiedostoa muistiin.
+    None jos ei tuettu binääri-PLY."""
+    parsed = _ply_dtype(path)
+    if parsed is None:
+        return None
+    offset, n_real, dt = parsed
+    zn = {n.lower(): n for n in dt.names}["z"]
+    zmn, zmx = np.inf, -np.inf
+    with open(path, "rb") as f:
+        f.seek(offset)
+        remaining = n_real
+        while remaining > 0:
+            n = min(chunk, remaining)
+            buf = np.fromfile(f, dtype=dt, count=n)
+            if len(buf) == 0:
+                break
+            z = buf[zn].astype(np.float64)
+            zmn = min(zmn, float(z.min()))
+            zmx = max(zmx, float(z.max()))
+            remaining -= len(buf)
+    if not np.isfinite(zmn):
+        return None
+    return zmn, zmx
 
 
 def _fix_truncated_ply(path: Path, cloud: o3d.geometry.PointCloud) -> o3d.geometry.PointCloud:

@@ -731,9 +731,20 @@ class Pipeline:
             # (_qa_band.py) resepti: ENSIMMÄISEN skannin RAA'AN z-alueen 35–65%
             # (lattia/katto/kalusteet pois). EI floor_splitterin padatun z_lo/z_hi:n
             # — se on leveämpi ja vie mittauksen eri korkeudelle → epäsuhta mittariin.
-            from scan2bim.core.geometry.loader import load_point_cloud as _lpc
-            _z0 = np.asarray(_lpc(paths[0]).points)[:, 2]
-            _zmn, _zmx = float(_z0.min()), float(_z0.max())
+            from scan2bim.core.geometry.loader import (
+                load_point_cloud as _lpc, ply_z_range, ply_autoscale_factor,
+            )
+            _zr = None
+            if paths[0].suffix.lower() == ".ply":
+                # Iso PLY: z-alue lohkoluvulla, ei koko tiedostoa muistiin.
+                _rng = ply_z_range(paths[0])
+                if _rng is not None:
+                    _sc = ply_autoscale_factor(paths[0])
+                    _zr = (_rng[0] * _sc, _rng[1] * _sc)
+            if _zr is None:
+                _z0 = np.asarray(_lpc(paths[0]).points)[:, 2]
+                _zr = (float(_z0.min()), float(_z0.max()))
+            _zmn, _zmx = _zr
             band_lo = _zmn + 0.35 * (_zmx - _zmn)
             band_hi = _zmn + 0.65 * (_zmx - _zmn)
             # TÄYSI resa (voxel=0): voxelointi kvantisoi huippujen paikat → bias
