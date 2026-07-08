@@ -130,39 +130,72 @@ def _ply_dtype(path: Path):
     return offset, n_real, dt
 
 
+def _iter_ply_chunks(f, offset, n_real, dt, chunk):
+    """Tuottaa PLY:n vertex-lohkot (numpy structured) yksi kerrallaan."""
+    f.seek(offset)
+    remaining = n_real
+    while remaining > 0:
+        buf = np.fromfile(f, dtype=dt, count=min(chunk, remaining))
+        if len(buf) == 0:
+            break
+        remaining -= len(buf)
+        yield buf
+
+
 def read_ply_xyz_band(
-    path: Path, z_lo: float, z_hi: float, chunk: int = 4_000_000
+    path: Path, z_lo: float, z_hi: float, chunk: int = 4_000_000,
+    max_points: int = 0,
 ) -> np.ndarray | None:
     """Lukee binääri-PLY:n LOHKOISSA ja pitää vain Z-kaistan [z_lo, z_hi] pisteet.
-    Huippumuisti = yksi lohko (chunk pistettä), ei koko tiedosto — iso skanni ei
-    kaada muistia. Palauttaa Nx3 float64 (mm-skaalaamaton, sama koordinaatisto kuin
-    tiedostossa). None jos tiedosto ei ole tuettu binääri-PLY → kutsuja fallbackaa
-    o3d:hen."""
+    Huippumuisti = yksi lohko + valmis taulukko (ei vstack-tuplausta) — iso skanni
+    ei kaada muistia. Palauttaa Nx3 float64 (tiedoston omassa koordinaatistossa,
+    skaalaamaton). None jos ei tuettu binääri-PLY → kutsuja fallbackaa o3d:hen.
+
+    max_points>0: jos kaistassa on enemmän, OHENNETAAN satunnaisesti tähän määrään.
+    Satunnaisohennus säilyttää piikin PAIKAN (toisin kuin voxelointi, joka siirtää
+    sitä sentroidi-biaksella) → paksuusmittauksen ali-mm-tarkkuus säilyy, muisti
+    pysyy rajattuna mille tahansa skannikoolle."""
     parsed = _ply_dtype(path)
     if parsed is None:
         return None
     offset, n_real, dt = parsed
-    name_map = {n.lower(): n for n in dt.names}
-    xn, yn, zn = name_map["x"], name_map["y"], name_map["z"]
-    out: list[np.ndarray] = []
+    nm = {n.lower(): n for n in dt.names}
+    xn, yn, zn = nm["x"], nm["y"], nm["z"]
+
+    # Passi 1: laske kaistan pisteet (vain z luetaan) → tarkka esivaraus, ei tuplausta.
+    total = 0
     with open(path, "rb") as f:
-        f.seek(offset)
-        remaining = n_real
-        while remaining > 0:
-            n = min(chunk, remaining)
-            buf = np.fromfile(f, dtype=dt, count=n)
-            if len(buf) == 0:
+        for buf in _iter_ply_chunks(f, offset, n_real, dt, chunk):
+            z = buf[zn]
+            total += int(((z >= z_lo) & (z <= z_hi)).sum())
+    if total == 0:
+        return np.zeros((0, 3), dtype=np.float64)
+
+    keep = total if max_points <= 0 else min(total, max_points)
+    prob = keep / total
+    rng = np.random.default_rng(0)
+    out = np.empty((keep, 3), dtype=np.float64)
+
+    # Passi 2: täytä esivarattu taulukko (satunnaisohennus jos keep < total).
+    filled = 0
+    with open(path, "rb") as f:
+        for buf in _iter_ply_chunks(f, offset, n_real, dt, chunk):
+            if filled >= keep:
                 break
             z = buf[zn].astype(np.float64)
             m = (z >= z_lo) & (z <= z_hi)
-            if m.any():
-                out.append(np.column_stack(
-                    [buf[xn][m].astype(np.float64),
-                     buf[yn][m].astype(np.float64), z[m]]))
-            remaining -= len(buf)
-    if not out:
-        return np.zeros((0, 3), dtype=np.float64)
-    return np.vstack(out)
+            if not m.any():
+                continue
+            xs, ys, zs = buf[xn][m].astype(np.float64), buf[yn][m].astype(np.float64), z[m]
+            if prob < 1.0:
+                sel = rng.random(len(zs)) < prob
+                xs, ys, zs = xs[sel], ys[sel], zs[sel]
+            take = min(len(zs), keep - filled)
+            out[filled:filled + take, 0] = xs[:take]
+            out[filled:filled + take, 1] = ys[:take]
+            out[filled:filled + take, 2] = zs[:take]
+            filled += take
+    return out[:filled]
 
 
 def ply_autoscale_factor(path: Path) -> float:

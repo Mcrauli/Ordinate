@@ -15,6 +15,7 @@ def load_floor_slice(
     progress_cb=None,
     icp_refine: bool = False,
     sample_out: list | None = None,
+    max_points: int = 0,
 ) -> o3d.geometry.PointCloud:
     """
     Lataa vain Z-kaistan [z_lo, z_hi] kaikista tiedostoista.
@@ -43,9 +44,15 @@ def load_floor_slice(
         if path.suffix.lower() == ".ply":
             try:
                 scale = ply_autoscale_factor(path)
-                raw = read_ply_xyz_band(path, z_lo / scale, z_hi / scale)
+                # per-tiedosto kattoraja jaetaan tiedostojen kesken (monikeilaus)
+                mp = 0 if max_points <= 0 else max(1, max_points // len(paths))
+                raw = read_ply_xyz_band(
+                    path, z_lo / scale, z_hi / scale, max_points=mp
+                )
                 if raw is not None:
-                    band = raw * scale if scale != 1.0 else raw
+                    if scale != 1.0:
+                        raw *= scale   # in-place, ei kopiota
+                    band = raw
             except Exception as e:
                 if progress_cb:
                     progress_cb(f"  VAROITUS: {path.name} kaistaluku epäonnistui — {e}")

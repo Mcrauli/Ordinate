@@ -90,6 +90,23 @@ def test_read_ply_xyz_band_matches_full(tmp_path):
     np.testing.assert_allclose(order_got, order_exp, atol=0.5)
 
 
+def test_read_ply_xyz_band_max_points(tmp_path):
+    """max_points ohentaa kaistan kattoon satunnaisesti muttei siirrä jakaumaa."""
+    from scan2bim.core.geometry.loader import read_ply_xyz_band
+    rng = np.random.default_rng(7)
+    xyz = rng.uniform(0, 10000, (60000, 3))
+    p = tmp_path / "m.ply"
+    _write_binary_ply(p, xyz)
+    lo, hi = 0.0, 10000.0
+    full = read_ply_xyz_band(p, lo, hi)
+    capped = read_ply_xyz_band(p, lo, hi, max_points=20000)
+    assert len(full) == 60000
+    # kattoraja = ENINTÄÄN max_points (satunnaisohennus → ~1 % alle, ei yli)
+    assert 0.9 * 20000 <= len(capped) <= 20000
+    # ohennus säilyttää jakauman keskikohdan (piikin paikka) — ei voxel-biasta
+    assert abs(np.median(capped[:, 2]) - np.median(full[:, 2])) < 60.0
+
+
 def test_read_ply_xyz_band_truncated(tmp_path):
     """Katkennut PLY: lohkoluku lukee roskattoman osan eikä kaadu."""
     from scan2bim.core.geometry.loader import read_ply_xyz_band

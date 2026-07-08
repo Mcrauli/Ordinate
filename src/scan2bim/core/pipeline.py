@@ -752,9 +752,13 @@ class Pipeline:
             # ali-mm paksuuteen. Vain keskikaista (~30% korkeudesta) → muisti ok.
             self._progress("  Ladataan keskikaista paksuusmittaukseen (täysi resa)…")
             from scan2bim.core.geometry.streaming import load_floor_slice as _lfs
+            # Täysi resa (voxel=0) paksuusmittaukseen, MUTTA kaista katolla 45 M
+            # pistettä — 159 M skannin 30 %-kaista on 76 M täysresa (huippu 7 GB).
+            # Satunnaisohennus (ei voxelointi) säilyttää piikin paikan → ali-mm
+            # paksuus pysyy, muisti rajattu isollakin skannilla.
             thick_cloud = _lfs(
                 paths, band_lo, band_hi, voxel_size=0.0, progress_cb=None,
-                icp_refine=self.config.icp_refine,
+                icp_refine=self.config.icp_refine, max_points=45_000_000,
             )
             # 5mm koko korkeuden pilvi pintalukitukseen/linjaukseen — detektiovoxelin
             # (12mm) sentroidi-bias siirtää pintamediaania useita mm (sama syy kuin
