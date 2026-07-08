@@ -7,6 +7,113 @@ import numpy as np
 import open3d as o3d
 
 
+def _voxel_first_np(arr: np.ndarray, vs: float) -> np.ndarray:
+    """Kevyt voxel-downsample: pitää yhden pisteen per vs-ruutu (ensimmäinen).
+    Muisti = O(sort(N)), ei o3d:n hash-mapia (~10 GB 70M pisteelle). Riittää
+    detektion tiheysmaskille (12mm-ruutu rasteroidaan pikseleiksi joka
+    tapauksessa) — sentroidibias ei koske detektiota, vain paksuutta (raakapilvi)."""
+    q = np.floor(arr / vs).astype(np.int64)
+    q -= q.min(axis=0)
+    dim = q.max(axis=0) + 1
+    if int(dim[0]) * int(dim[1]) * int(dim[2]) < (1 << 62):
+        key = (q[:, 0] * dim[1] + q[:, 1]) * dim[2] + q[:, 2]
+        _, idx = np.unique(key, return_index=True)
+    else:
+        _, idx = np.unique(q, axis=0, return_index=True)
+    return arr[idx].copy()
+
+
+def _load_ply_band(
+    path, z_lo, z_hi, voxel_size, max_points, n_paths,
+    read_ply_xyz_band, ply_band_chunks, ply_autoscale_factor,
+) -> o3d.geometry.PointCloud | None:
+    """Lataa binääri-PLY:n Z-kaistan MUISTIRAJATUSTI.
+
+    voxel_size>0 (detektio/refine): luetaan lohkoittain ja voxeloidaan HETI —
+    akkumulaattori pysyy voxeloidun pilven kokoisena, koko täysresa-kaistaa ei
+    koskaan pidetä muistissa (159M kerroskaista = 3.7 GB raakana).
+    voxel_size==0 (paksuusmittaus): täysresa + satunnaisohennus kattoon
+    (read_ply_xyz_band max_points). Palauttaa None jos ei tuettu binääri-PLY."""
+    scale = ply_autoscale_factor(path)
+    # per-tiedosto kattoraja jaetaan tiedostojen kesken (monikeilaus)
+    mp = 0 if max_points <= 0 else max(1, max_points // max(n_paths, 1))
+
+    if voxel_size <= 0.0:
+        raw = read_ply_xyz_band(path, z_lo / scale, z_hi / scale, max_points=mp)
+        if raw is None:
+            return None
+        if scale != 1.0:
+            raw *= scale   # in-place, ei kopiota
+        c = o3d.geometry.PointCloud()
+        c.points = o3d.utility.Vector3dVector(raw)
+        return c
+
+    gen = ply_band_chunks(path, z_lo / scale, z_hi / scale)
+    if gen is None:
+        return None
+
+    rng = np.random.default_rng(0)
+
+    def _voxel(arr: np.ndarray) -> np.ndarray:
+        if len(arr) == 0:
+            return arr
+        # Iso taulukko: o3d:n voxel_down_sample rakentaa hash-mapin joka syö
+        # ~10 GB 70M pisteelle. Käytä kevyttä numpy-ruutudedupia (yksi piste/solu)
+        # → muisti ~sort(N). Pieni taulukko: o3d-sentroidi (validoitu tarkkuus).
+        if len(arr) > 30_000_000:
+            return _voxel_first_np(arr, voxel_size)
+        c = o3d.geometry.PointCloud()
+        c.points = o3d.utility.Vector3dVector(arr)
+        # .copy(): irrota o3d-puskurista → väliaikainen pilvi vapautuu heti
+        return np.asarray(c.voxel_down_sample(voxel_size).points).copy()
+
+    def _cap(arr: np.ndarray) -> np.ndarray:
+        # satunnaisohennus kattoon — EI voxel-sentroidibiasta (paras pintamediaanille)
+        if mp and len(arr) > mp:
+            return arr[rng.choice(len(arr), mp, replace=False)]
+        return arr
+
+    # Puskuroi RAAKAlohkot ~24M asti, sitten tyhjennä: voxeloi puskuri + sulauta
+    # kertyneeseen (dedup lohkorajat) + rajaa kattoon. Sulautus laukeaa kerran per
+    # 24M SYÖTETTÄ (ei per lohko) → voxeloitavaksi päätyy vain acc + ~24M, ei
+    # koko kaista, eikä työ ole O(n²).
+    acc: np.ndarray | None = None
+    buf: list[np.ndarray] = []
+    n_buf = 0
+
+    def _flush():
+        nonlocal acc, buf, n_buf
+        if not buf:
+            return
+        v = _voxel(np.concatenate(buf) if len(buf) > 1 else buf[0])
+        buf, n_buf = [], 0
+        if acc is None:
+            acc = _cap(v)
+        elif mp:
+            # kattoraja päällä (refine/iso): sulauta halvalla concat+ohennus,
+            # EI koko akun uudelleenvoxelointia (o3d-hash 67M pisteelle = ~5 GB).
+            acc = _cap(np.concatenate([acc, v]))
+        else:
+            # ei kattorajaa (detektio): dedup voxeloimalla pitää akun aidossa
+            # ruutukoossa (12mm-grid tarvitsee tarkat solut tiheysmaskille).
+            acc = _voxel(np.concatenate([acc, v]))
+
+    for xyz in gen:
+        if scale != 1.0:
+            xyz *= scale
+        buf.append(xyz)
+        n_buf += len(xyz)
+        if n_buf >= 24_000_000:
+            _flush()
+    _flush()
+
+    if acc is None:
+        return o3d.geometry.PointCloud()
+    out = o3d.geometry.PointCloud()
+    out.points = o3d.utility.Vector3dVector(acc)
+    return out
+
+
 def load_floor_slice(
     paths: list[Path],
     z_lo: float,
@@ -28,7 +135,7 @@ def load_floor_slice(
     per tiedosto — skannien keskinäisen yhteensopivuuden tarkistukseen.
     """
     from scan2bim.core.geometry.loader import (
-        load_point_cloud, read_ply_xyz_band, ply_autoscale_factor,
+        load_point_cloud, read_ply_xyz_band, ply_band_chunks, ply_autoscale_factor,
     )
 
     merged = o3d.geometry.PointCloud()
@@ -40,30 +147,25 @@ def load_floor_slice(
         # Binääri-PLY luetaan LOHKOISSA Z-kaista suoraan suodattaen — iso skanni
         # (satoja M pisteitä) ei mahdu muistiin kokonaan. Muut formaatit / ascii-
         # PLY: koko tiedosto (E57 lukee jo skanneittain, muut ovat pienempiä).
-        band: np.ndarray | None = None
+        slice_cloud: o3d.geometry.PointCloud | None = None
         if path.suffix.lower() == ".ply":
             try:
-                scale = ply_autoscale_factor(path)
-                # per-tiedosto kattoraja jaetaan tiedostojen kesken (monikeilaus)
-                mp = 0 if max_points <= 0 else max(1, max_points // len(paths))
-                raw = read_ply_xyz_band(
-                    path, z_lo / scale, z_hi / scale, max_points=mp
+                slice_cloud = _load_ply_band(
+                    path, z_lo, z_hi, voxel_size, max_points, len(paths),
+                    read_ply_xyz_band, ply_band_chunks, ply_autoscale_factor,
                 )
-                if raw is not None:
-                    if scale != 1.0:
-                        raw *= scale   # in-place, ei kopiota
-                    band = raw
             except Exception as e:
                 if progress_cb:
                     progress_cb(f"  VAROITUS: {path.name} kaistaluku epäonnistui — {e}")
-                band = None
+                slice_cloud = None
 
-        if band is not None:
-            if len(band) < 50:
+        if slice_cloud is not None:
+            if len(slice_cloud.points) < 50:
                 continue
-            slice_cloud = o3d.geometry.PointCloud()
-            slice_cloud.points = o3d.utility.Vector3dVector(band)
+            # voxelointi tehtiin jo lohkoittain _load_ply_band:ssa → ohita alla
+            _already_voxeled = True
         else:
+            _already_voxeled = False
             try:
                 cloud = load_point_cloud(path)
             except Exception as e:
@@ -86,7 +188,7 @@ def load_floor_slice(
             slice_cloud = cloud.select_by_index(idx)
             del cloud  # vapauta muisti ennen downsamplausta
 
-        if voxel_size > 0.0:
+        if voxel_size > 0.0 and not _already_voxeled:
             slice_cloud = slice_cloud.voxel_down_sample(voxel_size)
 
         if icp_refine:

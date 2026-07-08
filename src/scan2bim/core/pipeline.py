@@ -762,10 +762,12 @@ class Pipeline:
             )
             # 5mm koko korkeuden pilvi pintalukitukseen/linjaukseen — detektiovoxelin
             # (12mm) sentroidi-bias siirtää pintamediaania useita mm (sama syy kuin
-            # convert-polun refine_cloud).
+            # convert-polun refine_cloud). Katto 45 M: ison skannin 5mm-pilvi on
+            # 100M+ (SLAM-kohina > 5mm) → satunnaisohennus rajaa muistin eikä
+            # siirrä pintamediaania (toisin kuin karkeampi voxel).
             refine_cloud = _lfs(
                 paths, z_lo, z_hi, voxel_size=5.0, progress_cb=None,
-                icp_refine=self.config.icp_refine,
+                icp_refine=self.config.icp_refine, max_points=45_000_000,
             )
 
             cloud = self._semantic_filter(cloud)

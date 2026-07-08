@@ -198,6 +198,31 @@ def read_ply_xyz_band(
     return out[:filled]
 
 
+def ply_band_chunks(path: Path, z_lo: float, z_hi: float, chunk: int = 4_000_000):
+    """Generaattori: tuottaa binääri-PLY:n Z-kaistan [z_lo, z_hi] pisteet Nx3
+    float64 -lohkoina (tiedoston omassa koordinaatistossa, skaalaamaton). Kutsuja
+    voxeloi/kasaa lohkot heti → koko kaistaa ei koskaan pidetä muistissa
+    kerralla. Palauttaa None jos ei tuettu binääri-PLY."""
+    parsed = _ply_dtype(path)
+    if parsed is None:
+        return None
+    offset, n_real, dt = parsed
+    nm = {n.lower(): n for n in dt.names}
+    xn, yn, zn = nm["x"], nm["y"], nm["z"]
+
+    def _gen():
+        with open(path, "rb") as f:
+            for buf in _iter_ply_chunks(f, offset, n_real, dt, chunk):
+                z = buf[zn].astype(np.float64)
+                m = (z >= z_lo) & (z <= z_hi)
+                if not m.any():
+                    continue
+                yield np.column_stack(
+                    [buf[xn][m].astype(np.float64),
+                     buf[yn][m].astype(np.float64), z[m]])
+    return _gen()
+
+
 def ply_autoscale_factor(path: Path) -> float:
     """Metri→mm-kerroin (_autoscale sama sääntö) ilman koko tiedoston latausta:
     lukee vain ensimmäisen lohkon ja katsoo laajuuden. Rakennuksen osittainenkin
