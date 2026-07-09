@@ -28,17 +28,28 @@ _MIN_HEIGHT_MM = 50.0      # palkin min-z-ulottuvuus (depth)
 
 
 _BEAM_WALL_MARGIN = 150.0   # mm — tätä lähempänä seinälinjaa olevat pisteet pois
+_SOFFIT_BAND = 800.0        # mm — palkkikaista katon alapinnasta (syvemmällä = TATE-roikku)
                             # (seinän yläosa on pitkänomainen klusteri = valepalkki)
 
 
-def detect_beams(cloud, walls, floor_z: float, ceiling_z: float) -> list[Beam]:
-    """Pipeline-entrypoint: palkit kattovyöhykkeestä seinäeksluusiolla."""
+def detect_beams(cloud, walls, floor_z: float, ceiling_z: float,
+                 has_ceiling: bool = False) -> list[Beam]:
+    """Pipeline-entrypoint: palkit kattovyöhykkeestä seinäeksluusiolla.
+
+    has_ceiling=True (valmis tila, KATTOLAATTA löydetty): rajaa palkit SOFFIT-
+    vyöhykkeelle (katon alapinnan alta _SOFFIT_BAND) → katosta syvemmälle roikkuva
+    talotekniikka (putket/kanavat/kaapelihyllyt) ei mene palkiksi. has_ceiling=False
+    (työmaa, ei kattolaattaa): ceiling_z on vain seinänlakikorkeuden varasija, joten
+    soffit-rajaus katkoisi aidot palkit → pidetään leveä ylä-puolikaskaista."""
     from .column_detector import _dist_to_walls
 
     pts = np.asarray(cloud.points)
     if len(pts) < _MIN_INLIERS or ceiling_z - floor_z < 1500.0:
         return []
-    zmask = (pts[:, 2] > floor_z + 0.5 * (ceiling_z - floor_z)) & (pts[:, 2] < ceiling_z - 30.0)
+    band_lo = floor_z + 0.5 * (ceiling_z - floor_z)
+    if has_ceiling:
+        band_lo = max(band_lo, ceiling_z - _SOFFIT_BAND)
+    zmask = (pts[:, 2] > band_lo) & (pts[:, 2] < ceiling_z - 30.0)
     band = pts[zmask]
     if len(band) < _MIN_INLIERS:
         return []

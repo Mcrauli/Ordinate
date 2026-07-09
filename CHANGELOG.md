@@ -4,6 +4,16 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 [`Mcrauli/scan2bim-web`](https://github.com/Mcrauli/scan2bim-web/releases):iin;
 sovellus päivittää itsensä sieltä.
 
+## v0.7.3 (9.7.2026) — palkit vain soffit-vyöhykkeeltä (ripustettu talotekniikka pois)
+- **Palkkidetektio vain katon alapinnan SOFFIT-vyöhykkeeltä** (valmiissa tilassa
+  jossa kattolaatta löytyy). Katosta 380–1600 mm alas roikkuva tavara on
+  ripustettua talotekniikkaa (putket/kanavat/kaapelihyllyt/valaisimet), ei palkki.
+  Vaikutus mitattu: liiketilan aula 32→12 palkkia. **Työmaa (ei kattolaattaa)
+  säilyttää leveän kaistan** → aidot runkopalkit eivät katoa (Rohbau 5→5).
+- Huom: hajonnut/talotekniikkatäyteinen skanni voi silti tuottaa palkkikohinaa
+  (geometria ei erota kattotason kanavaa palkista); pipeline flägää epäluotettavat
+  skannit ja matalan luottamuksen palkit erikseen.
+
 ## v0.7.2 (9.7.2026) — valepilarit/-palkit pois, aidot säilyvät
 - **Pilari-muotosuhderajaus (≤2,5):** aidot pilarit ovat kompakteja (mitattu
   Rohbau-työmaa 1,1–2,3); pitkänomaiset "pilarit" (3,4–11) ovat detektoimattomia

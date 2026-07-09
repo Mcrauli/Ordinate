@@ -1060,7 +1060,11 @@ class Pipeline:
         model.columns = detect_columns(cloud, model.walls, floor_z, ceiling_z)
 
         from scan2bim.core.segmentation.beam_detector import detect_beams
-        model.beams = detect_beams(cloud, model.walls, floor_z, ceiling_z)
+        # Soffit-rajaus vain jos AITO kattolaatta löytyi (valmis tila) — työmaalla
+        # ceiling_z on seinänlakivarasija eikä rajausta saa tehdä (katkoisi palkit).
+        _has_ceiling = any(s.slab_type == "ceiling" for s in model.slabs)
+        model.beams = detect_beams(cloud, model.walls, floor_z, ceiling_z,
+                                   has_ceiling=_has_ceiling)
 
         model.metadata.source_file = source_path.name
         model.metadata.voxel_size = self.config.voxel_size
