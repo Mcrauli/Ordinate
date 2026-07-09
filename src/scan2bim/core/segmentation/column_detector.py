@@ -32,6 +32,8 @@ _RING_IN = 2               # rengas alkaa (soluja bboxin reunasta)
 _RING_OUT = 6              # rengas päättyy
 _RING_MAX_CELLS = 6        # renkaassa saa olla korkeintaan näin monta täyttösolua
 _MIN_ABS_HEIGHT = 2300.0   # mm — monitasoscenessä room_h vääristyy; aito pilari ≥ tämä
+_MAX_ASPECT = 2.5          # footprintin max/min — yli tämän = seinänpala, ei pilari
+                           # (mitattu: Rohbau-työmaan aidot pilarit 1.1–2.3)
 
 
 def detect_columns(cloud, walls: list[Wall], floor_z: float, ceiling_z: float) -> list[Column]:
@@ -111,11 +113,21 @@ def detect_columns(cloud, walls: list[Wall], floor_z: float, ceiling_z: float) -
         wy = float(np.percentile(xy[:, 1], 98) - np.percentile(xy[:, 1], 2))
         if not (_MIN_FOOTPRINT <= max(wx, wy) <= _MAX_FOOTPRINT):
             continue
+        # Muotosuhde: aito pilari on kompakti (mitattu Rohbau-työmaa: 1.1–2.3).
+        # Pitkänomaiset (>_MAX_ASPECT) ovat detektoimattomia seinänpaloja tai
+        # keilausvarjon reunoja — juuri se "sälä" kalustetuissa/sotkuisissa tiloissa.
+        aspect = max(wx, wy) / max(min(wx, wy), 1.0)
+        if aspect > _MAX_ASPECT:
+            continue
         cx = float(xy[:, 0].mean()); cy = float(xy[:, 1].mean())
         shape, w, d = _profile(xy, cx, cy, wx, wy)
+        # Luottamus heijastaa kompaktiutta (ei enää satu 1.0:aan): kompakti +
+        # tiheä = korkea; pitkänomainen = matala → QA:n TARKISTA-lista poimii sen.
+        _compact = max(0.0, min(1.0, (_MAX_ASPECT - aspect) / (_MAX_ASPECT - 1.0)))
+        _conf = round(min(1.0, len(cl) / 600.0) * (0.4 + 0.6 * _compact), 3)
         columns.append(Column(
             id=f"column_{len(columns):03d}",
-            confidence=round(min(1.0, len(cl) / 600.0), 3),
+            confidence=_conf,
             classification="column",
             source=ElementSource(method="cluster", notes="vertical-fill"),
             location=[round(cx, 1), round(cy, 1)],

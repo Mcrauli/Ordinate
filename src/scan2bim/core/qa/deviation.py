@@ -16,6 +16,8 @@ from scan2bim.schemas.model import StructuralModel
 _ASSOC_BAND = 50.0   # mm — tältä etäisyydeltä piste katsotaan kuuluvaksi pinnalle
 _WALL_CONF_THR = 0.40
 _OPENING_CONF_THR = 0.50
+_COLUMN_CONF_THR = 0.45    # pilarin luottamus heijastaa nyt kompaktiutta (aspect)
+_BEAM_CONF_THR = 0.35      # matalan luottamuksen palkki = mahd. kattokrääsä
 
 
 def _ifc_mesh(ifc_path: Path, classes: tuple[str, ...]) -> o3d.geometry.TriangleMesh | None:
@@ -148,6 +150,12 @@ def flag_low_confidence(model: StructuralModel) -> list[dict]:
     for op in getattr(model, "openings", []):
         if op.confidence < _OPENING_CONF_THR:
             flags.append({"id": op.id, "type": op.opening_type, "confidence": round(op.confidence, 3)})
+    for col in getattr(model, "columns", None) or []:
+        if col.confidence < _COLUMN_CONF_THR:
+            flags.append({"id": col.id, "type": "column", "confidence": round(col.confidence, 3)})
+    for bm in getattr(model, "beams", None) or []:
+        if bm.confidence < _BEAM_CONF_THR:
+            flags.append({"id": bm.id, "type": "beam", "confidence": round(bm.confidence, 3)})
     return flags
 
 

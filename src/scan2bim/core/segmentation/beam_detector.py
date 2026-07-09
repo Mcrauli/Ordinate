@@ -21,7 +21,8 @@ log = logging.getLogger(__name__)
 
 _MIN_INLIERS = 30
 _MIN_ASPECT = 3.0          # length/width — alle tämän = pilari, ei palkki
-_MIN_LENGTH_MM = 400.0
+_MIN_LENGTH_MM = 700.0     # alle tämän = kattokrääsän/putken pätkä, ei palkki
+                           # (aidot Rohbau-palkit useimmat >1200mm)
 _MAX_WIDTH_MM = 600.0      # palkin max-leveys (ei katto/laatta)
 _MIN_HEIGHT_MM = 50.0      # palkin min-z-ulottuvuus (depth)
 
