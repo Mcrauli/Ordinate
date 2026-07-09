@@ -4,6 +4,18 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 [`Mcrauli/scan2bim-web`](https://github.com/Mcrauli/scan2bim-web/releases):iin;
 sovellus päivittää itsensä sieltä.
 
+## v0.7.2 (9.7.2026) — valepilarit/-palkit pois, aidot säilyvät
+- **Pilari-muotosuhderajaus (≤2,5):** aidot pilarit ovat kompakteja (mitattu
+  Rohbau-työmaa 1,1–2,3); pitkänomaiset "pilarit" (3,4–11) ovat detektoimattomia
+  seinänpaloja tai keilausvarjon reunoja → pois. Pilarin luottamus heijastaa nyt
+  kompaktiutta (ei enää satu 1,0:aan).
+- **Palkin min-pituus 400→700 mm:** aidot palkit ovat pitkiä; lyhyet pätkät ovat
+  kattoputkea/-krääsää.
+- **QA flägää nyt myös pilarit (<0,45) ja palkit (<0,35)** matalalla luottamuksella
+  → TARKISTA MANUAALISESTI -listalle, eivät esiinny varmoina.
+- Todennettu (ennen→jälkeen): asunto 4+3→0+0, talo035 3+2→1+0, Rohbau-työmaa
+  7+8→7+5 (kaikki 7 aitoa pilaria säilyi). Vision-varmennettu.
+
 ## v0.7.1 (9.7.2026) — yhden tiedoston polku käyttää tuotantoputkea (kaatumiskorjaus)
 - **Yksi skanni GUI:sta ei enää kaadu isoilla/katkenneilla tiedostoilla.** GUI ajoi
   yksittäisen tiedoston vanhalla `Pipeline.run()`-polulla (koko pilvi kerralla
