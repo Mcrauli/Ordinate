@@ -5,6 +5,25 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 sovellus päivittää itsensä sieltä.
 
 ## Julkaisematon — liiketilamoodi + suodattimen isot korjaukset + pilarit/palkit
+- **Jättiskannit (satoja M pistettä) eivät enää kaada muistia eivätkä jumita.**
+  Testattu: 159 M pisteen skanni koko pipelinen läpi (aiemmin OOM/jumi).
+  - Binääri-PLY luetaan LOHKOISSA ja Z-kaista suodataan lukiessa → huippumuisti
+    on yksi lohko, ei koko tiedosto. Kerrostunnistus + z-alue lohkoluvulla
+    (159 M: kerrostunnistus 2 min → 3 s).
+  - Paksuus- ja refine-pilvet rajataan kattoon satunnaisohennuksella (ei
+    voxel-sentroidibiasta → pintamediaani säilyy). Voxeloitavat lataukset
+    (detektio) tehdään lohkoittain kevyellä numpy-ruutudedupilla (o3d:n
+    voxel-hash söi ~10 GB 70 M pisteelle). Huippumuisti 12 GB → ~3 GB.
+  - Alle 40 M pisteen skannit käyttävät entistä (validoitua) latauspolkua
+    muuttumattomana — asunto todennettu regressiottomaksi (6/6 seinää ≤ 1,5 mm,
+    mediaani 0,06 mm).
+- **PointNet-suodattimen lohkojako O(lohkot×pisteet) → ämpärijako.** Iso skanni
+  (110×29 m → 13 000 lohkoa × miljoonat pisteet) jumitti minuuteiksi kun jokainen
+  lohko skannasi koko pistetaulukon. Nyt pisteet ämpäröidään ruutuihin kerran →
+  per-lohko O(1) haku. Tulos tavu tarkalleen identtinen (todennettu). Koski myös
+  isoja myymälätiloja.
+- **Katkennut/vajaa PLY** havaitaan tavuista: selkovaroitus + roskahännän leikkaus
+  (o3d palautti hiljaa roskaa headerin lupaamaan pistemäärään asti).
 - **Kohdetyyppi-valinta (GUI): "Liiketila / työmaa"** — oma suodatinmalli joka
   poistaa lattia-katto-hyllyrivit (synteettinen halli: 4 hyllyriviseinää → 0;
   hyllynpoisto 17 % → 95 %). Asunnoissa oletusmalli on tarkempi — siksi valinta,
