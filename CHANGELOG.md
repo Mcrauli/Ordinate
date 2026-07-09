@@ -4,7 +4,7 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 [`Mcrauli/scan2bim-web`](https://github.com/Mcrauli/scan2bim-web/releases):iin;
 sovellus päivittää itsensä sieltä.
 
-## Julkaisematon — liiketilamoodi + suodattimen isot korjaukset + pilarit/palkit
+## v0.7.0 (9.7.2026) — jättiskannit + liiketilamoodi + suodattimen isot korjaukset + pilarit/palkit
 - **Jättiskannit (satoja M pistettä) eivät enää kaada muistia eivätkä jumita.**
   Testattu: 159 M pisteen skanni koko pipelinen läpi (aiemmin OOM/jumi).
   - Binääri-PLY luetaan LOHKOISSA ja Z-kaista suodataan lukiessa → huippumuisti
