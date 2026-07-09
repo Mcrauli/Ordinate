@@ -62,6 +62,23 @@ def detect_columns(cloud, walls: list[Wall], floor_z: float, ceiling_z: float) -
     if len(free) < _MIN_CLUSTER_PTS:
         return []
 
+    # Ympäröintitesti: aito pilari seisoo KEILATUN tilan sisällä (dataa joka
+    # suuntaan). Keilausvarjon/skannireunan artefakti (hajonnut skanni) on
+    # datan REUNALLA → ulkopuoli on tyhjä. Näyte 8 suuntaan 1000mm renkaalla:
+    # jos <5 suunnassa on pisteitä ≤600mm päässä, pilari on reunalla → hylky.
+    from scipy.spatial import cKDTree
+    _xytree = cKDTree(pts[::4, :2]) if len(pts) > 4000 else None
+    _RING_R, _RING_TOL, _RING_HITS = 1000.0, 600.0, 5
+    _ang = np.linspace(0.0, 2 * np.pi, 8, endpoint=False)
+    _cos, _sin = np.cos(_ang), np.sin(_ang)
+
+    def _surrounded(cx: float, cy: float) -> bool:
+        if _xytree is None:
+            return True
+        probes = np.column_stack([cx + _RING_R * _cos, cy + _RING_R * _sin])
+        d, _ = _xytree.query(probes, k=1)
+        return int((d < _RING_TOL).sum()) >= _RING_HITS
+
     x0 = float(free[:, 0].min()); y0 = float(free[:, 1].min())
     ix = ((free[:, 0] - x0) / _CELL_MM).astype(np.int64)
     iy = ((free[:, 1] - y0) / _CELL_MM).astype(np.int64)
@@ -120,6 +137,8 @@ def detect_columns(cloud, walls: list[Wall], floor_z: float, ceiling_z: float) -
         if aspect > _MAX_ASPECT:
             continue
         cx = float(xy[:, 0].mean()); cy = float(xy[:, 1].mean())
+        if not _surrounded(cx, cy):
+            continue
         shape, w, d = _profile(xy, cx, cy, wx, wy)
         # Luottamus heijastaa kompaktiutta (ei enää satu 1.0:aan): kompakti +
         # tiheä = korkea; pitkänomainen = matala → QA:n TARKISTA-lista poimii sen.

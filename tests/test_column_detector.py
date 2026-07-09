@@ -31,6 +31,7 @@ def _cloud(parts):
 
 def test_column_found_despite_adjacent_props_and_clutter():
     parts = [
+        _box(4000, 2500, 8000, 5000, 0, 50, 20000),         # LATTIA (aito skanni)
         _box(3000, 2500, 400, 400, 50, 2950, 9000),         # AITO pilari 400x400
         _box(3800, 2500, 70, 70, 0, 2950, 800),             # holvituki 0.8m paassa
         _box(4300, 2500, 70, 70, 0, 2950, 800),             # holvituki
@@ -54,6 +55,7 @@ def test_low_stack_not_column():
 
 def test_free_standing_column_simple_room():
     parts = [
+        _box(3000, 2000, 6000, 4000, 0, 50, 15000),          # LATTIA (aito skanni)
         _box(2000, 2000, 300, 300, 50, 2950, 8000),
         _box(500, 3000, 900, 600, 0, 750, 2500),             # poyta
     ]
