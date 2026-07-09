@@ -148,14 +148,45 @@ class PointNetFilter:
         x_starts = np.arange(sc_min[0], sc_max[0] + 1.0, _BLOCK_STRIDE)
         y_starts = np.arange(sc_min[1], sc_max[1] + 1.0, _BLOCK_STRIDE)
 
-        for xs in x_starts:
-            for ys in y_starts:
-                in_block = (
-                    (wpts[:, 0] >= xs) & (wpts[:, 0] < xs + _BLOCK_SIZE) &
-                    (wpts[:, 1] >= ys) & (wpts[:, 1] < ys + _BLOCK_SIZE)
-                )
-                idx = np.where(in_block)[0]
-                if len(idx) < 32:
+        # Lohkojako spatiaalisella ämpärikäytöllä, EI täyshaulla per lohko: iso
+        # skanni (esim. 110×29 m → 13000 lohkoa) × koko wpts-täyshaku on
+        # O(lohkot×pisteet) = kymmeniä miljardeja operaatioita → minuutteja
+        # "jumia". Kukin piste kuuluu STRIDE-ruutuunsa; lohko (BLOCK_SIZE =
+        # cpb×STRIDE) kattaa cpb×cpb ruutua. Kerää lohkon pisteet ruuduista →
+        # per-lohko O(cpb²) haku. Indeksit lajitellaan nousevaan järjestykseen
+        # → identtinen np.where(in_block):n kanssa (sama otanta, sama tulos).
+        cpb = max(1, int(round(_BLOCK_SIZE / _BLOCK_STRIDE)))
+        cx = np.floor((wpts[:, 0] - sc_min[0]) / _BLOCK_STRIDE).astype(np.int64)
+        cy = np.floor((wpts[:, 1] - sc_min[1]) / _BLOCK_STRIDE).astype(np.int64)
+        cx_max, cy_max = int(cx.max()), int(cy.max())
+        ncy = cy_max + 1
+        cellid = cx * ncy + cy
+        order = np.argsort(cellid, kind="stable")
+        cid_sorted = cellid[order]
+        uniq, starts = np.unique(cid_sorted, return_index=True)
+        ends = np.append(starts[1:], len(order))
+        cell_slice = {int(c): (int(s), int(e)) for c, s, e in zip(uniq, starts, ends)}
+
+        def _block_idx(kx: int, ky: int) -> np.ndarray | None:
+            parts = []
+            for ax in range(kx, min(kx + cpb, cx_max + 1)):
+                for ay in range(ky, min(ky + cpb, cy_max + 1)):
+                    # ax/ay rajattu dataan → pakattu cellid ei kiedo riviä yli
+                    sl = cell_slice.get(ax * ncy + ay)
+                    if sl is not None:
+                        parts.append(order[sl[0]:sl[1]])
+            if not parts:
+                return None
+            idx = np.concatenate(parts)
+            idx.sort()
+            return idx
+
+        for kx in range(len(x_starts)):
+            xs = x_starts[kx]
+            for ky in range(len(y_starts)):
+                ys = y_starts[ky]
+                idx = _block_idx(kx, ky)
+                if idx is None or len(idx) < 32:
                     continue
 
                 n = len(idx)

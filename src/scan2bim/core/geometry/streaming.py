@@ -38,7 +38,11 @@ def _load_ply_band(
     # per-tiedosto kattoraja jaetaan tiedostojen kesken (monikeilaus)
     mp = 0 if max_points <= 0 else max(1, max_points // max(n_paths, 1))
 
-    if voxel_size <= 0.0:
+    # Kattorajattu lataus (thick JA iso refine) = täysresa + satunnaisohennus.
+    # EI voxelointia: iso 5mm-kaista (SLAM-kohina) on ~100M eikä kutistu, ja o3d-
+    # voxel siitä jumittaa/thrashaa. Satunnaisohennus on halpa JA tarkempi
+    # pintamediaanille (ei sentroidibiasta). voxel<=0 (thick) tulee myös tänne.
+    if voxel_size <= 0.0 or mp > 0:
         raw = read_ply_xyz_band(path, z_lo / scale, z_hi / scale, max_points=mp)
         if raw is None:
             return None
@@ -51,8 +55,6 @@ def _load_ply_band(
     gen = ply_band_chunks(path, z_lo / scale, z_hi / scale)
     if gen is None:
         return None
-
-    rng = np.random.default_rng(0)
 
     def _voxel(arr: np.ndarray) -> np.ndarray:
         if len(arr) == 0:
@@ -67,36 +69,23 @@ def _load_ply_band(
         # .copy(): irrota o3d-puskurista → väliaikainen pilvi vapautuu heti
         return np.asarray(c.voxel_down_sample(voxel_size).points).copy()
 
-    def _cap(arr: np.ndarray) -> np.ndarray:
-        # satunnaisohennus kattoon — EI voxel-sentroidibiasta (paras pintamediaanille)
-        if mp and len(arr) > mp:
-            return arr[rng.choice(len(arr), mp, replace=False)]
-        return arr
-
     # Puskuroi RAAKAlohkot ~24M asti, sitten tyhjennä: voxeloi puskuri + sulauta
-    # kertyneeseen (dedup lohkorajat) + rajaa kattoon. Sulautus laukeaa kerran per
-    # 24M SYÖTETTÄ (ei per lohko) → voxeloitavaksi päätyy vain acc + ~24M, ei
-    # koko kaista, eikä työ ole O(n²).
+    # kertyneeseen (dedup lohkorajat). Sulautus laukeaa kerran per 24M SYÖTETTÄ
+    # (ei per lohko) → voxeloitavaksi päätyy vain acc + ~24M, ei koko kaista,
+    # eikä työ ole O(n²).
     acc: np.ndarray | None = None
     buf: list[np.ndarray] = []
     n_buf = 0
 
+    # Tänne päädytään vain detektiolle (voxel>0, ei kattorajaa). Dedup
+    # voxeloimalla pitää akun aidossa 12mm-ruutukoossa tiheysmaskille.
     def _flush():
         nonlocal acc, buf, n_buf
         if not buf:
             return
         v = _voxel(np.concatenate(buf) if len(buf) > 1 else buf[0])
         buf, n_buf = [], 0
-        if acc is None:
-            acc = _cap(v)
-        elif mp:
-            # kattoraja päällä (refine/iso): sulauta halvalla concat+ohennus,
-            # EI koko akun uudelleenvoxelointia (o3d-hash 67M pisteelle = ~5 GB).
-            acc = _cap(np.concatenate([acc, v]))
-        else:
-            # ei kattorajaa (detektio): dedup voxeloimalla pitää akun aidossa
-            # ruutukoossa (12mm-grid tarvitsee tarkat solut tiheysmaskille).
-            acc = _voxel(np.concatenate([acc, v]))
+        acc = v if acc is None else _voxel(np.concatenate([acc, v]))
 
     for xyz in gen:
         if scale != 1.0:
@@ -136,6 +125,7 @@ def load_floor_slice(
     """
     from scan2bim.core.geometry.loader import (
         load_point_cloud, read_ply_xyz_band, ply_band_chunks, ply_autoscale_factor,
+        _ply_dtype,
     )
 
     merged = o3d.geometry.PointCloud()
@@ -144,11 +134,16 @@ def load_floor_slice(
         if progress_cb:
             progress_cb(f"  [{i+1}/{len(paths)}] {path.name}")
 
-        # Binääri-PLY luetaan LOHKOISSA Z-kaista suoraan suodattaen — iso skanni
-        # (satoja M pisteitä) ei mahdu muistiin kokonaan. Muut formaatit / ascii-
-        # PLY: koko tiedosto (E57 lukee jo skanneittain, muut ovat pienempiä).
+        # Iso binääri-PLY luetaan LOHKOISSA (muistirajattu). PIENI PLY (< 40M
+        # pistettä) ja muut formaatit: koko tiedosto o3d:llä = validoitu polku,
+        # jota EI muuteta. Raja koskee vain jättiskanneja jotka muuten kaataisivat
+        # muistin. (E57 lukee jo skanneittain.)
         slice_cloud: o3d.geometry.PointCloud | None = None
+        _big_ply = False
         if path.suffix.lower() == ".ply":
+            _dt = _ply_dtype(path)
+            _big_ply = _dt is not None and _dt[1] >= 40_000_000
+        if _big_ply:
             try:
                 slice_cloud = _load_ply_band(
                     path, z_lo, z_hi, voxel_size, max_points, len(paths),
