@@ -34,11 +34,13 @@ class ProcessWorker(QtCore.QThread):
     def run(self) -> None:
         try:
             pipeline = Pipeline(self._config, progress=self.progress.emit)
-            if len(self._inputs) > 1:
-                # Monta skannia → monikerros/multiscan-putki
-                result = pipeline.run_floors(self._inputs, self._output)
-            else:
-                result = pipeline.run(self._inputs[0], self._output)
-            self.finished.emit(result)
+            # AINA run_floors — myös yhdelle tiedostolle. Se on tuotantopolku
+            # (lohkoluku isoille skanneille, kerrosjako, diagnostiikka). Vanha
+            # yhden-tiedoston run() lataa koko pilven kerralla (iso E57/PLY →
+            # muisti loppuu tai kaatuu) eikä sitä pidä käyttää GUI:sta.
+            # run_floors palauttaa listan (malli per kerros). _on_finished
+            # käsittelee listan (show_models) → monikerros näkyy oikein.
+            models = pipeline.run_floors(self._inputs, self._output)
+            self.finished.emit(models)
         except Exception as exc:  # noqa: BLE001
             self.failed.emit(str(exc))

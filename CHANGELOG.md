@@ -4,6 +4,16 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 [`Mcrauli/scan2bim-web`](https://github.com/Mcrauli/scan2bim-web/releases):iin;
 sovellus päivittää itsensä sieltä.
 
+## v0.7.1 (9.7.2026) — yhden tiedoston polku käyttää tuotantoputkea (kaatumiskorjaus)
+- **Yksi skanni GUI:sta ei enää kaadu isoilla/katkenneilla tiedostoilla.** GUI ajoi
+  yksittäisen tiedoston vanhalla `Pipeline.run()`-polulla (koko pilvi kerralla
+  muistiin, ei lohkolukua, ei kerrosjakoa) — iso E57/PLY (esim. ConSLAM 159 M)
+  kaatui `'NoneType' object has no attribute 'write'` -virheeseen windowed-exessä.
+  Nyt sekä yksi että monta tiedostoa käyttävät `run_floors`-tuotantoputkea
+  (lohkoluku, kerrosjako, diagnostiikka). **Tämä on pilotin yleisin tapaus (yksi E57).**
+- **Windowed-exe:n None-virrat** (`sys.stdout`/`stderr` = None) ohjataan lokitiedostoon
+  ennen importteja → mikään print/logging ei enää voi kaataa sovellusta.
+
 ## v0.7.0 (9.7.2026) — jättiskannit + liiketilamoodi + suodattimen isot korjaukset + pilarit/palkit
 - **Jättiskannit (satoja M pistettä) eivät enää kaada muistia eivätkä jumita.**
   Testattu: 159 M pisteen skanni koko pipelinen läpi (aiemmin OOM/jumi).
