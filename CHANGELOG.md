@@ -4,6 +4,15 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 [`Mcrauli/scan2bim-web`](https://github.com/Mcrauli/scan2bim-web/releases):iin;
 sovellus päivittää itsensä sieltä.
 
+## v0.7.4 (10.7.2026) — diagnostiikan palautesilmukka
+- **"Lähetä diagnostiikka kehittäjälle" -nappi:** niputtaa kaikkien ajojen
+  diagnostiikan (versio, vaiheet, varoitukset, tulokset — EI geometriaa) yhdeksi
+  tiedostoksi ja avaa esitäytetyn sähköpostiluonnoksen + palautepohjan. Asiakas
+  liittää tiedoston ja lähettää. Ei backendiä, toimii rajoitetussa verkossa.
+- **Rullaava diagnostiikkahistoria** (`%APPDATA%\scan2bim\`): joka ajo kertyy
+  yhteen lokiin → näkyy mitä on ajettu ja missä meni pieleen, ilman skanneja.
+  Tämä on pilotin tukikanava ja pilari/palkkimallin koulutusdatan lähde.
+
 ## v0.7.3 (9.7.2026) — palkit vain soffit-vyöhykkeeltä (ripustettu talotekniikka pois)
 - **Palkkidetektio vain katon alapinnan SOFFIT-vyöhykkeeltä** (valmiissa tilassa
   jossa kattolaatta löytyy). Katosta 380–1600 mm alas roikkuva tavara on
