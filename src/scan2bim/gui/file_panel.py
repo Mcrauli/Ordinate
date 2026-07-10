@@ -208,6 +208,17 @@ class FilePanel(QtWidgets.QWidget):
         self._btn.clicked.connect(self._on_convert)
         layout.addWidget(self._btn)
 
+        # Palaute/diagnostiikka kehittäjälle (ei geometriaa) — pilotin tukikanava
+        self._feedback_btn = QtWidgets.QPushButton("Lähetä diagnostiikka kehittäjälle")
+        self._feedback_btn.setObjectName("linkbtn")
+        self._feedback_btn.setToolTip(
+            "Niputtaa kaikkien ajojen diagnostiikan (versio, vaiheet, varoitukset,\n"
+            "tulokset — EI geometriaa) ja avaa sähköpostiluonnoksen. Auttaa\n"
+            "etätuessa ja pilari/palkkimallin parantamisessa."
+        )
+        self._feedback_btn.clicked.connect(self._on_feedback)
+        layout.addWidget(self._feedback_btn)
+
     def _on_files(self, paths: list[Path]) -> None:
         self._input_paths = paths
         self._btn.setEnabled(bool(paths))
@@ -242,6 +253,16 @@ class FilePanel(QtWidgets.QWidget):
             Path(self._out_edit.text()),
             cfg,
         )
+
+    def _on_feedback(self) -> None:
+        from scan2bim.gui.feedback import export_and_mail
+        path, msg = export_and_mail()
+        box = QtWidgets.QMessageBox(self)
+        box.setWindowTitle("Diagnostiikka kehittäjälle")
+        box.setIcon(QtWidgets.QMessageBox.Icon.Information
+                    if path else QtWidgets.QMessageBox.Icon.Warning)
+        box.setText(msg)
+        box.exec()
 
     def set_busy(self, busy: bool) -> None:
         self._btn.setEnabled(not busy)
