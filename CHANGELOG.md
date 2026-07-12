@@ -4,6 +4,15 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 [`Mcrauli/scan2bim-web`](https://github.com/Mcrauli/scan2bim-web/releases):iin;
 sovellus päivittää itsensä sieltä.
 
+## v0.7.5 (12.7.2026) — diagnostiikkanappi ei enää luota rikkinäiseen mailtoon
+- **Korjaus: "Lähetä diagnostiikka" saattoi epäonnistua hiljaa.** Windowsin
+  mailto-kytkös voi osoittaa poistettuun sovellukseen (vanha Windows Mail),
+  jolloin mitään ei avaudu mutta sovellus väitti luonnoksen auenneen.
+- Dialogi näyttää nyt aina vastaanottajan ja aiheen, ja tarjoaa kaksi
+  avausnappia: **Avaa sähköpostiohjelma** (mailto) ja **Avaa Gmail selaimessa**
+  (toimii vaikka mailto-kytkös on rikki). Molemmissa vastaanottaja, aihe ja
+  palautepohja valmiina.
+
 ## v0.7.4 (10.7.2026) — diagnostiikan palautesilmukka
 - **"Lähetä diagnostiikka kehittäjälle" -nappi:** niputtaa kaikkien ajojen
   diagnostiikan (versio, vaiheet, varoitukset, tulokset — EI geometriaa) yhdeksi

@@ -255,14 +255,34 @@ class FilePanel(QtWidgets.QWidget):
         )
 
     def _on_feedback(self) -> None:
-        from scan2bim.gui.feedback import export_and_mail
-        path, msg = export_and_mail()
+        from scan2bim.gui import feedback
+        path, err = feedback.export_bundle()
         box = QtWidgets.QMessageBox(self)
         box.setWindowTitle("Diagnostiikka kehittäjälle")
-        box.setIcon(QtWidgets.QMessageBox.Icon.Information
-                    if path else QtWidgets.QMessageBox.Icon.Warning)
-        box.setText(msg)
+        if not path:
+            box.setIcon(QtWidgets.QMessageBox.Icon.Warning)
+            box.setText(err)
+            box.exec()
+            return
+        box.setIcon(QtWidgets.QMessageBox.Icon.Information)
+        box.setText(
+            f"Diagnostiikka tallennettu työpöydälle:\n{path.name}\n\n"
+            "Avaa sähköposti alta — vastaanottaja ja aihe ovat valmiina.\n"
+            "LIITÄ tallennettu tiedosto viestiin ja lähetä.\n\n"
+            f"Vastaanottaja: {feedback.DEV_EMAIL}\n"
+            f"Aihe: {feedback.mail_subject()}"
+        )
+        mail_btn = box.addButton("Avaa sähköpostiohjelma",
+                                 QtWidgets.QMessageBox.ButtonRole.AcceptRole)
+        gmail_btn = box.addButton("Avaa Gmail selaimessa",
+                                  QtWidgets.QMessageBox.ButtonRole.AcceptRole)
+        box.addButton("Sulje", QtWidgets.QMessageBox.ButtonRole.RejectRole)
         box.exec()
+        clicked = box.clickedButton()
+        if clicked is mail_btn:
+            feedback.open_mail_client()
+        elif clicked is gmail_btn:
+            feedback.open_gmail()
 
     def set_busy(self, busy: bool) -> None:
         self._btn.setEnabled(not busy)

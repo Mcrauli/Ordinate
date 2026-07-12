@@ -29,3 +29,5 @@ data/*.png
 
 data/*.npy
 data/*.json
+build73/
+dist73/

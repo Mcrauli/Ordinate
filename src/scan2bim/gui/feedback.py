@@ -2,10 +2,16 @@
 
 Pilottiasiakas ei voi jakaa skanneja, mutta diagnostiikka (ei geometriaa) +
 lyhyt palaute riittää etätukeen ja pilari/palkkimallin parantamiseen. Nappi
-tallentaa nipun tiedostoon ja avaa esitäytetyn mailto-viestin — asiakas liittää
-tiedoston ja lähettää. Ei backendiä, toimii yrityksen rajoitetussa verkossa."""
+tallentaa nipun tiedostoon ja tarjoaa esitäytetyn viestin — asiakas liittää
+tiedoston ja lähettää. Ei backendiä, toimii yrityksen rajoitetussa verkossa.
+
+HUOM: mailto voi epäonnistua HILJAA (Windowsin mailto-kytkös voi osoittaa
+poistettuun sovellukseen, os.startfile ei heitä virhettä) — siksi dialogi
+näyttää aina osoitteen + aiheen ja tarjoaa myös Gmail-selainlinkin."""
 from __future__ import annotations
 
+import os
+import sys
 import time
 import urllib.parse
 import webbrowser
@@ -13,7 +19,7 @@ from pathlib import Path
 
 from scan2bim.core.qa.diagnostics import history_path
 
-_DEV_EMAIL = "rekolalauri@gmail.com"
+DEV_EMAIL = "rekolalauri@gmail.com"
 
 _TEMPLATE = (
     "PALAUTE (täytä lyhyesti):\n"
@@ -24,14 +30,25 @@ _TEMPLATE = (
     "\n" + "=" * 60 + "\nDIAGNOSTIIKKAHISTORIA (ei geometriaa, turvallinen jakaa):\n\n"
 )
 
+_MAIL_BODY = (
+    "Liitä työpöydälle tallennettu diagnostiikkatiedosto tähän viestiin.\n\n"
+    "Palaute:\n- Mikä toimi:\n- Mikä meni pieleen:\n"
+    "- Väärät detektiot (palkit/pilarit):\n"
+)
+
 
 def _desktop() -> Path:
     d = Path.home() / "Desktop"
     return d if d.exists() else Path.home()
 
 
-def export_and_mail() -> tuple[Path | None, str]:
-    """Tallenna diagnostiikkanippu ja avaa mailto. Palauttaa (polku, viesti)."""
+def mail_subject() -> str:
+    from scan2bim._version import __version__
+    return f"scan2bim diagnostiikka & palaute (v{__version__})"
+
+
+def export_bundle() -> tuple[Path | None, str]:
+    """Tallenna diagnostiikkanippu työpöydälle. Palauttaa (polku, virheviesti)."""
     hist = history_path()
     if not hist.exists() or hist.stat().st_size == 0:
         return None, ("Ei vielä diagnostiikkaa lähetettäväksi.\n"
@@ -46,23 +63,29 @@ def export_and_mail() -> tuple[Path | None, str]:
         dest.write_text(_TEMPLATE + body_hist, encoding="utf-8")
     except OSError as e:
         return None, f"Tallennus epäonnistui: {e}"
+    return dest, ""
 
-    from scan2bim._version import __version__
-    subject = f"scan2bim diagnostiikka & palaute (v{__version__})"
-    body = (
-        f"Diagnostiikka tallennettu tiedostoon:\n{dest}\n\n"
-        "Liitä yllä oleva tiedosto tähän viestiin (raahaa se liitteeksi).\n\n"
-        "Palaute:\n- Mikä toimi:\n- Mikä meni pieleen:\n"
-        "- Väärät detektiot (palkit/pilarit):\n"
-    )
-    url = "mailto:" + _DEV_EMAIL + "?" + urllib.parse.urlencode(
-        {"subject": subject, "body": body}, quote_via=urllib.parse.quote
+
+def open_mail_client() -> None:
+    """Avaa oletussähköpostiohjelman luonnos (vastaanottaja + aihe + runko)."""
+    url = "mailto:" + DEV_EMAIL + "?" + urllib.parse.urlencode(
+        {"subject": mail_subject(), "body": _MAIL_BODY},
+        quote_via=urllib.parse.quote,
     )
     try:
-        webbrowser.open(url)
-    except Exception:  # noqa: BLE001 — mailto voi puuttua; tiedosto on silti tallessa
-        pass
-    return dest, (f"Diagnostiikka tallennettu:\n{dest}\n\n"
-                  "Sähköpostiluonnos avautui — LIITÄ tiedosto ja lähetä.\n"
-                  "Jos sähköposti ei auennut, lähetä tiedosto käsin osoitteeseen "
-                  f"{_DEV_EMAIL}.")
+        if sys.platform == "win32":
+            os.startfile(url)  # noqa: S606 — mailto oletussovellukseen
+        else:
+            webbrowser.open(url)
+    except OSError:
+        pass  # dialogissa näkyy osoite + aihe käsin lähetystä varten
+
+
+def open_gmail() -> None:
+    """Avaa Gmailin luonnos selaimessa (toimii vaikka mailto-kytkös on rikki)."""
+    url = "https://mail.google.com/mail/?" + urllib.parse.urlencode(
+        {"view": "cm", "fs": "1", "to": DEV_EMAIL,
+         "su": mail_subject(), "body": _MAIL_BODY},
+        quote_via=urllib.parse.quote,
+    )
+    webbrowser.open(url)
