@@ -4,7 +4,14 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 [`Mcrauli/scan2bim-web`](https://github.com/Mcrauli/scan2bim-web/releases):iin;
 sovellus päivittää itsensä sieltä.
 
-## v0.7.5 (12.7.2026) — diagnostiikkanappi ei enää luota rikkinäiseen mailtoon
+## v0.7.5 (12.7.2026) — sisäkkäiset seinät korjattu + diagnostiikkanapin mailto-fix
+- **Korjaus: perimetrijatke ei enää jää mitatun seinän kanssa sisäkkäin.**
+  Sama fyysinen seinä jakautui mitattuun pätkään ja perimetri-täyteseinään,
+  jotka olivat ~150 mm sivussa toisistaan (kontuurigrid-bias + 300 mm-swellin
+  akselisiirto) → pinnat limittyivät nurkassa ja arkkitehti joutui korjaamaan.
+  Perimetrijatke sulautetaan nyt MITATUN seinän linjalle (tarkempi akseli ja
+  paksuus voittaa fiktioseinän). Todennettu Matterport-aulalla: 8→7 seinää,
+  0 sisäkkäistä paria, yhdistetty seinä pinnassa 0.70 mm; pintamediaani 0.08 mm.
 - **Korjaus: "Lähetä diagnostiikka" saattoi epäonnistua hiljaa.** Windowsin
   mailto-kytkös voi osoittaa poistettuun sovellukseen (vanha Windows Mail),
   jolloin mitään ei avaudu mutta sovellus väitti luonnoksen auenneen.

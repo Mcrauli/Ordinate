@@ -1,4 +1,4 @@
-# build.ps1 — scan2bim PyInstaller build
+﻿# build.ps1 — scan2bim PyInstaller build
 # Aja: .\build.ps1
 # Tulos: dist\scan2bim.exe (onefile)
 

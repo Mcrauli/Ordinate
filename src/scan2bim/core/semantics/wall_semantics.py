@@ -51,6 +51,11 @@ def filter_structural_walls(walls: list[Wall], slabs: list[Slab]) -> list[Wall]:
 _COLIN_ANGLE_DEG = 8.0     # ° — collinear-yhdistyksen kulmatoleranssi
 _COLIN_PERP_MM = 130.0     # mm — saman linjan kohtisuora toleranssi
 _COLIN_GAP_MM = 450.0      # mm — vierekkäisten päiden max väli (pieni: ei yhdistä eri seiniä)
+_COLIN_PERIM_ANGLE_DEG = 5.0   # ° — perimetrijatke: mitatun linjan adoptio kiertää
+                               # kauimman pään; pitkällä jatkeella iso kulma heittäisi
+_COLIN_PERIM_PERP_MM = 220.0   # mm — perimetriakselin tunnettu bias: kontuurigrid
+                               # (max 90mm korjaus) + 300mm-swellin akselisiirto
+                               # (~100mm) → sama fyysinen seinä voi olla ~175mm sivussa
 
 
 def merge_collinear_walls(walls: list[Wall]) -> list[Wall]:
@@ -74,6 +79,34 @@ def merge_collinear_walls(walls: list[Wall]) -> list[Wall]:
                 ang = np.degrees(np.arccos(min(1.0, abs(float(np.dot(da, db))))))
                 if ang > _COLIN_ANGLE_DEG:
                     continue
+                # Perimetrijatke: fiktio-perimetriseinä joka jatkaa MITATTUA seinää
+                # samalla linjalla mutta biasoituneella akselilla (kontuurigrid +
+                # paksuus-swell) → sulauta MITATUN seinän linjalle, älä pidemmän.
+                # Muuten pinnat jäävät sisäkkäin nurkkaan (arkkitehti joutuu korjaamaan).
+                fa = getattr(a.source, "method", "") == "floorplan"
+                fb = getattr(b.source, "method", "") == "floorplan"
+                if fa != fb:
+                    meas, per = (b, a) if fa else (a, b)
+                    dm = _direction(meas)
+                    p0m = np.array(meas.axis[0], float)
+                    nm = np.array([-dm[1], dm[0]])
+                    offs = [abs(float(np.dot(np.array(p, float) - p0m, nm)))
+                            for p in per.axis]
+                    if ang <= _COLIN_PERIM_ANGLE_DEG and max(offs) <= _COLIN_PERIM_PERP_MM:
+                        ts = [float(np.dot(np.array(p, float) - p0m, dm))
+                              for p in (*meas.axis, *per.axis)]
+                        tm0, tm1 = sorted(ts[:2]); tp0, tp1 = sorted(ts[2:])
+                        gap = max(tm0, tp0) - min(tm1, tp1)
+                        if gap <= _COLIN_GAP_MM:
+                            lo = min(tm0, tp0); hi = max(tm1, tp1)
+                            s = p0m + lo * dm; e = p0m + hi * dm
+                            work[i] = meas.model_copy(update={
+                                "axis": [[round(float(s[0]), 1), round(float(s[1]), 1)],
+                                         [round(float(e[0]), 1), round(float(e[1]), 1)]],
+                            })
+                            work.pop(j)
+                            merged = True
+                            break
                 p0a = np.array(a.axis[0], float); p1a = np.array(a.axis[1], float)
                 p0b = np.array(b.axis[0], float); p1b = np.array(b.axis[1], float)
                 na = np.array([-da[1], da[0]])
