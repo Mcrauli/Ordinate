@@ -259,3 +259,26 @@ def test_retail_filter_variant_loads():
     assert _find_model_path("retail") is not None, "retail-mallia ei loydy"
     f = PointNetFilter(variant="retail")
     assert f.is_available()
+
+
+def test_corner_extensions_butt_joints():
+    from scan2bim.core.ifc.writer import _corner_extensions
+    from scan2bim.schemas.model import ElementSource, Wall
+
+    def w(wid, x0, y0, x1, y1, t):
+        return Wall(id=wid, confidence=0.9, classification="wall",
+                    source=ElementSource(method="contour"),
+                    axis=[[x0, y0], [x1, y1]], height=2700.0, thickness=t, z_min=0.0)
+
+    # L-nurkka (0,0): paksumpi a jatkuu labi (+t_b/2), b katkaistaan (-t_a/2)
+    a = w("a", -3000, 0, 0, 0, 200.0)
+    b = w("b", 0, 0, 0, 2500, 100.0)
+    ext = _corner_extensions([a, b])
+    assert abs(ext["a"][1] - 50.0) < 1.0, f"labimeneva ei jatku: {ext}"
+    assert abs(ext["b"][0] + 100.0) < 1.0, f"katkaisu vaarin: {ext}"
+
+    # T-liitos: c:n paa osuu a:n keskelle -> katkaistaan a:n pintaan
+    c = w("c", -1500, 0, -1500, 1800, 100.0)
+    ext = _corner_extensions([a, c])
+    assert abs(ext["c"][0] + 100.0) < 1.0, f"T-katkaisu vaarin: {ext}"
+    assert ext["a"] == (0.0, 0.0) or abs(ext["a"][0]) < 1.0, f"labimeneva muuttui: {ext}"

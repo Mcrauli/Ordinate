@@ -93,8 +93,10 @@ def _new_caches() -> dict:
 def _write_model_elements(ifc, model, oh, storey, body_ctx, axis_ctx, caches) -> None:
     elements = []
     openings_by_wall = _openings_by_wall(model)
+    joint_exts = _corner_extensions(model.walls)
     for w in model.walls:
-        wall_ent = _create_wall(ifc, w, oh, body_ctx, axis_ctx, caches)
+        wall_ent = _create_wall(ifc, w, oh, body_ctx, axis_ctx, caches,
+                                ext=joint_exts.get(w.id, (0.0, 0.0)))
         elements.append(wall_ent)
         for op in openings_by_wall.get(w.id, []):
             elements.extend(_create_opening(ifc, wall_ent, w, op, oh, body_ctx, caches))
@@ -321,7 +323,77 @@ def _make_owner_history(ifc: ifcopenshell.file) -> ifcopenshell.entity_instance:
 # Seinä
 # --------------------------------------------------------------------------- #
 
-def _create_wall(ifc, wall, oh, body_ctx, axis_ctx, caches) -> ifcopenshell.entity_instance:
+_JOINT_END_TOL = 80.0   # mm — pää "samassa nurkassa" toisen pään kanssa
+_JOINT_MIN_COS = 0.7071  # risteysliitos vain > 45° kulmille (collinear hoituu mergessä)
+
+
+def _corner_extensions(walls) -> dict[str, tuple[float, float]]:
+    """Puskuliitokset: per-pää jatko/katkaisu (mm) niin etteivät solidit limity.
+
+    Akselit päättyvät leikkauspisteeseen → molempien suorakaiteet peittävät
+    nurkkaneliön (t1/2 × t2/2 sisäkkäin) ja ulkonurkkaan jää kolo. Ratkaisu:
+    L-nurkassa paksumpi (tasapelissä pidempi) seinä jatkuu läpi toisen ulko-
+    pintaan (+t/2) ja toinen katkaistaan sen sisäpintaan (−t/2); T-liitoksessa
+    pystyseinä katkaistaan läpimenevän pintaan. Koskee vain IFC-solidia —
+    akselit, mittaukset ja QA eivät muutu."""
+    axes = {}
+    for w in walls:
+        p0 = np.array(w.axis[0], dtype=float)
+        p1 = np.array(w.axis[1], dtype=float)
+        d = p1 - p0
+        ln = float(np.linalg.norm(d))
+        u = d / ln if ln > 1e-6 else np.array([1.0, 0.0])
+        axes[w.id] = (p0, p1, u, ln)
+    exts: dict[str, list[float]] = {w.id: [0.0, 0.0] for w in walls}
+
+    def _runs_through(a, b) -> bool:
+        if abs(a.thickness - b.thickness) > 1.0:
+            return a.thickness > b.thickness
+        la, lb = axes[a.id][3], axes[b.id][3]
+        if abs(la - lb) > 1.0:
+            return la > lb
+        return a.id < b.id
+
+    for wi in walls:
+        p0i, p1i, ui, li = axes[wi.id]
+        for end_i, p in ((0, p0i), (1, p1i)):
+            best = None  # (dperp, delta_mm)
+            for wj in walls:
+                if wj.id == wi.id:
+                    continue
+                p0j, _, uj, lj = axes[wj.id]
+                if abs(float(np.dot(ui, uj))) > _JOINT_MIN_COS:
+                    continue
+                t = float(np.dot(p - p0j, uj))
+                if t < -_JOINT_END_TOL or t > lj + _JOINT_END_TOL:
+                    continue
+                nj = np.array([-uj[1], uj[0]])
+                dperp = abs(float(np.dot(p - p0j, nj)))
+                if dperp > wj.thickness / 2.0 + 20.0:
+                    continue
+                # mm liikettä i:n akselia pitkin per mm j:n normaalin suuntaan
+                fac = 1.0 / max(0.5, abs(float(np.dot(ui, nj))))
+                reach = max(0.0, wj.thickness / 2.0 - dperp) * fac
+                at_j_end = t < _JOINT_END_TOL or t > lj - _JOINT_END_TOL
+                if at_j_end and _runs_through(wi, wj):
+                    delta = +reach          # L-nurkka, wi jatkuu läpi ulkopintaan
+                else:
+                    delta = -reach          # katkaise wi wj:n pintaan (L-trim / T)
+                if best is None or dperp < best[0]:
+                    best = (dperp, delta)
+            if best is not None:
+                exts[wi.id][end_i] = best[1]
+
+    for w in walls:
+        e0, e1 = exts[w.id]
+        ln = axes[w.id][3]
+        if ln + e0 + e1 < 100.0:  # katkaisu ei saa romahduttaa lyhyttä seinää
+            exts[w.id] = [0.0, 0.0]
+    return {k: (v[0], v[1]) for k, v in exts.items()}
+
+
+def _create_wall(ifc, wall, oh, body_ctx, axis_ctx, caches,
+                 ext: tuple[float, float] = (0.0, 0.0)) -> ifcopenshell.entity_instance:
     p0 = np.array(wall.axis[0], dtype=float)
     p1 = np.array(wall.axis[1], dtype=float)
     vec = p1 - p0
@@ -348,13 +420,16 @@ def _create_wall(ifc, wall, oh, body_ctx, axis_ctx, caches) -> ifcopenshell.enti
             ifc.createIfcCartesianPoint([half, 0.0]),
         ])],
     )
+    # Puskuliitos: body jatkuu/katkeaa päistään (ext), akseli pysyy ennallaan
+    e0, e1 = float(ext[0]), float(ext[1])
+    body_len = length + e0 + e1
     profile = ifc.createIfcRectangleProfileDef(
-        ProfileType="AREA", XDim=length, YDim=float(wall.thickness),
+        ProfileType="AREA", XDim=body_len, YDim=float(wall.thickness),
     )
     solid = ifc.createIfcExtrudedAreaSolid(
         SweptArea=profile,
         Position=ifc.createIfcAxis2Placement3D(
-            Location=ifc.createIfcCartesianPoint([0.0, 0.0, 0.0]),
+            Location=ifc.createIfcCartesianPoint([(e1 - e0) / 2.0, 0.0, 0.0]),
             Axis=ifc.createIfcDirection([0.0, 0.0, 1.0]),
             RefDirection=ifc.createIfcDirection([1.0, 0.0, 0.0]),
         ),

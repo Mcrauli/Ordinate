@@ -4,6 +4,16 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 [`Mcrauli/scan2bim-web`](https://github.com/Mcrauli/scan2bim-web/releases):iin;
 sovellus päivittää itsensä sieltä.
 
+## v0.7.6 (12.7.2026) — puskuliitokset: seinät eivät enää limity nurkissa
+- **IFC-seinäsolidit eivät enää mene sisäkkäin liitoksissa.** Akselit päättyvät
+  leikkauspisteeseen → molempien seinien suorakaiteet peittivät nurkkaneliön
+  (5–9 cm sisäkkäin joka nurkassa) ja ulkonurkkaan jäi kolo. Nyt L-nurkassa
+  paksumpi seinä jatkuu läpi toisen ulkopintaan ja toinen katkaistaan sen
+  sisäpintaan; T-liitoksessa pystyseinä katkaistaan läpimenevän pintaan.
+  Koskee vain IFC-solidia — akselit, mittaukset ja QA eivät muutu.
+  Mitattu Matterport-aulalla: limitykset 24.7/21.1/55.2/15.1 cm² → 0.3/0.1 cm²
+  (jäännös vinokulmista, ~0.5 mm — ei näy). Vision-varmennettu ennen/jälkeen.
+
 ## v0.7.5 (12.7.2026) — sisäkkäiset seinät korjattu + diagnostiikkanapin mailto-fix
 - **Korjaus: perimetrijatke ei enää jää mitatun seinän kanssa sisäkkäin.**
   Sama fyysinen seinä jakautui mitattuun pätkään ja perimetri-täyteseinään,
