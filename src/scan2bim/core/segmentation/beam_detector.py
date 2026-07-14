@@ -26,6 +26,17 @@ _MIN_LENGTH_MM = 700.0     # alle tämän = kattokrääsän/putken pätkä, ei p
 _MAX_WIDTH_MM = 600.0      # palkin max-leveys (ei katto/laatta)
 _MIN_HEIGHT_MM = 50.0      # palkin min-z-ulottuvuus (depth)
 
+# Soffit-kiinnitys: aito alaslaskettu palkki valetaan kattolaatan kanssa yhteen →
+# sen kyljet ulottuvat YLÖS kattoon asti (max-z lähellä kattoa). Ripustettu
+# talotekniikka (putket/kanavat/kaapelihyllyt) roikkuu katosta IRTI — väli jää.
+# Vaadi valmiissa tilassa (kattolaatta löytyi) että klusterin lakipiste yltää
+# tähän etäisyyteen katosta; muuten = roikkuva LVIS, ei palkki. Tämä on juuri se
+# ero joka tuottaa valepalkkeja MEP-täyteisissä liike/toimistotiloissa.
+_SOFFIT_ATTACH_MM = 130.0
+
+# Valmiissa tilassa aito palkki ei ole hiuksenohut — kattoon kiinnittyneet ohuet
+# pitkänomaiset klusterit ovat putkia/kaapelihyllyjä/johtokouruja, eivät palkkeja.
+_FINISHED_MIN_WIDTH_MM = 150.0
 
 _BEAM_WALL_MARGIN = 150.0   # mm — tätä lähempänä seinälinjaa olevat pisteet pois
 _SOFFIT_BAND = 800.0        # mm — palkkikaista katon alapinnasta (syvemmällä = TATE-roikku)
@@ -59,7 +70,10 @@ def detect_beams(cloud, walls, floor_z: float, ceiling_z: float,
         return []
     sub = o3d.geometry.PointCloud()
     sub.points = o3d.utility.Vector3dVector(free)
-    beams, _ = BeamDetector(sub_ceiling_mm=float(free[:, 2].max() - free[:, 2].min()) + 100.0).detect(sub)
+    beams, _ = BeamDetector(
+        sub_ceiling_mm=float(free[:, 2].max() - free[:, 2].min()) + 100.0,
+        ceiling_z=ceiling_z if has_ceiling else None,
+    ).detect(sub)
     for i, b in enumerate(beams):
         beams[i] = b.model_copy(update={"id": f"beam_{i:03d}"})
     return beams
@@ -73,10 +87,12 @@ class BeamDetector(ElementDetector):
         sub_ceiling_mm: float = 700.0,   # kuinka syvältä katosta etsitään
         eps_mm: float = 80.0,
         min_points: int = 20,
+        ceiling_z: float | None = None,  # jos tiedossa (valmis tila) → soffit-kiinnitystesti
     ) -> None:
         self.sub_ceiling_mm = sub_ceiling_mm
         self.eps_mm = eps_mm
         self.min_points = min_points
+        self.ceiling_z = ceiling_z
 
     def detect(
         self,
@@ -176,6 +192,17 @@ class BeamDetector(ElementDetector):
         z_depth = float(pts[:, 2].ptp())
         if z_depth < _MIN_HEIGHT_MM:
             return None
+
+        # SOFFIT-KIINNITYS + OHUUS (vain valmis tila, kattolaatta tiedossa):
+        # aito alaslaskettu palkki ulottuu kattoon asti eikä ole hiuksenohut.
+        # Jos klusterin lakipiste jää katosta yli _SOFFIT_ATTACH_MM alas → se
+        # roikkuu irti = talotekniikka (putki/kanava/kaapelihylly), ei palkki.
+        # Kattoon kiinnittynyt ohut pitkänomainen (leveys < min) = putki/kouru.
+        if self.ceiling_z is not None:
+            if float(pts[:, 2].max()) < self.ceiling_z - _SOFFIT_ATTACH_MM:
+                return None
+            if width < _FINISHED_MIN_WIDTH_MM:
+                return None
 
         # Päätepisteet
         p0_xy = center_xy + proj.min() * axis_dir

@@ -31,3 +31,6 @@ data/*.npy
 data/*.json
 build73/
 dist73/
+.venv_train/
+models/_new/
+models/_backup_3dses/

@@ -100,6 +100,161 @@ def load_pretrained(model, path: Path) -> None:
 # Vaihtoehto B — synteettinen harjoitusdata
 # ---------------------------------------------------------------------------
 
+# S3DIS-taksonomia: 0 katto, 1 lattia, 2 seinä, 3 pilari, 4 palkki, 5 ikkuna,
+# 6 ovi (= rakenne, SÄILYTETÄÄN); 7–12 kalusteet/krääsä (POISTETAAN).
+# Talotekniikka (putket/kanavat/kaapelihyllyt/valaisimet) EI ole arkkitehtonista
+# rakennetta → label 12 (krääsä) → suodatin poistaa sen ja palkkidetektori ei
+# näe kattoon ripustettua LVIS-tavaraa palkkeina. Tämä on juuri se ero joka
+# tuottaa "miljardi turhaa palkkia" sotkuisissa liiketila/työmaaskanneissa.
+_LBL_CLUTTER = 12
+
+
+def _undulate(rng, xy, amp: float):
+    """Matalataajuinen sileä poikkeama (m) xy-tasolla — oikea pinta ei ole taso.
+    Palauttaa 0.0 jos amp<=0 (skalaari summautuu vektoriin)."""
+    import numpy as np
+    if amp <= 0:
+        return 0.0
+    fx, fy = rng.uniform(0.15, 0.6, 2)
+    px, py = rng.uniform(0.0, 6.283, 2)
+    return amp * np.sin(fx * xy[:, 0] + px) * np.cos(fy * xy[:, 1] + py)
+
+
+def _gen_stray(rng, W: float, D: float, H: float, density: float):
+    """Hajapisteet VAIN katon ylä- ja lattian alapuolelle (skannerikohinan aito
+    sijainti: heijastukset ikkunoista, keilaimen artefaktit tilan ulkopuolella).
+    Vaihtelee skenen z-aluetta kuten oikeassa skannissa (jossa z-normalisointi ei
+    ala tarkalleen lattiasta) → malli ei ylikiinnity oletukseen 'lattia=0,katto=1'.
+
+    HUOM: EI sisätilaan (0..H) — aiempi versio ripotteli krääsää koko tilavuuteen
+    ja opetti mallin poistamaan sisätilan pisteet → oikean karkean skannin
+    rakennepinnat katosivat. Label 12 (krääsä, poistetaan)."""
+    import numpy as np
+    n = rng.integers(0, max(1, int(density * W * D * 0.04)))   # harva
+    if n <= 0:
+        return (np.empty((0, 3), dtype=np.float32), np.empty(0, dtype=np.int64))
+    x = rng.uniform(0, W, n); y = rng.uniform(0, D, n)
+    below = rng.uniform(-0.25, -0.02, n)
+    above = rng.uniform(H + 0.02, H + 0.35, n)
+    z = np.where(rng.random(n) < 0.5, below, above)            # vain tilan ulkopuolelle
+    pts = np.c_[x, y, z].astype(np.float32)
+    return pts, np.full(n, _LBL_CLUTTER, dtype=np.int64)
+
+
+def _gen_mep(rng, W: float, D: float, H: float, density: float):
+    """Generoi kattoon ripustetun talotekniikan (putket, kanavat, kaapelihyllyt).
+
+    Kaikki VAAKASUORIA, pitkänomaisia ja kattovyöhykkeessä (z lähellä kattoa) —
+    juuri ne piirteet joiden takia ne menevät palkkidetektorissa palkeiksi.
+    Label 12 (krääsä) → malli oppii poistamaan. Palauttaa (pts Nx3, lbl N)."""
+    import numpy as np
+
+    pts_list, lbl_list = [], []
+
+    def _emit(arr):
+        if len(arr):
+            pts_list.append(arr)
+            lbl_list.append(np.full(len(arr), _LBL_CLUTTER, dtype=np.int64))
+
+    def _axis_run(rng):
+        """Palauttaa (suunta-akseli 0/1, kiinteä poikittaiskoord, alku, loppu)."""
+        if rng.random() < 0.5:                       # X-suuntainen veto
+            fixed = rng.uniform(0.15 * D, 0.85 * D)
+            return 0, fixed, rng.uniform(0.05 * W, 0.25 * W), rng.uniform(0.75 * W, 0.95 * W)
+        fixed = rng.uniform(0.15 * W, 0.85 * W)      # Y-suuntainen veto
+        return 1, fixed, rng.uniform(0.05 * D, 0.25 * D), rng.uniform(0.75 * D, 0.95 * D)
+
+    def _line_points(axis, fixed, lo, hi, z, n):
+        """Pisteet vaakasuoran janan varrelle (poikittais- ja z-hajonta annetaan kutsujalle)."""
+        t = rng.uniform(lo, hi, n)
+        base = np.empty((n, 3), dtype=np.float32)
+        if axis == 0:
+            base[:, 0] = t; base[:, 1] = fixed; base[:, 2] = z
+        else:
+            base[:, 0] = fixed; base[:, 1] = t; base[:, 2] = z
+        return base
+
+    # --- Putkiniput: 1–3 rinnakkaista pyöreää putkea (LV/lämmitys/sprinkleri) ---
+    n_pipe_bundles = rng.integers(0, 3)
+    for _ in range(n_pipe_bundles):
+        axis, fixed, lo, hi = _axis_run(rng)
+        length = abs(hi - lo)
+        if length < 1.0:
+            continue
+        z0 = rng.uniform(H - 0.55, H - 0.12)         # roikkuu katon alla
+        n_in_bundle = rng.integers(1, 4)
+        for pj in range(n_in_bundle):
+            radius = rng.uniform(0.02, 0.13)         # 40–260 mm putki
+            off = pj * rng.uniform(0.08, 0.22)       # rinnakkaisten väli
+            n_pipe = max(120, int(density * length * 2 * np.pi * radius))
+            # pyöreä pinta: kulma + akselisijainti
+            ang = rng.uniform(0, 2 * np.pi, n_pipe)
+            base = _line_points(axis, fixed + off, lo, hi, z0, n_pipe)
+            # poikittais- ja pystysiirto putken säteellä (pyöreä poikkileikkaus)
+            cross = radius * np.cos(ang)
+            vert = radius * np.sin(ang)
+            if axis == 0:
+                base[:, 1] += cross
+            else:
+                base[:, 0] += cross
+            base[:, 2] += vert
+            base += rng.normal(0, 0.003, base.shape).astype(np.float32)
+            _emit(base)
+
+    # --- Ilmastointikanava: iso suorakaide-poikkileikkaus (4 pitkää pintaa) ---
+    if rng.random() < 0.6:
+        axis, fixed, lo, hi = _axis_run(rng)
+        length = abs(hi - lo)
+        if length >= 1.5:
+            cw = rng.uniform(0.30, 0.75)             # kanavan leveys
+            ch = rng.uniform(0.25, 0.55)             # kanavan korkeus
+            z_top = rng.uniform(H - 0.35, H - 0.10)
+            z_bot = z_top - ch
+            n_face = max(150, int(density * length * ch))
+            for side in (-cw / 2, cw / 2):           # kaksi pystysivua
+                base = _line_points(axis, fixed, lo, hi, 0.0, n_face)
+                zc = rng.uniform(z_bot, z_top, n_face)
+                base[:, 2] = zc
+                if axis == 0:
+                    base[:, 1] += side
+                else:
+                    base[:, 0] += side
+                base += rng.normal(0, 0.004, base.shape).astype(np.float32)
+                _emit(base)
+            n_bt = max(120, int(density * length * cw))
+            for zc in (z_bot, z_top):                # ala- ja yläpinta
+                base = _line_points(axis, fixed, lo, hi, zc, n_bt)
+                cross = rng.uniform(-cw / 2, cw / 2, n_bt)
+                if axis == 0:
+                    base[:, 1] += cross
+                else:
+                    base[:, 0] += cross
+                base += rng.normal(0, 0.004, base.shape).astype(np.float32)
+                _emit(base)
+
+    # --- Kaapelihylly: matala leveä vaakakaista katon alla ---
+    if rng.random() < 0.5:
+        axis, fixed, lo, hi = _axis_run(rng)
+        length = abs(hi - lo)
+        if length >= 1.0:
+            tw = rng.uniform(0.10, 0.40)
+            z0 = rng.uniform(H - 0.45, H - 0.15)
+            n_tray = max(120, int(density * length * tw * 1.5))
+            base = _line_points(axis, fixed, lo, hi, z0, n_tray)
+            cross = rng.uniform(-tw / 2, tw / 2, n_tray)
+            if axis == 0:
+                base[:, 1] += cross
+            else:
+                base[:, 0] += cross
+            base[:, 2] += rng.uniform(-0.02, 0.02, n_tray)
+            base += rng.normal(0, 0.004, base.shape).astype(np.float32)
+            _emit(base)
+
+    if not pts_list:
+        return (np.empty((0, 3), dtype=np.float32), np.empty(0, dtype=np.int64))
+    return (np.vstack(pts_list).astype(np.float32), np.concatenate(lbl_list))
+
+
 def _gen_retail_room(rng, n_pts: int = 120_000):
     """Synteettinen LIIKETILA: iso halli + lattia-katto-hyllyrivit (label 10)
     + tavaraa hyllyillä (label 12). Hyllyrivit läpäisevät geometrisen pysty-
@@ -109,6 +264,7 @@ def _gen_retail_room(rng, n_pts: int = 120_000):
     W = rng.uniform(10.0, 25.0)
     D = rng.uniform(8.0, 20.0)
     H = rng.uniform(3.0, 5.0)
+    surf = float(rng.uniform(0.005, 0.028))          # per-halli pintakarkeus
     density = n_pts / (2 * (W * D + W * H + D * H) + 0.001)
 
     pts_list, lbl_list = [], []
@@ -118,15 +274,16 @@ def _gen_retail_room(rng, n_pts: int = 120_000):
 
     n_floor = max(200, int(density * W * D))
     xy = rng.uniform([0, 0], [W, D], (n_floor, 2))
-    _emit(np.c_[xy, rng.normal(0.0, 0.004, n_floor)], 1)
+    _emit(np.c_[xy, rng.normal(0.0, surf, n_floor) + _undulate(rng, xy, rng.uniform(0, 0.03))], 1)
     _emit(np.c_[xy + rng.uniform(-0.01, 0.01, (n_floor, 2)),
-                rng.normal(H, 0.004, n_floor)], 0)
+                rng.normal(H, surf, n_floor) + _undulate(rng, xy, rng.uniform(0, 0.03))], 0)
 
     for axis, fixed, lo, hi in [(0, 0.0, 0, D), (0, W, 0, D), (1, 0.0, 0, W), (1, D, 0, W)]:
         n_wall = max(100, int(density * (hi - lo) * H))
         u = rng.uniform(lo, hi, n_wall)
         v = rng.uniform(0.0, H, n_wall)
-        noise = rng.normal(0, 0.004, n_wall)
+        tilt = rng.uniform(-0.03, 0.03)
+        noise = rng.normal(0, surf, n_wall) + tilt * (v - H / 2)
         w = (np.c_[np.full(n_wall, fixed) + noise, u, v] if axis == 0
              else np.c_[u, np.full(n_wall, fixed) + noise, v])
         _emit(w, 2)
@@ -165,6 +322,18 @@ def _gen_retail_room(rng, n_pts: int = 120_000):
             if keep.any():
                 _emit(np.c_[gx[keep], gy[keep], gz[keep]], 12)
 
+    # Kattoon ripustettu talotekniikka (putket/kanavat/kaapelihyllyt) — LVIS-
+    # täyteisiä liiketiloja/varastoja varten. Näkyy palkkidetektorille
+    # valepalkkeina ellei suodatin poista sitä.
+    mep_pts, mep_lbl = _gen_mep(rng, W, D, H, density)
+    if len(mep_pts):
+        pts_list.append(mep_pts); lbl_list.append(mep_lbl)
+
+    # Hajapisteet (skannerikohina) → z-alueen vaihtelu kuten oikeassa skannissa
+    stray_pts, stray_lbl = _gen_stray(rng, W, D, H, density)
+    if len(stray_pts):
+        pts_list.append(stray_pts); lbl_list.append(stray_lbl)
+
     pts = np.vstack(pts_list).astype(np.float32)
     lbl = np.concatenate(lbl_list).astype(np.int64)
     return pts, lbl
@@ -177,6 +346,9 @@ def _gen_room(rng, n_pts: int = 80_000):
     W = rng.uniform(3.0, 9.0)
     D = rng.uniform(3.0, 9.0)
     H = rng.uniform(2.4, 3.5)
+    # DOMAIN RANDOMIZATION: per-huone pintakarkeus 5–28 mm (oikea betoni/muotti-
+    # pinta on karkea; malli EI saa oppia että vain siisti taso = rakenne).
+    surf = float(rng.uniform(0.005, 0.028))
     density = n_pts / (2 * (W * D + W * H + D * H) + 0.001)
 
     pts_list, lbl_list = [], []
@@ -184,16 +356,16 @@ def _gen_room(rng, n_pts: int = 80_000):
     def _plane(n, label):
         pts_list.append(n); lbl_list.append(np.full(len(n), label, dtype=np.int64))
 
-    # Lattia (label 1) + katto (label 0)
+    # Lattia (label 1) + katto (label 0) — lievä aaltoilu (ei täysin taso)
     n_floor = max(100, int(density * W * D))
     xy = rng.uniform([0, 0], [W, D], (n_floor, 2))
-    z_floor = rng.normal(0.0, 0.003, n_floor)
-    z_ceil  = rng.normal(H,   0.003, n_floor)
+    z_floor = rng.normal(0.0, surf, n_floor) + _undulate(rng, xy, amp=rng.uniform(0, 0.02))
+    z_ceil  = rng.normal(H,   surf, n_floor) + _undulate(rng, xy, amp=rng.uniform(0, 0.02))
     floor_pts = np.c_[xy, z_floor]
     ceil_pts  = np.c_[xy + rng.uniform(-0.01, 0.01, (n_floor, 2)), z_ceil]
     _plane(floor_pts, 1); _plane(ceil_pts, 0)
 
-    # Seinät (label 2) — 4 seinää
+    # Seinät (label 2) — 4 seinää, lievä kallistus (muottiseinä ei täysin suora)
     for axis, fixed, lo, hi in [
         (0, 0.0, 0, D), (0, W,   0, D),
         (1, 0.0, 0, W), (1, D,   0, W),
@@ -201,7 +373,8 @@ def _gen_room(rng, n_pts: int = 80_000):
         n_wall = max(50, int(density * (hi - lo) * H))
         u = rng.uniform(lo, hi, n_wall)
         v = rng.uniform(0.0, H,  n_wall)
-        noise = rng.normal(0, 0.004, n_wall)
+        tilt = rng.uniform(-0.03, 0.03)                  # ~±1.7° kallistus korkeuden yli
+        noise = rng.normal(0, surf, n_wall) + tilt * (v - H / 2)
         if axis == 0:
             w = np.c_[np.full(n_wall, fixed) + noise, u, v]
         else:
@@ -235,27 +408,68 @@ def _gen_room(rng, n_pts: int = 80_000):
         obj_pts = np.c_[ox, oy, oz] + rng.normal(0, 0.003, (n_obj, 3))
         _plane(obj_pts, label)
 
+    # Talotekniikka myös asunnoissa/toimistoissa (osassa) — käytävien ja
+    # aputilojen kattopinnat, jotta malli oppii LVIS:n pois kaikkialla.
+    if rng.random() < 0.5:
+        mep_pts, mep_lbl = _gen_mep(rng, W, D, H, density)
+        if len(mep_pts):
+            pts_list.append(mep_pts); lbl_list.append(mep_lbl)
+
+    # Hajapisteet (skannerikohina) → vaihtelee z-aluetta kuten oikea skanni
+    stray_pts, stray_lbl = _gen_stray(rng, W, D, H, density)
+    if len(stray_pts):
+        pts_list.append(stray_pts); lbl_list.append(stray_lbl)
+
     pts = np.vstack(pts_list).astype(np.float32)
     lbl = np.concatenate(lbl_list).astype(np.int64)
     return pts, lbl
 
 
 def _pts_to_blocks(pts, lbl, block_m: float = 1.0, n_pts: int = 4096, stride_m: float = 0.5):
-    """Jakaa huoneen 1m×1m lohkoihin, palauttaa (feats (B,N,9), labels (B,N))."""
+    """Jakaa huoneen 1m×1m lohkoihin, palauttaa (feats (B,N,9), labels (B,N)).
+
+    Ämpäröinti: pisteet lajitellaan kertaalleen stride-soluihin, ja koska
+    block_m == 2*stride_m, lohkon rajat osuvat tarkalleen solurajoihin →
+    lohko (i,j) kattaa täsmälleen solut {i,i+1}×{j,j+1}. Tarkka maski
+    säilytetään mutta ajetaan vain pienelle ehdokasjoukolle → O(N log N)
+    lohkojen O(ruudut × N) sijaan (retail-huoneet 176k pistettä × ~500 ruutua)."""
     import numpy as np
 
     sc_min = pts.min(0); sc_range = np.maximum(pts.max(0) - sc_min, 1e-6)
     x_steps = np.arange(sc_min[0], pts[:, 0].max() - block_m + 1e-6, stride_m)
     y_steps = np.arange(sc_min[1], pts[:, 1].max() - block_m + 1e-6, stride_m)
+    if len(x_steps) == 0 or len(y_steps) == 0:
+        return None, None
+
+    # Ryhmittele pistteet stride-soluihin (solun leveys = stride_m).
+    cellx = np.floor((pts[:, 0] - sc_min[0]) / stride_m).astype(np.int64)
+    celly = np.floor((pts[:, 1] - sc_min[1]) / stride_m).astype(np.int64)
+    ncy = int(celly.max()) + 2
+    ckey = cellx * ncy + celly
+    order = np.argsort(ckey, kind="stable")
+    ckey_sorted = ckey[order]
+    uniq, starts = np.unique(ckey_sorted, return_index=True)
+    ends = np.append(starts[1:], len(order))
+    cell_map = {int(u): order[s:e] for u, s, e in zip(uniq, starts, ends)}
 
     blocks_f, blocks_l = [], []
-    for cx in x_steps:
-        for cy in y_steps:
-            mask = (
-                (pts[:, 0] >= cx) & (pts[:, 0] < cx + block_m) &
-                (pts[:, 1] >= cy) & (pts[:, 1] < cy + block_m)
+    for bi, cx in enumerate(x_steps):
+        for bj, cy in enumerate(y_steps):
+            # ehdokkaat lohkon 2×2 stride-soluista
+            cand = [cell_map[k] for k in (
+                bi * ncy + bj, bi * ncy + bj + 1,
+                (bi + 1) * ncy + bj, (bi + 1) * ncy + bj + 1,
+            ) if k in cell_map]
+            if not cand:
+                continue
+            cidx = np.concatenate(cand)
+            # tarkka lohkomaski pienelle ehdokasjoukolle (identtinen jäsenyys)
+            sub = pts[cidx]
+            m = (
+                (sub[:, 0] >= cx) & (sub[:, 0] < cx + block_m) &
+                (sub[:, 1] >= cy) & (sub[:, 1] < cy + block_m)
             )
-            idx = np.where(mask)[0]
+            idx = cidx[m]
             if len(idx) < 32:
                 continue
             if len(idx) >= n_pts:
@@ -280,23 +494,43 @@ def _pts_to_blocks(pts, lbl, block_m: float = 1.0, n_pts: int = 4096, stride_m: 
 
 
 def train_synthetic(model, n_rooms: int = 500, epochs: int = 80,
-                    batch: int = 8, n_pts: int = 4096) -> None:
+                    batch: int = 8, n_pts: int = 4096, retail_frac: float = 0.0,
+                    max_blocks_per_room: int = 0) -> None:
+    """Harjoita PUHTAASTI synteettisellä datalla — ei ulkoisia datasettejä.
+
+    retail_frac: osuus huoneista jotka generoidaan liiketiloina (lattia-katto-
+    hyllyrivit label 10 → suodatin oppii poistamaan ne). 0.0 = vain asunnot/
+    toimistot (oletusmalli), ~0.5 = liiketilamalli (osaa yhä tavalliset seinät).
+    max_blocks_per_room: >0 → poimi satunnaisesti korkeintaan näin monta lohkoa
+    per huone (CPU-budjetti: variaatio tulee monesta huoneesta, ei yhdestä isosta
+    retail-huoneesta joka tuottaa ~690 lohkoa)."""
+    import os
     import numpy as np
     import torch
     import torch.nn as nn
     import torch.optim as optim
 
+    torch.set_num_threads(os.cpu_count() or 8)   # CPU-koulutus: käytä kaikki ytimet
+    print(f"torch-säikeet: {torch.get_num_threads()}", flush=True)
     rng = np.random.default_rng(42)
-    print(f"Generoidaan {n_rooms} synteettistä huonetta...")
+    kind = "liiketila-painotettu" if retail_frac > 0 else "asunto/toimisto"
+    print(f"Generoidaan {n_rooms} synteettistä huonetta ({kind}, retail_frac={retail_frac})...", flush=True)
 
     all_feats, all_lbls = [], []
     for i in range(n_rooms):
-        pts, lbl = _gen_room(rng)
+        if retail_frac > 0 and rng.random() < retail_frac:
+            pts, lbl = _gen_retail_room(rng)
+        else:
+            pts, lbl = _gen_room(rng)
         f, l = _pts_to_blocks(pts, lbl, n_pts=n_pts)
         if f is not None:
+            if max_blocks_per_room > 0 and len(f) > max_blocks_per_room:
+                pick = rng.choice(len(f), max_blocks_per_room, replace=False)
+                f, l = f[pick], l[pick]
             all_feats.append(f); all_lbls.append(l)
-        if (i + 1) % 100 == 0:
-            print(f"  {i+1}/{n_rooms} huonetta")
+        if (i + 1) % 25 == 0:
+            nb = sum(len(x) for x in all_feats)
+            print(f"  {i+1}/{n_rooms} huonetta, {nb} lohkoa", flush=True)
 
     all_feats = np.vstack(all_feats)   # (total_blocks, N, 9)
     all_lbls  = np.vstack(all_lbls)    # (total_blocks, N)
@@ -334,18 +568,22 @@ def train_synthetic(model, n_rooms: int = 500, epochs: int = 80,
             losses.append(loss.item())
         scheduler.step()
 
-        if (epoch + 1) % 10 == 0 or epoch == 0:
+        if (epoch + 1) % 3 == 0 or epoch == 0:
             avg = sum(losses) / len(losses)
-            # Laske nopea tarkkuus
+            # Nopea tarkkuus satunnaisotoksella (ei vain ensimmäiset lohkot)
             with torch.no_grad():
-                sample_x = torch.tensor(all_feats[:64])
-                sample_y = all_lbls[:64].ravel()
+                si = np.random.permutation(n_blocks)[:64]
+                sample_x = torch.tensor(all_feats[si])
+                sample_y = all_lbls[si].ravel()
                 pred = model(sample_x).reshape(-1, 13).argmax(1).numpy()
-                # Furniture vs structural acc
-                is_furn_gt   = np.isin(sample_y, [7, 8, 9, 10, 11, 12])
-                is_furn_pred = np.isin(pred,      [7, 8, 9, 10, 11, 12])
-                struct_acc = (is_furn_gt == is_furn_pred).mean()
-            print(f"Epoch {epoch+1:3d}/{epochs}  loss={avg:.4f}  struct/furn-acc={struct_acc:.3f}")
+                keep_cls = [7, 8, 9, 10, 11, 12]
+                is_furn_gt   = np.isin(sample_y, keep_cls)
+                is_furn_pred = np.isin(pred,      keep_cls)
+                # rakenne säilyy = rakennepiste ei mene kalusteeksi (recall structural)
+                struct_keep = (~is_furn_pred[~is_furn_gt]).mean() if (~is_furn_gt).any() else 1.0
+                furn_rm = (is_furn_pred[is_furn_gt]).mean() if is_furn_gt.any() else 0.0
+            print(f"Epoch {epoch+1:3d}/{epochs}  loss={avg:.4f}  "
+                  f"rakenne-säilyy={struct_keep:.3f}  kaluste-poisto={furn_rm:.3f}", flush=True)
 
     print("Harjoitus valmis.")
 
@@ -466,6 +704,10 @@ def main() -> None:
                     help="Synteettisten huoneiden määrä (oletus 500)")
     ap.add_argument("--synth-epochs", type=int, default=80,
                     help="Harjoitusepokit (oletus 80)")
+    ap.add_argument("--synth-retail", type=float, default=0.0,
+                    help="Osuus liiketilahuoneita (0.0=oletusmalli, 0.5=liiketilamalli)")
+    ap.add_argument("--synth-max-blocks", type=int, default=0,
+                    help="Max lohkoa per huone (CPU-budjetti; 0=ei rajaa)")
     ap.add_argument("--train", action="store_true",
                     help="Harjoita 3DSES-datalla (--data pakollinen)")
     ap.add_argument("--data", type=Path, default=repo_root / "data" / "_3dses")
@@ -487,7 +729,9 @@ def main() -> None:
             print(f"Tiedostoa ei löydy: {args.weights}"); sys.exit(1)
         load_pretrained(model, args.weights)
     elif args.synth:
-        train_synthetic(model, n_rooms=args.synth_rooms, epochs=args.synth_epochs)
+        train_synthetic(model, n_rooms=args.synth_rooms, epochs=args.synth_epochs,
+                        retail_frac=args.synth_retail,
+                        max_blocks_per_room=args.synth_max_blocks)
     elif args.train:
         train_on_3dses(model, args.data, epochs=args.epochs)
     else:
