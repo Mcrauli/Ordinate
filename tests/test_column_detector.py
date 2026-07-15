@@ -75,3 +75,34 @@ def test_undetected_wall_fragment_not_column():
     walls = [_wall("w0", 0, 0, 8000, 0)]
     cols = detect_columns(_cloud(parts), walls, floor_z=0.0, ceiling_z=3000.0)
     assert len(cols) == 0, f"seinapalat tulkittiin {len(cols)} pilariksi"
+
+
+def test_varying_cross_section_not_column():
+    """Kasattu kaluste: poikkileikkaus heiluu korkeuden mukaan (ohut ala, levea
+    ylaosa) — aito pilari on ~sama joka korkeudella. 3DSES-huoneen valepilari."""
+    parts = [
+        _box(3000, 2500, 6000, 4000, 0, 50, 15000),          # lattia
+        _box(3000, 2500, 80, 80, 300, 1500, 2500),           # ohut alaosa 80mm
+        _box(3000, 2500, 500, 500, 1500, 2700, 9000),        # levea ylaosa 500mm
+    ]
+    walls = [_wall("w0", 0, 0, 6000, 0), _wall("w1", 0, 4000, 6000, 4000)]
+    cols = detect_columns(_cloud(parts), walls, floor_z=0.0, ceiling_z=3000.0)
+    assert len(cols) == 0, f"heiluva poikkileikkaus tulkittiin {len(cols)} pilariksi"
+
+
+def test_full_height_cabinet_in_clutter_not_column():
+    """Tayskorkea kaappi kiinni muussa massassa: vakaa poikkileikkaus (nayttaa
+    pilarilta) MUTTA vyotarokorkeudella ymparilla on tavaraa joka suunnassa —
+    aito pilari on irrallaan. 3DSES-huoneen c1/c2."""
+    parts = [
+        _box(3000, 2500, 6000, 4000, 0, 50, 15000),          # lattia
+        _box(3000, 2500, 350, 350, 50, 2900, 9000),          # "kaappi" 350x350 taysi
+        # ymparoiva tavara vyotarolla (1.0-1.8m) joka suunnassa ~500mm paassa:
+        _box(3000, 1950, 400, 300, 1000, 1800, 3000),
+        _box(3000, 3050, 400, 300, 1000, 1800, 3000),
+        _box(2450, 2500, 300, 400, 1000, 1800, 3000),
+        _box(3550, 2500, 300, 400, 1000, 1800, 3000),
+    ]
+    walls = [_wall("w0", 0, 0, 6000, 0), _wall("w1", 0, 4000, 6000, 4000)]
+    cols = detect_columns(_cloud(parts), walls, floor_z=0.0, ceiling_z=3000.0)
+    assert len(cols) == 0, f"massaan kiinni oleva kaappi tulkittiin {len(cols)} pilariksi"

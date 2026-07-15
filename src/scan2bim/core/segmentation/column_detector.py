@@ -35,6 +35,26 @@ _MIN_ABS_HEIGHT = 2300.0   # mm — monitasoscenessä room_h vääristyy; aito p
 _MAX_ASPECT = 2.5          # footprintin max/min — yli tämän = seinänpala, ei pilari
                            # (mitattu: Rohbau-työmaan aidot pilarit 1.1–2.3)
 
+# Poikkileikkauksen VAKAUS korkeussuunnassa: aidon pilarin XY-jalanjälki on ~sama
+# joka korkeudella. Kasattu kaluste / keilausvarjon reuna heiluu (mitattu 3DSES-
+# huoneesta: valepilari 35↔500 mm eri korkeuksilla). Leikataan klusteri z-kaistoihin
+# ja vaadittava että enemmistön poikkileikkaus on lähellä mediaania.
+_SLICE_MM = 250.0          # z-kaistan paksuus
+_SLICE_MIN_PTS = 30        # kaista huomioidaan vasta tällä pistemäärällä
+_SLICE_MIN_BINS = 4        # vähintään näin monta kelvollista kaistaa (~1 m yhtenäistä)
+_SLICE_CONSIST_FRAC = 0.6  # kelvollisista kaistoista tämä osuus lähellä mediaania
+_SLICE_LO, _SLICE_HI = 0.5, 1.7   # "lähellä" = poikkileikkaus tällä välillä × mediaani
+
+# Keskikorkeuden IRRALLISUUS: aidon pilarin ympäri kävelee (ilmaa vyötärökorkeudella).
+# Täyskorkea kaappi / roka on kiinni muussa massassa (naapureita monessa suunnassa).
+# Renkaassa juuri footprintin ulkopuolella, vain vyötärökaistan pisteillä (ei lattia/
+# katto): montako 16 suunnasta on naapuri lähellä. Mitattu 3DSES: aito ≤4, kaappi 8.
+_WAIST_LO, _WAIST_HI = 1000.0, 1800.0   # vyötärökaista lattiasta (mm)
+_WAIST_RING_EXTRA = 350.0  # rengas footprintin reunasta ulos
+_WAIST_DIRS = 16
+_WAIST_TOL = 200.0         # naapuri ≤ tämä koetinpisteestä = suunta "täynnä"
+_WAIST_MAX_OCC = 6         # yli tämän täynnä olevaa suuntaa = kiinni massassa → hylky
+
 
 def detect_columns(cloud, walls: list[Wall], floor_z: float, ceiling_z: float) -> list[Column]:
     """Pystypeittopohjainen pilaridetektio.
@@ -78,6 +98,10 @@ def detect_columns(cloud, walls: list[Wall], floor_z: float, ceiling_z: float) -
         probes = np.column_stack([cx + _RING_R * _cos, cy + _RING_R * _sin])
         d, _ = _xytree.query(probes, k=1)
         return int((d < _RING_TOL).sum()) >= _RING_HITS
+
+    # vyötärökaistan (1.0–1.8 m) pisteet irrallisuustestiin — vain jos kaista mahtuu
+    _waist_mask = (pts[:, 2] > floor_z + _WAIST_LO) & (pts[:, 2] < floor_z + _WAIST_HI)
+    _waist_tree = cKDTree(pts[_waist_mask, :2]) if int(_waist_mask.sum()) > 200 else None
 
     x0 = float(free[:, 0].min()); y0 = float(free[:, 1].min())
     ix = ((free[:, 0] - x0) / _CELL_MM).astype(np.int64)
@@ -139,6 +163,12 @@ def detect_columns(cloud, walls: list[Wall], floor_z: float, ceiling_z: float) -
         cx = float(xy[:, 0].mean()); cy = float(xy[:, 1].mean())
         if not _surrounded(cx, cy):
             continue
+        # Poikkileikkauksen vakaus: kasattu kaluste heiluu, aito pilari ei.
+        if not _cross_section_stable(cl, floor_z, ceiling_z):
+            continue
+        # Vyötäröirrallisuus: täyskorkea kaappi/roka on kiinni massassa.
+        if not _waist_isolated(cx, cy, max(wx, wy), _waist_tree):
+            continue
         shape, w, d = _profile(xy, cx, cy, wx, wy)
         # Luottamus heijastaa kompaktiutta (ei enää satu 1.0:aan): kompakti +
         # tiheä = korkea; pitkänomainen = matala → QA:n TARKISTA-lista poimii sen.
@@ -155,6 +185,43 @@ def detect_columns(cloud, walls: list[Wall], floor_z: float, ceiling_z: float) -
             profile=ColumnProfile(shape=shape, width=round(w, 1), depth=round(d, 1)),
         ))
     return columns
+
+
+def _cross_section_stable(cl: np.ndarray, floor_z: float, ceiling_z: float) -> bool:
+    """Aidon pilarin XY-poikkileikkaus on ~sama joka korkeudella. Leikataan
+    z-kaistoihin ja katsotaan onko enemmistön poikkileikkaus lähellä mediaania."""
+    z_lo = floor_z + _Z_MARGIN
+    z_hi = ceiling_z - _Z_MARGIN
+    exts: list[float] = []
+    z = z_lo
+    while z < z_hi:
+        m = (cl[:, 2] >= z) & (cl[:, 2] < z + _SLICE_MM)
+        if int(m.sum()) >= _SLICE_MIN_PTS:
+            b = cl[m]
+            ex = float(np.percentile(b[:, 0], 95) - np.percentile(b[:, 0], 5))
+            ey = float(np.percentile(b[:, 1], 95) - np.percentile(b[:, 1], 5))
+            exts.append(max(ex, ey))
+        z += _SLICE_MM
+    if len(exts) < _SLICE_MIN_BINS:
+        return False
+    med = float(np.median(exts))
+    if med < 1.0:
+        return False
+    consistent = sum(1 for e in exts if _SLICE_LO * med <= e <= _SLICE_HI * med)
+    return consistent / len(exts) >= _SLICE_CONSIST_FRAC
+
+
+def _waist_isolated(cx: float, cy: float, fp: float, waist_tree) -> bool:
+    """Aito pilari on irrallaan: vyötärökorkeudella ympärillä on ilmaa. Rengas
+    juuri footprintin ulkopuolella — jos liian moni suunta on täynnä, klusteri
+    on kiinni muussa massassa (kaappi/roka), ei vapaasti seisova pilari."""
+    if waist_tree is None:
+        return True
+    r = fp / 2.0 + _WAIST_RING_EXTRA
+    ang = np.linspace(0.0, 2 * np.pi, _WAIST_DIRS, endpoint=False)
+    probes = np.column_stack([cx + r * np.cos(ang), cy + r * np.sin(ang)])
+    d, _ = waist_tree.query(probes, k=1)
+    return int((d < _WAIST_TOL).sum()) <= _WAIST_MAX_OCC
 
 
 def _profile(xy: np.ndarray, cx: float, cy: float, wx: float, wy: float):

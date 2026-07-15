@@ -88,3 +88,22 @@ def test_soffit_attached_beam_found_in_finished_space():
     cloud = _cloud([beam, _wall_face_pts(0, 6000, 0), _wall_face_pts(0, 6000, 5000), _ceiling_pts()])
     beams = detect_beams(cloud, walls, floor_z=0.0, ceiling_z=2700.0, has_ceiling=True)
     assert len(beams) == 1, f"kattoon kiinnittynyt palkki katosi ({len(beams)} kpl)"
+
+
+def _clutter_column_pts(x, y, w=400.0, z0=100.0, z1=2650.0, n=15000):
+    return np.column_stack([
+        _RNG.uniform(x - w / 2, x + w / 2, n),
+        _RNG.uniform(y - w / 2, y + w / 2, n),
+        _RNG.uniform(z0, z1, n),
+    ])
+
+
+def test_beam_on_furniture_stack_not_beam():
+    # Kattoon kiinnittynyt leveä klusteri MUTTA sen alla on tayskorkea kalustepatteri
+    # (ei tyhjaa alla) -> ei vapaa palkki. Headroom-testi hylkaa. 3DSES-huoneen valepalkki.
+    walls = [_wall("w0", 0, 0, 6000, 0), _wall("w1", 0, 5000, 6000, 5000)]
+    beam = _beam_pts(500, 5500, 2500, w=250.0, z0=2350.0, z1=2650.0)
+    clutter = np.vstack([_clutter_column_pts(x, 2500) for x in range(800, 5400, 350)])
+    cloud = _cloud([beam, clutter, _wall_face_pts(0, 6000, 0), _wall_face_pts(0, 6000, 5000), _ceiling_pts()])
+    beams = detect_beams(cloud, walls, floor_z=0.0, ceiling_z=2700.0, has_ceiling=True)
+    assert len(beams) == 0, f"kalustepatterin paalla oleva klusteri tulkittiin palkiksi ({len(beams)} kpl)"

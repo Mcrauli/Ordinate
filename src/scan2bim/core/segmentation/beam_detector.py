@@ -42,6 +42,18 @@ _BEAM_WALL_MARGIN = 150.0   # mm — tätä lähempänä seinälinjaa olevat pis
 _SOFFIT_BAND = 800.0        # mm — palkkikaista katon alapinnasta (syvemmällä = TATE-roikku)
                             # (seinän yläosa on pitkänomainen klusteri = valepalkki)
 
+# HEADROOM: aidon palkin ALTA kävelee — sen alapuolella keskikorkeudella on tyhjää.
+# Kalustepatterin/hyllyn päällä oleva valepalkki istuu täydellä massalla (mitattu
+# 3DSES-huoneesta: palkin alla ~100k pistettä koko matkalta). Valmiissa tilassa
+# (kattolaatta tiedossa) jaetaan palkin jänne soluihin: jos liian moni solu on
+# "tukossa" (pisteitä suoraan alla keskikorkeudella), klusteri ei ole vapaa palkki.
+_HEADROOM_LO = 1000.0        # mm lattiasta — alaraja tarkistuskaistalle
+_HEADROOM_GAP = 200.0        # mm — palkin alapinnan alle jätettävä väli
+_HEADROOM_CELL = 200.0       # mm — solun koko jänteen suunnassa
+_HEADROOM_HALF = 150.0       # mm — puolileveys footprintille tarkistuksessa
+_HEADROOM_MIN_PTS = 8        # solu "tukossa" jos alla väh. tämä pistemäärä
+_HEADROOM_MAX_BLOCKED = 0.5  # yli tämän osuus tukossa → ei palkki
+
 
 def detect_beams(cloud, walls, floor_z: float, ceiling_z: float,
                  has_ceiling: bool = False) -> list[Beam]:
@@ -74,9 +86,44 @@ def detect_beams(cloud, walls, floor_z: float, ceiling_z: float,
         sub_ceiling_mm=float(free[:, 2].max() - free[:, 2].min()) + 100.0,
         ceiling_z=ceiling_z if has_ceiling else None,
     ).detect(sub)
+    if has_ceiling:
+        beams = [b for b in beams if _has_headroom(b, pts, floor_z)]
     for i, b in enumerate(beams):
         beams[i] = b.model_copy(update={"id": f"beam_{i:03d}"})
     return beams
+
+
+def _has_headroom(beam, pts: np.ndarray, floor_z: float) -> bool:
+    """True jos palkin alapuolella keskikorkeudella on tyhjää (aito palkki).
+    Jakaa jänteen soluihin ja katsoo montako on 'tukossa' (pisteitä suoraan alla)."""
+    a = np.array(beam.axis[0][:2], dtype=float)
+    b = np.array(beam.axis[1][:2], dtype=float)
+    seg = b - a
+    L = float(np.hypot(*seg))
+    if L < _HEADROOM_CELL:
+        return True
+    dirv = seg / L
+    perp = np.array([-dirv[1], dirv[0]])
+    z_beam_bottom = float(beam.axis[0][2]) - beam.profile.height / 2.0
+    z_hi = z_beam_bottom - _HEADROOM_GAP
+    z_lo = floor_z + _HEADROOM_LO
+    if z_hi - z_lo < 300.0:              # ei mielekästä alatilaa → älä hylkää
+        return True
+    rel = pts[:, :2] - a
+    t = rel @ dirv
+    n = rel @ perp
+    below = (
+        (pts[:, 2] > z_lo) & (pts[:, 2] < z_hi)
+        & (np.abs(n) < _HEADROOM_HALF)
+        & (t > 0.2 * L) & (t < 0.8 * L)      # keskimmäinen 60 % jänteestä
+    )
+    if not below.any():
+        return True
+    tb = t[below]
+    ncells = max(int(0.6 * L / _HEADROOM_CELL), 1)
+    cell = np.clip(((tb - 0.2 * L) / _HEADROOM_CELL).astype(np.int64), 0, ncells - 1)
+    blocked = np.bincount(cell, minlength=ncells) >= _HEADROOM_MIN_PTS
+    return blocked.sum() / ncells <= _HEADROOM_MAX_BLOCKED
 
 
 class BeamDetector(ElementDetector):
