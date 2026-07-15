@@ -4,6 +4,20 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 [`Mcrauli/scan2bim-web`](https://github.com/Mcrauli/scan2bim-web/releases):iin;
 sovellus päivittää itsensä sieltä.
 
+## v0.7.9 (15.7.2026) — IFC-georeferointi (koordinaatisto-leima)
+- **IFC saa georef-leiman (`IfcProjectedCRS` + `IfcMapConversion`).** Malli
+  kirjoitetaan kuten ennenkin skannin OIKEISIIN maailmakoordinaatteihin (iso
+  itä/pohjoinen + korkeus) → overlay pistepilveä vasten (Cintoo tms.) osuu
+  täsmälleen. Leima kertoo lisäksi minkä koordinaatiston koordinaateista on kyse,
+  jotta Revit/Navisworks osaa sijoittaa mallin shared/survey-koordinaateilla
+  eikä valita etäisyydestä origoon. **Geometria ei muutu** — mitään ei siirretä.
+- **Koordinaatisto valittavissa** (GUI: "Koordinaatisto"; asetus `crs_epsg`).
+  Oletus **ETRS-TM35FIN (EPSG:3067)**, lisäksi ETRS-GK19…GK31 (mm. GK25 pää-
+  kaupunkiseutu), KKJ/YKJ, sekä "Ei georef-leimaa". Oikean järjestelmän saa
+  yleensä skannin/E57:n headerista.
+- Yksikkö hoidettu oikein: geometria mm, projisoitu CRS metreissä → skaalaus
+  mm→m, offset 0 (geometria kantaa jo täyden koordinaatin).
+
 ## v0.7.8 (15.7.2026) — vähemmän valepilareita ja -palkkeja sotkuisissa skanneissa
 - **Täyskorkea kaluste ei enää mene pilariksi eikä kalusteen päällä oleva klusteri
   palkiksi.** Huonoissa/kalustetuissa skanneissa (esim. skannerivuoto aukon läpi)
