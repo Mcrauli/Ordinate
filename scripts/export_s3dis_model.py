@@ -30,7 +30,7 @@ from pathlib import Path
 # Samat parametrinimet → best_model.pth latautuu suoraan.
 # ---------------------------------------------------------------------------
 
-def _build_model(k: int = 13):
+def _build_model(k: int = 13, in_ch: int = 9):
     import torch
     import torch.nn as nn
     import torch.nn.functional as F
@@ -38,7 +38,7 @@ def _build_model(k: int = 13):
     class _Encoder(nn.Module):
         def __init__(self):
             super().__init__()
-            self.conv1 = nn.Conv1d(9, 64, 1)
+            self.conv1 = nn.Conv1d(in_ch, 64, 1)
             self.conv2 = nn.Conv1d(64, 128, 1)
             self.conv3 = nn.Conv1d(128, 1024, 1)
             self.bn1 = nn.BatchNorm1d(64)
@@ -425,8 +425,13 @@ def _gen_room(rng, n_pts: int = 80_000):
     return pts, lbl
 
 
-def _pts_to_blocks(pts, lbl, block_m: float = 1.0, n_pts: int = 4096, stride_m: float = 0.5):
-    """Jakaa huoneen 1m×1m lohkoihin, palauttaa (feats (B,N,9), labels (B,N)).
+def _pts_to_blocks(pts, lbl, block_m: float = 1.0, n_pts: int = 4096, stride_m: float = 0.5,
+                   extra=None):
+    """Jakaa huoneen 1m×1m lohkoihin, palauttaa (feats (B,N,6+E), labels (B,N)).
+
+    extra: valinnainen per-piste (N, E) lisäpiirretaulukko (esim. [r,g,b,intensity,
+    height]) joka kirjoitetaan piirreslotteihin 6.. — taaksepäin-yhteensopiva:
+    extra=None → E=3 nolla-rgb-slottia → sama 9-piirrevektori kuin ennen.
 
     Ämpäröinti: pisteet lajitellaan kertaalleen stride-soluihin, ja koska
     block_m == 2*stride_m, lohkon rajat osuvat tarkalleen solurajoihin →
@@ -477,16 +482,20 @@ def _pts_to_blocks(pts, lbl, block_m: float = 1.0, n_pts: int = 4096, stride_m: 
             else:
                 sel = np.concatenate([np.arange(len(idx)),
                                        np.random.choice(len(idx), n_pts - len(idx))])
-            s = pts[idx[sel]]
-            f = np.zeros((n_pts, 9), dtype=np.float32)
+            picked = idx[sel]
+            s = pts[picked]
+            n_extra = 3 if extra is None else extra.shape[1]
+            f = np.zeros((n_pts, 6 + n_extra), dtype=np.float32)
             f[:, 0] = (s[:, 0] - cx) / block_m
             f[:, 1] = (s[:, 1] - cy) / block_m
             f[:, 2] = (s[:, 2] - sc_min[2]) / sc_range[2]
             f[:, 3] = (s[:, 0] - sc_min[0]) / sc_range[0]
             f[:, 4] = (s[:, 1] - sc_min[1]) / sc_range[1]
             f[:, 5] = (s[:, 2] - sc_min[2]) / sc_range[2]
+            if extra is not None:
+                f[:, 6:6 + n_extra] = extra[picked]
             blocks_f.append(f)
-            blocks_l.append(lbl[idx[sel]])
+            blocks_l.append(lbl[picked])
 
     if not blocks_f:
         return None, None
