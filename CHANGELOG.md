@@ -4,6 +4,23 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 [`Mcrauli/scan2bim-web`](https://github.com/Mcrauli/scan2bim-web/releases):iin;
 sovellus päivittää itsensä sieltä.
 
+## v0.7.8 (15.7.2026) — vähemmän valepilareita ja -palkkeja sotkuisissa skanneissa
+- **Täyskorkea kaluste ei enää mene pilariksi eikä kalusteen päällä oleva klusteri
+  palkiksi.** Huonoissa/kalustetuissa skanneissa (esim. skannerivuoto aukon läpi)
+  detektorit poimivat sälää: 3DSES-huoneesta tuli 3 valepilaria + 1 valepalkki
+  saman vuotorajan rykelmästä. Kolme mitattua, deterministista tiukennusta:
+  - **Pilari — poikkileikkauksen vakaus:** aidon pilarin XY-jalanjälki on ~sama
+    joka korkeudella; kasattu kaluste heiluu (mitattu 35↔500 mm) → hylky.
+  - **Pilari — vyötäröirrallisuus:** aidon pilarin ympäri kävelee (ilmaa 1–1.8 m
+    korkeudella); täyskorkea kaappi on kiinni muussa massassa (mitattu: aito ≤4/16
+    suuntaa täynnä, kaappi 8/16) → hylky.
+  - **Palkki — headroom:** aidon palkin alta kävelee (tyhjää alla); kalustepatterin
+    päällä istuva klusteri on tukossa → hylky (vain valmiissa tilassa).
+  Mitattu S171-huoneella: pilarit 3→1, palkit 1→0. Aidot pilarit/palkit säilyvät
+  (kaikki detektoritestit läpi, +3 regressiotestiä). Jäljelle jäävä täyskorkea,
+  irrallinen, vakaa klusteri on geometrisesti aito pilari — sitä ei enää erota
+  ilman semanttista tietoa.
+
 ## v0.7.7 (15.7.2026) — vähemmän valepalkkeja: roikkuva talotekniikka ei ole palkki
 - **Valmiissa tilassa (kattolaatta löydetty) katosta irti roikkuva pitkänomainen
   klusteri ei enää mene palkiksi.** Aito alaslaskettu palkki valetaan kattolaatan
