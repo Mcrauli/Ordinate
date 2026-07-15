@@ -66,7 +66,9 @@ N x pistepilveä (run_floors yhdistää yhdeksi kerrokseksi)
                                     (mitattu arvo → Wall.measured_thickness)
   → semantics/room_detector.py      tilat (shapely polygonize)
   → segmentation/opening_detector.py  ovet/ikkunat
-  → ifc/writer.py                   IFC4 (tyypit + materiaalit + Pset + Qto)
+  → ifc/writer.py                   IFC4 (tyypit + materiaalit + Pset + Qto +
+                                    georef-leima ifc/crs.py; geometria skannin
+                                    oikeissa maailmakoordinaateissa)
   → export/dxf.py                   DXF
 ```
 
@@ -89,6 +91,7 @@ N x pistepilveä (run_floors yhdistää yhdeksi kerrokseksi)
 | `core/semantics/room_detector.py` | Tilat (shapely polygonize + sliver-suodatus) |
 | `core/geometry/loader.py` | E57/LAS/LAZ/PLY/PTS-lataus + metri→mm |
 | `core/ifc/writer.py` | **Älykäs IFC4**: tyypit, materiaalit, Pset, Qto |
+| `core/ifc/crs.py` | Georef-leima (`IfcProjectedCRS`+`IfcMapConversion`), `CRS_PRESETS` (EPSG) |
 | `core/export/dxf.py` | DXF-kirjoitus |
 | `schemas/model.py` | `StructuralModel` (YDIN — kaikki export tästä) |
 | `core/updater.py` + `gui/update_banner.py` | Itsepäivitys GitHub Releasesista |
@@ -240,6 +243,24 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   tavara ketjuttavat pilarin ympäristöönsä (eps-ketju) → jättiklusteri → 0/92
   GT-pilaria. Solu jonka z-binit täynnä lattia→katto = ehdokas; ohut tuki putoaa
   minimimittaan, seinänpala rengastestiin (linjassa lisää täyttösoluja).
+- **Valepilarit/-palkit sotkuisissa skanneissa: poikkileikkauksen vakaus +
+  irrallisuus + headroom** (mitattu 3DSES-vuotoskannista: 3 valepilaria + 1
+  valepalkki vuotorajan rykelmästä, läpäisivät vanhat rengas/ympäröinti-testit
+  koska eivät ole ULKOreunalla vaan sisärajalla). Erottimet: (1) pilarin XY-
+  poikkileikkaus ~sama joka korkeudella (kaluste heiluu 35↔500 mm); (2) vyötärö-
+  korkeudella (1–1.8 m) ympärillä ilmaa (aito ≤4/16 suuntaa täynnä, kaappi 8/16);
+  (3) palkin ALLA tyhjää (aidon alta kävelee, kalusteen päällä istuva klusteri
+  tukossa; vain valmiissa tilassa). **Rajallisuus:** täyskorkea IRRALLINEN kaappi
+  jolla on vakaa poikkileikkaus on geometrisesti identtinen pilarin kanssa — sitä
+  ei erota ilman semanttista tietoa (jää confidencellä; QA:n TARKISTA-lista).
+- **Georef: geometria PYSYY skannin oikeissa koordinaateissa, ei origo-siirtoa**
+  (`ifc/crs.py`). Radikal katsoo malleja Cintoossa pistepilveä vasten → Cintoo
+  sijoittaa IFC:n sen RAAKAGEOMETRIAN koordinaateilla, joten overlay vaatii isot
+  oikeat koordinaatit. Origo-siirto (geometria lähelle nollaa) rikkoisi tämän.
+  `IfcMapConversion` on VAIN metatietoa Revitille (shared/survey coords); offset
+  = 0 (geometria kantaa jo koordinaatin). **Yksikköansa:** geometria on mm mutta
+  projisoidut CRS:t metreissä → `Scale = 0.001` (mm→m), muuten Revit sijoittaisi
+  1000× väärään paikkaan. Oletus EPSG:3067; `config.crs_epsg` yliajaa.
 - **Kerros jossa <2 % pisteistä on haamu** (skannerin harhat rakennuksen alla)
   — tuotti tyhjän IFC:n floor_00:na. Korkea viipale (> 4.6 m) ilman tyhjää
   z-kaistaa jaetaan sisäisen laattapiikin kohdalta (portaikko yhdistää tasot,

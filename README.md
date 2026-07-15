@@ -31,6 +31,10 @@ Nykyinen versio: **v0.4.11** — pre-release-vaiheessa.
 - **Property setit**: `Pset_WallCommon` (IsExternal, LoadBearing), `Pset_SpaceCommon`, …
 - **Määrät**: `Qto_WallBaseQuantities` (pituus, korkeus, paksuus, tilavuus), pinta-alat
 - **Nimet**: VS / KVS / US + paksuus mm, tilat nimettyinä, katto `IfcCovering CEILING`
+- **Georeferointi**: malli kirjoitetaan skannin **oikeisiin maailmakoordinaatteihin**
+  (overlay pistepilveä vasten osuu täsmälleen, esim. Cintoo); `IfcProjectedCRS` +
+  `IfcMapConversion` kertovat koordinaatiston Revitille (oletus ETRS-TM35FIN,
+  valittavissa)
 
 ## Tarkkuus
 
@@ -66,7 +70,7 @@ E57 / LAS / LAZ / PLY / PTS  (yksi tai monta keilausta)
                               ortogonalisointi + hienokierto + nurkkien sulku +
                               perimetri + huoneet + aukot
   → schemas/model.py          StructuralModel (JSON) — kaikki export tästä
-  → ifc/writer.py             → IFC4 (tyypit, materiaalit, Pset, Qto)
+  → ifc/writer.py             → IFC4 (tyypit, materiaalit, Pset, Qto, georef)
   → export/dxf.py             → DXF
 ```
 
