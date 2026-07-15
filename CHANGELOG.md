@@ -4,6 +4,18 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 [`Mcrauli/scan2bim-web`](https://github.com/Mcrauli/scan2bim-web/releases):iin;
 sovellus päivittää itsensä sieltä.
 
+## v0.7.7 (15.7.2026) — vähemmän valepalkkeja: roikkuva talotekniikka ei ole palkki
+- **Valmiissa tilassa (kattolaatta löydetty) katosta irti roikkuva pitkänomainen
+  klusteri ei enää mene palkiksi.** Aito alaslaskettu palkki valetaan kattolaatan
+  kanssa yhteen → sen kyljet ulottuvat kattoon asti; ripustettu talotekniikka
+  (putket, kanavat, kaapelihyllyt) roikkuu katosta irti. Nyt vaaditaan että
+  klusterin lakipiste yltää katon alapintaan (soffit-kiinnitys, ≤130 mm) tai
+  klusteri hylätään. Lisäksi valmiissa tilassa alle 150 mm leveä kattoon
+  kiinnittynyt klusteri = putki/kouru, ei palkki. Tämä poistaa valepalkit
+  MEP-täyteisissä liike- ja toimistotiloissa. Työmaalla (ei kattolaattaa) testi
+  ei ole voimassa → aidot palkit säilyvät. Vision-varmennettu Matterportilla:
+  valepalkit 12 → 8/10.
+
 ## v0.7.6 (12.7.2026) — puskuliitokset: seinät eivät enää limity nurkissa
 - **IFC-seinäsolidit eivät enää mene sisäkkäin liitoksissa.** Akselit päättyvät
   leikkauspisteeseen → molempien seinien suorakaiteet peittivät nurkkaneliön
