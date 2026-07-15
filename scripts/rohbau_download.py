@@ -62,17 +62,37 @@ def main():
     todo = [f for f in files if parse(f["name"])[0] in sites and parse(f["name"])[1] in feats]
     tot = sum(f["size"] for f in todo)
     print(f"Ladataan {len(todo)} tiedostoa, {tot/1e9:.1f} GB -> {out}")
+    import time
     for i, f in enumerate(todo):
         dst = out / f["name"]
-        if dst.exists() and dst.stat().st_size == f["size"]:
-            print(f"  [{i+1}/{len(todo)}] {f['name']} jo olemassa, ohitetaan"); continue
-        print(f"  [{i+1}/{len(todo)}] {f['name']} ({f['size']/1e9:.2f} GB)…", flush=True)
         url = f"{HOST}/api/access/datafile/{f['id']}"
-        with requests.get(url, stream=True, timeout=120) as r:
-            r.raise_for_status()
-            with open(dst, "wb") as fh:
-                for chunk in r.iter_content(chunk_size=1 << 20):
-                    fh.write(chunk)
+        target = f["size"]
+        for attempt in range(1, 9):
+            have = dst.stat().st_size if dst.exists() else 0
+            if target and have == target:
+                break  # valmis
+            if have > target and target:      # korruptoitunut/ylipitkä → alusta
+                dst.unlink(); have = 0
+            mode = "ab" if have > 0 else "wb"
+            headers = {"Range": f"bytes={have}-"} if have > 0 else {}
+            tag = f"  [{i+1}/{len(todo)}] {f['name']} ({target/1e9:.2f} GB)"
+            print(f"{tag}  yritys {attempt}, alkaen {have/1e9:.2f} GB…", flush=True)
+            try:
+                with requests.get(url, stream=True, timeout=120, headers=headers) as r:
+                    # 200 ilman Range-tukea → aloita alusta; 206 → jatka
+                    if have > 0 and r.status_code == 200:
+                        dst.unlink(); mode = "wb"
+                    r.raise_for_status()
+                    with open(dst, mode) as fh:
+                        for chunk in r.iter_content(chunk_size=1 << 20):
+                            fh.write(chunk)
+            except Exception as e:
+                print(f"    katkos: {type(e).__name__} — retry {2*attempt}s", flush=True)
+                time.sleep(2 * attempt); continue
+            if not target:      # koko tuntematon → hyväksy yksi lataus
+                break
+        else:
+            print(f"    VAROITUS: {f['name']} ei latautunut täyteen 8 yrityksellä", flush=True)
     print("VALMIS lataus.")
 
 
