@@ -188,6 +188,21 @@ class FilePanel(QtWidgets.QWidget):
         self._site_type.setEnabled(_MODEL_AVAILABLE)
         form.addRow("Kohdetyyppi:", self._site_type)
 
+        self._crs = QtWidgets.QComboBox()
+        from scan2bim.core.ifc.crs import CRS_PRESETS, DEFAULT_EPSG
+        self._crs_epsg = [0] + list(CRS_PRESETS.keys())
+        self._crs.addItem("Ei georef-leimaa")
+        for epsg in CRS_PRESETS:
+            self._crs.addItem(f"{CRS_PRESETS[epsg][0]} — EPSG:{epsg}")
+        self._crs.setCurrentIndex(self._crs_epsg.index(DEFAULT_EPSG))
+        self._crs.setToolTip(
+            "Koordinaattijärjestelmä jossa skannit ovat. Malli kirjoitetaan aina\n"
+            "skannin OIKEISIIN koordinaatteihin (overlay pistepilveä vasten osuu);\n"
+            "tämä kertoo Revitille MISSÄ järjestelmässä ne ovat. Oletus Suomen\n"
+            "ETRS-TM35FIN. Löytyy yleensä skannin/E57:n headerista."
+        )
+        form.addRow("Koordinaatisto:", self._crs)
+
         self._ifc = QtWidgets.QCheckBox("IFC")
         self._ifc.setChecked(True)
         self._dxf = QtWidgets.QCheckBox("DXF")
@@ -247,6 +262,7 @@ class FilePanel(QtWidgets.QWidget):
                 ("pointnet-retail" if self._site_type.currentIndex() == 1 else "pointnet")
                 if self._sem_filter.isChecked() else "off"
             ),
+            crs_epsg=self._crs_epsg[self._crs.currentIndex()],
         )
         self.convert_requested.emit(
             self._input_paths,

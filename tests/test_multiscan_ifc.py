@@ -208,6 +208,15 @@ def test_multiscan_pipeline_produces_ifc():
         print(f"\nKerros {i}: {m.summary()}")
         print(f"IFC: {ifc}")
 
+    # Georef-leima: oletus EPSG:3067, MapConversion mm->m, geometria koskematta
+    import ifcopenshell
+    f = ifcopenshell.open(str(OUT_DIR / "building.ifc"))
+    crs = f.by_type("IfcProjectedCRS")
+    mc = f.by_type("IfcMapConversion")
+    assert crs and crs[0].Name == "EPSG:3067", "georef-leima (EPSG:3067) puuttuu"
+    assert mc and abs(mc[0].Scale - 0.001) < 1e-9, "MapConversion mm->m skaala vaarin"
+    assert mc[0].Eastings == 0.0 and mc[0].Northings == 0.0, "offset ei 0 (geometria siirtyi)"
+
     print(f"\nAvaa Solibrissa:")
     for i in range(len(models)):
         print(f"  {OUT_DIR / f'floor_{i:02d}' / 'model.ifc'}")

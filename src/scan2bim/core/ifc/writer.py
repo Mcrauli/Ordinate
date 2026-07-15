@@ -25,8 +25,8 @@ import ifcopenshell.guid
 from scan2bim.schemas.model import StructuralModel, Wall, Slab, Space, Column, Beam, Opening
 
 
-def write_ifc(model: StructuralModel, path: Path) -> None:
-    ifc = _build_project_skeleton()
+def write_ifc(model: StructuralModel, path: Path, crs_epsg: int = 3067) -> None:
+    ifc = _build_project_skeleton(crs_epsg)
     oh = ifc.by_type("IfcOwnerHistory")[0]
     storey = ifc.by_type("IfcBuildingStorey")[0]
     body_ctx, axis_ctx = _contexts(ifc)
@@ -37,14 +37,14 @@ def write_ifc(model: StructuralModel, path: Path) -> None:
     ifc.write(str(path))
 
 
-def write_building_ifc(models: list[StructuralModel], path: Path) -> None:
+def write_building_ifc(models: list[StructuralModel], path: Path, crs_epsg: int = 3067) -> None:
     """Yksi IFC, jossa kaikki kerrokset omina IfcBuildingStorey-tasoinaan."""
     models = [m for m in models if m is not None]
     if not models:
         return
     models = sorted(models, key=lambda m: (m.metadata.floor_index or 0))
 
-    ifc = _build_project_skeleton()
+    ifc = _build_project_skeleton(crs_epsg)
     oh = ifc.by_type("IfcOwnerHistory")[0]
     building = ifc.by_type("IfcBuilding")[0]
     base_storey = ifc.by_type("IfcBuildingStorey")[0]
@@ -241,7 +241,7 @@ def _wall_type(ifc, oh, caches, thickness: float, is_external: bool):
 # Projekti-skeleton
 # --------------------------------------------------------------------------- #
 
-def _build_project_skeleton() -> ifcopenshell.file:
+def _build_project_skeleton(crs_epsg: int = 3067) -> ifcopenshell.file:
     ifc = ifcopenshell.file(schema="IFC4")
     oh = _make_owner_history(ifc)
 
@@ -267,6 +267,11 @@ def _build_project_skeleton() -> ifcopenshell.file:
         ContextIdentifier="Axis", ContextType="Model", ParentContext=ctx,
         TargetView="GRAPH_VIEW",
     )
+
+    # Georef-leima: geometria on skannin oikeissa maailmakoordinaateissa; tämä
+    # kertoo minkä CRS:n koordinaateista on kyse (Revit shared/survey coords).
+    from .crs import add_georef
+    add_georef(ifc, ctx, crs_epsg)
 
     project = ifc.createIfcProject(
         GlobalId=ifcopenshell.guid.new(), OwnerHistory=oh, Name="scan2bim",

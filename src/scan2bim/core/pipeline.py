@@ -34,6 +34,9 @@ class PipelineConfig:
     semantic_filter_mode: Literal["off", "geometric", "pointnet", "pointnet-retail"] = "off"
     # pointnet-retail: liiketila/tyomaa-malli — poistaa lattia-katto-hyllyrivit
     # (95% vs oletusmallin 17%); asunnoissa oletusmalli on tarkempi.
+    crs_epsg: int = 3067    # georef-leima IFC:hen (EPSG). Geometria pysyy skannin
+                            # oikeissa koordinaateissa; ks. core/ifc/crs.py CRS_PRESETS.
+                            # 0 = ei leimaa. Oletus ETRS-TM35FIN.
 
 
 _AUTO_TARGET_POINTS = 4_000_000
@@ -810,7 +813,7 @@ class Pipeline:
         if models:
             if self.config.export_ifc and len(models) >= 1:
                 from scan2bim.core.ifc.writer import write_building_ifc
-                write_building_ifc(models, output_dir / "building.ifc")
+                write_building_ifc(models, output_dir / "building.ifc", crs_epsg=self.config.crs_epsg)
                 self._progress(f"Koko talo: {output_dir / 'building.ifc'}")
             self._progress(f"Valmis. {len(models)} kerrosta käsitelty.")
         return models
@@ -1072,7 +1075,7 @@ class Pipeline:
 
     def _write_ifc(self, model: StructuralModel, path: Path) -> None:
         from scan2bim.core.ifc.writer import write_ifc
-        write_ifc(model, path)
+        write_ifc(model, path, crs_epsg=self.config.crs_epsg)
 
     def _write_dxf(self, model: StructuralModel, path: Path) -> None:
         from scan2bim.core.export.dxf import write_dxf
