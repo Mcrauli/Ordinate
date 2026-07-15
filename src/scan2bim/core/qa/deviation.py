@@ -180,6 +180,7 @@ def write_qa_report(model: StructuralModel, cloud, ifc_path: Path, txt_path: Pat
         lines.append(f"  {label:<10}{s['within_tol_pct']:>8.1f}%{s['mean']:>8.2f}"
                      f"{s['median']:>7.2f}{s['rms']:>8.2f}{s['p95']:>8.2f}{s['max']:>8.2f}")
     surf = wall_surface_accuracy(model, cloud)
+    surface_summary: dict | None = None
     if surf:
         lines.append("")
         lines.append("Pintatarkkuus (skannatun pinnan mediaani vs mallin pinta —")
@@ -190,6 +191,12 @@ def write_qa_report(model: StructuralModel, cloud, ifc_path: Path, txt_path: Pat
         errs = [r["face_err_mm"] for r in surf]
         n_ok = sum(1 for e in errs if e <= 1.5)
         lines.append(f"  mediaani {np.median(errs):.2f} mm | <=1.5 mm: {n_ok}/{len(errs)} seinaa")
+        noise = [r["noise_rms_mm"] for r in surf]
+        surface_summary = {
+            "median_mm": round(float(np.median(errs)), 2),
+            "n_ok": n_ok, "n_total": len(errs),
+            "noise_rms_mm": round(float(np.median(noise)), 1),
+        }
 
     lines.append("")
     if flags:
@@ -200,4 +207,4 @@ def write_qa_report(model: StructuralModel, cloud, ifc_path: Path, txt_path: Pat
         lines.append("Ei matalan luottamuksen elementteja.")
 
     txt_path.write_text("\n".join(lines), encoding="utf-8")
-    return {"deviation": dev, "flags": flags}
+    return {"deviation": dev, "flags": flags, "surface": surface_summary}

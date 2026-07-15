@@ -670,7 +670,20 @@ class Pipeline:
         self._progress(f"Löydettiin {len(floors)} kerros(ta).")
 
         if self.config.auto_voxel:
-            self.config.voxel_size = 12.0
+            # Adaptiivinen voxel datasta: kevyt 20mm-otos ensimmäisen kerroksen
+            # kaistasta (muistiturvallinen isollekin talolle) → _auto_voxel skaalaa
+            # työpistemäärän mukaan. Pieni huone → 8mm (tarkempi), iso talo → 25mm.
+            # (Aiemmin kovakoodattu 12mm harhaanjohtavalla "Auto-voxel"-tekstillä.)
+            try:
+                from scan2bim.core.geometry.streaming import load_floor_slice as _probe_lfs
+                _z_lo0, _z_hi0 = floors[0]
+                _probe = _probe_lfs(paths, _z_lo0, _z_hi0, voxel_size=20.0, progress_cb=None)
+                if len(_probe.points) >= 500:
+                    self.config.voxel_size = _auto_voxel(_probe)
+                else:
+                    self.config.voxel_size = 12.0
+            except Exception:
+                self.config.voxel_size = 12.0
             self._progress(f"  Auto-voxel: {self.config.voxel_size:.1f} mm")
 
         source = paths[0]
@@ -797,10 +810,21 @@ class Pipeline:
                             floor_dir / "qa_report.txt", tol=self.config.qa_tolerance,
                         )
                         ov = res["deviation"].get("overall", {})
-                        self._progress(
-                            f"  QA: {ov.get('within_tol_pct', '?')} % <= {self.config.qa_tolerance} mm, "
-                            f"{len(res['flags'])} tarkistettavaa"
-                        )
+                        surf = res.get("surface")
+                        if surf:
+                            # Näytä MALLIN pintatarkkuus (oikea luku) — ei pistetason
+                            # %-lukua joka on skannerin kohinan dominoima ja pelottaa turhaan.
+                            self._progress(
+                                f"  QA: pintatarkkuus mediaani {surf['median_mm']:.1f} mm "
+                                f"({surf['n_ok']}/{surf['n_total']} seinää <=1.5 mm), "
+                                f"{len(res['flags'])} tarkistettavaa "
+                                f"| skannerikohina ~{surf['noise_rms_mm']:.0f} mm RMS"
+                            )
+                        else:
+                            self._progress(
+                                f"  QA: {ov.get('within_tol_pct', '?')} % <= {self.config.qa_tolerance} mm "
+                                f"(pistetaso, sis. skannerikohinan), {len(res['flags'])} tarkistettavaa"
+                            )
                     except Exception as e:
                         self._progress(f"  QA-raportti ohitettu: {e}")
             if self.config.export_dxf:
