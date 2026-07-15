@@ -664,6 +664,124 @@ def train_on_3dses(model, data_dir: Path, epochs: int = 50) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Vaihtoehto D — harjoita Rohbau3D:llä (CC-BY-4.0, OIKEAT per-piste-labelit)
+# ---------------------------------------------------------------------------
+
+# Rohbau3D 17 luokkaa → 13-luokkainen S3DIS-taksonomia jonka suodatin osaa.
+# Rakenne → 0–6 (SÄILYTETÄÄN), talotekniikka + tausta → 12 (krääsä, POISTETAAN).
+# Suodatin välittää vain keep/remove-jaosta (0–6 vs 7–12), joten rakenteen
+# tarkka aliluokka ei ole kriittinen — TGA (17) ja None (0) menevät krääsäksi.
+_ROHBAU_TO_S3DIS = {
+    0: 12,   # None/tausta → krääsä (poista)
+    1: 0,    # Ceiling → katto
+    2: 0,    # Slanted Ceiling → katto
+    3: 0,    # Ceiling Cutout → katto
+    4: 1,    # Floor → lattia
+    5: 2,    # Wall → seinä
+    6: 2,    # Drywall → seinä
+    7: 2,    # Wall Cutout → seinä
+    8: 2,    # Parapet → seinä
+    9: 3,    # Beam → palkki
+    10: 4,   # Column → pilari
+    11: 4,   # Staircase → (rakenne, säilytä)
+    12: 5,   # Window Cutout → ikkuna
+    13: 5,   # Window → ikkuna
+    14: 6,   # Door Rough Opening → ovi
+    15: 2,   # Facade Element → seinä (rakenne)
+    16: 6,   # Elevator Doors → ovi (rakenne)
+    17: 9,   # TGA (talotekniikka/MEP) → OMA poistoluokka 9 (erillään Nonesta 12,
+             # jotta malli oppii putki/kanava-geometrian eikä sekoita sitä
+             # hajanaiseen taustaan; molemmat luokat 7-12 poistetaan silti).
+}
+
+
+def _map_rohbau_labels(cls):
+    import numpy as np
+    lut = np.full(int(cls.max()) + 1, 12, dtype=np.int64)
+    for k, v in _ROHBAU_TO_S3DIS.items():
+        if k < len(lut):
+            lut[k] = v
+    return lut[cls]
+
+
+def train_on_rohbau(model, data_dir: Path, val_scenes: list[str],
+                    epochs: int = 12, voxel_m: float = 0.03,
+                    max_blocks_per_scene: int = 400) -> None:
+    """Harjoita Rohbau3D:n OIKEILLA per-piste-labeleilla (CC-BY-4.0).
+
+    Oikea keilausdata → ei sim-to-real-kuilua kuten synteettisellä. val_scenes
+    jätetään pois (rehellinen held-out-validointi). Koordinaatit METREINÄ (kuten
+    _pts_to_blocks olettaa)."""
+    import os, glob, time
+    import numpy as np
+    import torch
+    import torch.nn as nn
+    import torch.optim as optim
+
+    torch.set_num_threads(os.cpu_count() or 8)
+    print(f"torch-säikeet: {torch.get_num_threads()}", flush=True)
+
+    scene_dirs = sorted(glob.glob(str(data_dir / "scene_*")))
+    train_dirs = [d for d in scene_dirs if not any(v in os.path.basename(d) for v in val_scenes)]
+    print(f"Rohbau3D: {len(train_dirs)} koulutus-skeneä, held-out {val_scenes}", flush=True)
+
+    rng = np.random.default_rng(42)
+    all_feats, all_lbls = [], []
+    for d in train_dirs:
+        t0 = time.time()
+        xyz = np.load(os.path.join(d, "coord.npy")).astype(np.float32)   # metrit
+        cls = np.load(os.path.join(d, "class.npy")).astype(np.int64)
+        lbl = _map_rohbau_labels(cls)
+        pts, lbl = _voxel_downsample(xyz, lbl, voxel_m)
+        bf, bl = _pts_to_blocks(pts, lbl, block_m=1.0, n_pts=4096, stride_m=0.5)
+        if bf is not None:
+            if len(bf) > max_blocks_per_scene:
+                pick = rng.choice(len(bf), max_blocks_per_scene, replace=False)
+                bf, bl = bf[pick], bl[pick]
+            all_feats.append(bf); all_lbls.append(bl)
+        print(f"  {os.path.basename(d)}: {len(pts):,} pistetta -> "
+              f"{0 if bf is None else len(bf)} lohkoa ({time.time()-t0:.0f}s)", flush=True)
+
+    all_feats = np.vstack(all_feats)
+    all_lbls = np.vstack(all_lbls)
+    n_blocks = len(all_feats)
+    print(f"Lohkoja yhteensä: {n_blocks}", flush=True)
+
+    counts = np.bincount(all_lbls.ravel(), minlength=13).astype(np.float32)
+    counts = np.maximum(counts, 1)
+    weights = torch.tensor((1.0 / counts) / (1.0 / counts).sum() * 13, dtype=torch.float32)
+
+    BATCH = 8
+    optimizer = optim.Adam(model.parameters(), lr=1e-3)
+    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=6, gamma=0.5)
+    criterion = nn.CrossEntropyLoss(weight=weights)
+    model.train()
+
+    for epoch in range(epochs):
+        losses = []
+        perm = np.random.permutation(n_blocks)
+        for i in range(0, n_blocks, BATCH):
+            bi = perm[i:i + BATCH]
+            x = torch.tensor(all_feats[bi]); y = torch.tensor(all_lbls[bi])
+            optimizer.zero_grad()
+            loss = criterion(model(x).reshape(-1, 13), y.reshape(-1))
+            loss.backward(); optimizer.step(); losses.append(loss.item())
+        scheduler.step()
+        if (epoch + 1) % 2 == 0 or epoch == 0:
+            with torch.no_grad():
+                si = np.random.permutation(n_blocks)[:64]
+                pred = model(torch.tensor(all_feats[si])).reshape(-1, 13).argmax(1).numpy()
+                sy = all_lbls[si].ravel()
+                rm = [7, 8, 9, 10, 11, 12]
+                gt_rm = np.isin(sy, rm); pr_rm = np.isin(pred, rm)
+                sk = (~pr_rm[~gt_rm]).mean() if (~gt_rm).any() else 1.0
+                rr = pr_rm[gt_rm].mean() if gt_rm.any() else 0.0
+            print(f"Epoch {epoch+1:3d}/{epochs}  loss={sum(losses)/len(losses):.4f}  "
+                  f"rakenne-säilyy={sk:.3f}  krääsä-poisto={rr:.3f}", flush=True)
+    print("Harjoitus valmis.")
+
+
+# ---------------------------------------------------------------------------
 # ONNX-vienti
 # ---------------------------------------------------------------------------
 
@@ -710,6 +828,10 @@ def main() -> None:
                     help="Max lohkoa per huone (CPU-budjetti; 0=ei rajaa)")
     ap.add_argument("--train", action="store_true",
                     help="Harjoita 3DSES-datalla (--data pakollinen)")
+    ap.add_argument("--rohbau", type=Path, default=None,
+                    help="Harjoita Rohbau3D:llä (CC-BY, oikeat labelit); polku extracted/site_XX")
+    ap.add_argument("--rohbau-val", nargs="+", default=["02004", "02007", "02010"],
+                    help="Held-out validointiskenet (ei mukaan koulutukseen)")
     ap.add_argument("--data", type=Path, default=repo_root / "data" / "_3dses")
     ap.add_argument("--epochs", type=int, default=50)
     ap.add_argument("--out", type=Path, default=out_default)
@@ -732,10 +854,12 @@ def main() -> None:
         train_synthetic(model, n_rooms=args.synth_rooms, epochs=args.synth_epochs,
                         retail_frac=args.synth_retail,
                         max_blocks_per_room=args.synth_max_blocks)
+    elif args.rohbau:
+        train_on_rohbau(model, args.rohbau, val_scenes=args.rohbau_val, epochs=args.epochs)
     elif args.train:
         train_on_3dses(model, args.data, epochs=args.epochs)
     else:
-        print("Käytä: --weights <pth>  tai  --synth  tai  --train --data <hakemisto>")
+        print("Käytä: --weights <pth> | --synth | --rohbau <dir> | --train --data <dir>")
         sys.exit(1)
 
     export_onnx(model, args.out)
