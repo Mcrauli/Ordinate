@@ -104,15 +104,19 @@ def _train(feats, lbls, in_ch, epochs, device, tag, arch="pointnet", batch=8, au
     sch = optim.lr_scheduler.StepLR(opt, 6, 0.5)
     crit = nn.CrossEntropyLoss(weight=w)
     n = len(feats)
+    nb = (n + batch - 1) // batch
+    heartbeat = max(1, nb // 8)          # ~8 progressiprinttiä/epoch → ei pitkää hiljaisuutta
     for ep in range(epochs):
         model.train(); perm = np.random.permutation(n); losses = []
-        for i in range(0, n, batch):
+        for j, i in enumerate(range(0, n, batch)):
             bi = perm[i:i+batch]
             x = torch.tensor(feats[bi]).to(device); y = torch.tensor(lbls[bi]).to(device)
             if augment: x = _augment(x)
             opt.zero_grad()
             loss = crit(model(x).reshape(-1, 13), y.reshape(-1))
             loss.backward(); opt.step(); losses.append(loss.item())
+            if j % heartbeat == 0:
+                print(f"    [{tag}] ep{ep+1} {j}/{nb} loss={loss.item():.3f}", flush=True)
         sch.step()
         print(f"  [{tag}] epoch {ep+1}/{epochs} loss={sum(losses)/len(losses):.4f}", flush=True)
     return model
