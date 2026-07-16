@@ -116,7 +116,13 @@ def main():
     ap.add_argument("--epochs", type=int, default=20); ap.add_argument("--voxel", type=float, default=0.03)
     ap.add_argument("--max-bps", type=int, default=300); ap.add_argument("--max-scenes", type=int, default=30)
     ap.add_argument("--out", default="")
+    ap.add_argument("--no-intensity", action="store_true",
+                    help="pudota intensiteetti (piirre 9) → 10-piirre rgb+korkeus, toimii "
+                         "värillisillä pilvillä ilman intensiteettiä (esim. PLY)")
     a = ap.parse_args()
+    def _drop_int(b):
+        return b if not a.no_intensity else np.delete(b, 9, axis=2)  # slot 9 = intensiteetti
+    in_ch = 10 if a.no_intensity else 11
     import torch
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"device={device}", flush=True)
@@ -128,19 +134,20 @@ def main():
     t0 = time.time()
     rf, rl = FX._blocks(tr, a.voxel, True, a.max_bps, rng)     # Rohbau runko
     sf, sl = _synth_blocks(a.synth, a.max_bps, rng)            # synteettinen kaluste
-    tf = np.vstack([rf, sf]); tl = np.vstack([rl, sl])
     vrf, vrl = FX._blocks(va, a.voxel, True, a.max_bps, rng)   # held-out Rohbau (rakenne)
     vsf, vsl = _synth_blocks(12, a.max_bps, rng)               # held-out synteettinen (kaluste)
-    print(f"lohkot: Rohbau {len(rf)} + synth {len(sf)} = {len(tf)} train | "
+    rf, sf, vrf, vsf = _drop_int(rf), _drop_int(sf), _drop_int(vrf), _drop_int(vsf)
+    tf = np.vstack([rf, sf]); tl = np.vstack([rl, sl])
+    print(f"lohkot: Rohbau {len(rf)} + synth {len(sf)} = {len(tf)} train ({in_ch} piirrettä) | "
           f"val Rohbau {len(vrf)}, val synth {len(vsf)} ({time.time()-t0:.0f}s)", flush=True)
-    model = FX._train(tf, tl, 11, a.epochs, device, "COMBINED")
+    model = FX._train(tf, tl, in_ch, a.epochs, device, "COMBINED")
     sk_r, rr_r = FX._eval(model, vrf, vrl, device)
     sk_s, rr_s = FX._eval(model, vsf, vsl, device)
     print(f"==> HELD-OUT Rohbau (runko): rakenne-säilyy={sk_r:.3f}  krääsä-poisto={rr_r:.3f}", flush=True)
     print(f"==> HELD-OUT synth (kaluste): rakenne-säilyy={sk_s:.3f}  KALUSTE-poisto={rr_s:.3f}", flush=True)
     if a.out:
         import torch as T
-        T.save({"model_state_dict": model.state_dict(), "in_ch": 11}, a.out)
+        T.save({"model_state_dict": model.state_dict(), "in_ch": in_ch}, a.out)
         print(f"malli tallennettu: {a.out}", flush=True)
 
 
