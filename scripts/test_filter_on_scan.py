@@ -10,7 +10,6 @@ Aja (.venv_train):
 import sys, argparse
 from pathlib import Path
 import numpy as np
-import open3d as o3d
 import matplotlib; matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
@@ -67,6 +66,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--ply", required=True); ap.add_argument("--model", required=True)
     ap.add_argument("--out", required=True); ap.add_argument("--voxel", type=float, default=0.03)
+    ap.add_argument("--save-dir", default="")
     a = ap.parse_args()
     import torch
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -75,22 +75,34 @@ def main():
     model = E._build_model(13, in_ch).to(device)
     model.load_state_dict(ckpt["model_state_dict"]); print(f"malli {a.model} in_ch={in_ch} device={device}", flush=True)
 
-    pc = o3d.io.read_point_cloud(a.ply)
-    pts = np.asarray(pc.points).astype(np.float32)
-    rgb = np.asarray(pc.colors).astype(np.float32)
-    if len(rgb) != len(pts): rgb = np.full((len(pts),3), 0.5, np.float32)
-    # metrit? jos span iso (mm), skaalaa metreiksi
-    span = pts.max(0)-pts.min(0)
-    if span.max() > 200: pts = pts/1000.0
-    idx = _voxel_repr_idx(pts, a.voxel); pts, rgb = pts[idx], rgb[idx]
+    pts_full, rgb_full = _read_ply(a.ply)
+    pts_full = pts_full.astype(np.float32)
+    rgb_full = (rgb_full.astype(np.float32) / 255.0) if rgb_full is not None else np.full((len(pts_full),3), 0.5, np.float32)
+    span = pts_full.max(0)-pts_full.min(0)
+    if span.max() > 200: pts_full = pts_full/1000.0
+    # voxel-edustajat luokitteluun; PÄÄTÖS peritään takaisin TÄYSILLE pisteille
+    k = np.floor(pts_full / a.voxel).astype(np.int64)
+    key1d = k[:,0]*10_000_000 + k[:,1]*1_000 + k[:,2]
+    uniq, first_idx, inverse = np.unique(key1d, return_index=True, return_inverse=True)
+    pts, rgb = pts_full[first_idx], rgb_full[first_idx]
     floor_z = np.percentile(pts[:,2], 2)
     height = np.clip((pts[:,2]-floor_z)/3.0, 0, 1.5)
     extra = np.column_stack([rgb, height]).astype(np.float32)   # 4 -> 10 feat
-    print(f"pisteitä {len(pts):,} (voxel {a.voxel}m)", flush=True)
+    print(f"täysiä {len(pts_full):,} | voxel-edustajia {len(pts):,} ({a.voxel}m)", flush=True)
 
-    keep = classify(pts, extra, model, device)
-    print(f"==> säilytetty {100*keep.mean():.1f}% | poistettu {100*(~keep).mean():.1f}%", flush=True)
+    keep_ds = classify(pts, extra, model, device)
+    keep_full = keep_ds[inverse]                                # täysres-maski
+    print(f"==> TÄYSRES säilytetty {100*keep_full.mean():.1f}% | poistettu {100*(~keep_full).mean():.1f}%", flush=True)
 
+    if a.save_dir:
+        sd = Path(a.save_dir); sd.mkdir(parents=True, exist_ok=True)
+        stem = Path(a.ply).stem
+        rgb255f = np.clip(rgb_full * 255, 0, 255).astype(np.uint8)
+        _write_ply(sd / f"{stem}_all.ply", pts_full, rgb255f)
+        _write_ply(sd / f"{stem}_filt.ply", pts_full[keep_full], rgb255f[keep_full])
+        print(f"tallennettu (täysres): {stem}_all.ply ({len(pts_full)}) + {stem}_filt.ply ({int(keep_full.sum())})", flush=True)
+
+    keep = keep_ds
     # vision: ylhäältä, säilytetty harmaa / poistettu punainen
     sub = np.random.default_rng(0).choice(len(pts), min(300000,len(pts)), replace=False)
     fig, ax = plt.subplots(figsize=(11,9))
@@ -98,6 +110,52 @@ def main():
     ax.scatter(pts[sub][~keep[sub],0], pts[sub][~keep[sub],1], s=0.6, c="red", lw=0, label="poistettu (kaluste?)")
     ax.set_aspect("equal"); ax.legend(); ax.set_title(f"{Path(a.ply).stem}: suodatin (poistettu punainen)")
     fig.savefig(a.out, dpi=85, bbox_inches="tight"); print(f"kuva {a.out}", flush=True)
+
+
+_PLY_NP = {b"double":"<f8", b"float":"<f4", b"float32":"<f4", b"float64":"<f8",
+           b"uchar":"u1", b"uint8":"u1", b"int":"<i4", b"uint":"<u4",
+           b"ushort":"<u2", b"short":"<i2"}
+
+
+def _read_ply(path):
+    """Binääri-PLY (xyz + valinnainen rgb) numpyllä — ei open3d-riippuvuutta."""
+    with open(path, "rb") as f:
+        head = b""
+        while b"end_header" not in head:
+            head += f.read(256)
+        hdr_end = head.index(b"end_header") + len(b"end_header") + 1
+        f.seek(hdr_end)
+        lines = head[:hdr_end].split(b"\n")
+        count = 0; fields = []
+        for ln in lines:
+            t = ln.split()
+            if len(t) >= 3 and t[0] == b"element" and t[1] == b"vertex":
+                count = int(t[2])
+            elif len(t) == 3 and t[0] == b"property":
+                fields.append((t[2].decode(), _PLY_NP.get(t[1], "<f8")))
+        dt = np.dtype(fields)
+        arr = np.frombuffer(f.read(count * dt.itemsize), dtype=dt, count=count)
+    pts = np.column_stack([arr["x"], arr["y"], arr["z"]]).astype(np.float64)
+    rgb = None
+    if all(c in arr.dtype.names for c in ("red", "green", "blue")):
+        rgb = np.column_stack([arr["red"], arr["green"], arr["blue"]])
+    return pts, rgb
+
+
+def _write_ply(path, pts, rgb):
+    """Binääri-PLY (double xyz + uchar rgb) metreissä."""
+    n = len(pts)
+    hdr = ("ply\nformat binary_little_endian 1.0\n"
+           f"element vertex {n}\n"
+           "property double x\nproperty double y\nproperty double z\n"
+           "property uchar red\nproperty uchar green\nproperty uchar blue\n"
+           "end_header\n").encode()
+    dt = np.dtype([("x","<f8"),("y","<f8"),("z","<f8"),("r","u1"),("g","u1"),("b","u1")])
+    arr = np.empty(n, dt)
+    arr["x"], arr["y"], arr["z"] = pts[:,0], pts[:,1], pts[:,2]
+    arr["r"], arr["g"], arr["b"] = rgb[:,0], rgb[:,1], rgb[:,2]
+    with open(path, "wb") as f:
+        f.write(hdr); f.write(arr.tobytes())
 
 
 def _voxel_repr_idx(pts, voxel_m):

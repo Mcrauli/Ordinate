@@ -45,15 +45,21 @@ _SLICE_MIN_BINS = 4        # vähintään näin monta kelvollista kaistaa (~1 m 
 _SLICE_CONSIST_FRAC = 0.6  # kelvollisista kaistoista tämä osuus lähellä mediaania
 _SLICE_LO, _SLICE_HI = 0.5, 1.7   # "lähellä" = poikkileikkaus tällä välillä × mediaani
 
-# Keskikorkeuden IRRALLISUUS: aidon pilarin ympäri kävelee (ilmaa vyötärökorkeudella).
-# Täyskorkea kaappi / roka on kiinni muussa massassa (naapureita monessa suunnassa).
-# Renkaassa juuri footprintin ulkopuolella, vain vyötärökaistan pisteillä (ei lattia/
-# katto): montako 16 suunnasta on naapuri lähellä. Mitattu 3DSES: aito ≤4, kaappi 8.
+# Keskikorkeuden IRRALLISUUS = SEKTORIPEITTO: aidon pilarin ympäri kävelee (ilmaa
+# vyötärökorkeudella joka suunnassa). Renkaassa juuri footprintin ulkopuolella,
+# vain vyötärökaistan pisteillä (ei lattia/katto): montaako 24 kulmasektorista
+# osuu pisteitä. Aito vapaa pilari ~0-1; seinänpätkä/donitsi/kaappi 4-9.
+# Mitattu S170/S171 (pipeline-valepilarit): 4,9,6,7 (isot) — ≥4 hylätään.
 _WAIST_LO, _WAIST_HI = 1000.0, 1800.0   # vyötärökaista lattiasta (mm)
-_WAIST_RING_EXTRA = 350.0  # rengas footprintin reunasta ulos
-_WAIST_DIRS = 16
-_WAIST_TOL = 200.0         # naapuri ≤ tämä koetinpisteestä = suunta "täynnä"
-_WAIST_MAX_OCC = 6         # yli tämän täynnä olevaa suuntaa = kiinni massassa → hylky
+_SECTOR_N = 24             # kulmasektoreiden määrä
+_SECTOR_RING_IN = 150.0    # renkaan alku footprintin reunasta (mm) — yli neliön
+                           # kulman (0.71×leveys) jottei pilarin omat kulmat laske
+_SECTOR_RING_OUT = 700.0   # renkaan loppu
+_MAX_SECTOR_COVER = 4      # yli tämän täynnä olevaa sektoria = kiinni massassa → hylky
+                           # (4 = raja jolla aito tukirakenne-ympäröity pilari vielä
+                           # säilyy; embedded valeet 6-9 hylätään)
+_MIN_REAL_FOOTPRINT = 200.0  # alle tämän leveä = ohut donitsi/artefakti, ei aito pilari
+                             # (mitattu S170: valepilarit 147/195 mm; aidot Rohbau ≥240)
 
 
 def detect_columns(cloud, walls: list[Wall], floor_z: float, ceiling_z: float) -> list[Column]:
@@ -101,7 +107,8 @@ def detect_columns(cloud, walls: list[Wall], floor_z: float, ceiling_z: float) -
 
     # vyötärökaistan (1.0–1.8 m) pisteet irrallisuustestiin — vain jos kaista mahtuu
     _waist_mask = (pts[:, 2] > floor_z + _WAIST_LO) & (pts[:, 2] < floor_z + _WAIST_HI)
-    _waist_tree = cKDTree(pts[_waist_mask, :2]) if int(_waist_mask.sum()) > 200 else None
+    _waist_pts = pts[_waist_mask, :2] if int(_waist_mask.sum()) > 200 else None
+    _waist_tree = cKDTree(_waist_pts) if _waist_pts is not None else None
 
     x0 = float(free[:, 0].min()); y0 = float(free[:, 1].min())
     ix = ((free[:, 0] - x0) / _CELL_MM).astype(np.int64)
@@ -154,6 +161,9 @@ def detect_columns(cloud, walls: list[Wall], floor_z: float, ceiling_z: float) -
         wy = float(np.percentile(xy[:, 1], 98) - np.percentile(xy[:, 1], 2))
         if not (_MIN_FOOTPRINT <= max(wx, wy) <= _MAX_FOOTPRINT):
             continue
+        # Ohut footprint = donitsi/artefakti, ei aito pilari (S170 valepilarit 147/195 mm).
+        if max(wx, wy) < _MIN_REAL_FOOTPRINT:
+            continue
         # Muotosuhde: aito pilari on kompakti (mitattu Rohbau-työmaa: 1.1–2.3).
         # Pitkänomaiset (>_MAX_ASPECT) ovat detektoimattomia seinänpaloja tai
         # keilausvarjon reunoja — juuri se "sälä" kalustetuissa/sotkuisissa tiloissa.
@@ -166,8 +176,8 @@ def detect_columns(cloud, walls: list[Wall], floor_z: float, ceiling_z: float) -
         # Poikkileikkauksen vakaus: kasattu kaluste heiluu, aito pilari ei.
         if not _cross_section_stable(cl, floor_z, ceiling_z):
             continue
-        # Vyötäröirrallisuus: täyskorkea kaappi/roka on kiinni massassa.
-        if not _waist_isolated(cx, cy, max(wx, wy), _waist_tree):
+        # Vyötärö-sektoripeitto: seinänpätkä/donitsi/kaappi on kiinni massassa.
+        if not _waist_isolated(cx, cy, max(wx, wy), _waist_pts, _waist_tree):
             continue
         shape, w, d = _profile(xy, cx, cy, wx, wy)
         # Luottamus heijastaa kompaktiutta (ei enää satu 1.0:aan): kompakti +
@@ -211,17 +221,25 @@ def _cross_section_stable(cl: np.ndarray, floor_z: float, ceiling_z: float) -> b
     return consistent / len(exts) >= _SLICE_CONSIST_FRAC
 
 
-def _waist_isolated(cx: float, cy: float, fp: float, waist_tree) -> bool:
-    """Aito pilari on irrallaan: vyötärökorkeudella ympärillä on ilmaa. Rengas
-    juuri footprintin ulkopuolella — jos liian moni suunta on täynnä, klusteri
-    on kiinni muussa massassa (kaappi/roka), ei vapaasti seisova pilari."""
-    if waist_tree is None:
+def _waist_isolated(cx: float, cy: float, fp: float, waist_pts, waist_tree) -> bool:
+    """Aito pilari on irrallaan: vyötärökorkeudella ympärillä on ilmaa. Lasketaan
+    SEKTORIPEITTO — montaako 24 kulmasektorista renkaassa (footprintin ulkopuolella)
+    osuu pisteitä. Aito vapaa pilari ~0-1 sektoria; seinänpätkä/donitsi/kaappi 4-9
+    (kiinni massassa). Yli _MAX_SECTOR_COVER → hylätään."""
+    if waist_tree is None or waist_pts is None:
         return True
-    r = fp / 2.0 + _WAIST_RING_EXTRA
-    ang = np.linspace(0.0, 2 * np.pi, _WAIST_DIRS, endpoint=False)
-    probes = np.column_stack([cx + r * np.cos(ang), cy + r * np.sin(ang)])
-    d, _ = waist_tree.query(probes, k=1)
-    return int((d < _WAIST_TOL).sum()) <= _WAIST_MAX_OCC
+    r_out = fp / 2.0 + _SECTOR_RING_OUT
+    idx = waist_tree.query_ball_point([cx, cy], r_out)
+    if not idx:
+        return True
+    rel = waist_pts[idx] - np.array([cx, cy])
+    d = np.hypot(rel[:, 0], rel[:, 1])
+    band = (d >= fp / 2.0 + _SECTOR_RING_IN) & (d <= r_out)
+    if not band.any():
+        return True
+    ang = np.arctan2(rel[band, 1], rel[band, 0]) % (2 * np.pi)
+    sec = (ang / (2 * np.pi) * _SECTOR_N).astype(int) % _SECTOR_N
+    return len(np.unique(sec)) <= _MAX_SECTOR_COVER
 
 
 def _profile(xy: np.ndarray, cx: float, cy: float, wx: float, wy: float):
