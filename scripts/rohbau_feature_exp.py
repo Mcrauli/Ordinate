@@ -77,7 +77,24 @@ def _eval(model, feats, lbls, device):
     return sk, rr
 
 
-def _train(feats, lbls, in_ch, epochs, device, tag, arch="pointnet", batch=8):
+def _augment(x):
+    """Lennossa: neliösymmetriat (flip x/y, xy-vaihto = eksaktit 90°-kierrot+
+    peilaukset normalisoidulle lohkolle) + jitteri + väri-jitteri. Piirreslotit:
+    0,1=xy_local 2=z 3,4=xy_scene 5=z 6-8=rgb 9=height."""
+    import torch
+    if torch.rand(1).item() < 0.5:                    # flip x
+        x[..., 0] = 1 - x[..., 0]; x[..., 3] = 1 - x[..., 3]
+    if torch.rand(1).item() < 0.5:                    # flip y
+        x[..., 1] = 1 - x[..., 1]; x[..., 4] = 1 - x[..., 4]
+    if torch.rand(1).item() < 0.5:                    # swap xy (90°)
+        x[..., [0, 1]] = x[..., [1, 0]]; x[..., [3, 4]] = x[..., [4, 3]]
+    x[..., 0:6] += torch.randn_like(x[..., 0:6]) * 0.01           # jitteri
+    if x.shape[-1] >= 9:
+        x[..., 6:9] = (x[..., 6:9] + torch.randn_like(x[..., 6:9]) * 0.03).clamp(0, 1)  # väri
+    return x
+
+
+def _train(feats, lbls, in_ch, epochs, device, tag, arch="pointnet", batch=8, augment=False):
     import torch, torch.nn as nn, torch.optim as optim
     _builders = {"dgcnn": E._build_dgcnn, "hybrid": E._build_hybrid, "pointnet": E._build_model}
     model = _builders.get(arch, E._build_model)(13, in_ch).to(device)
@@ -92,6 +109,7 @@ def _train(feats, lbls, in_ch, epochs, device, tag, arch="pointnet", batch=8):
         for i in range(0, n, batch):
             bi = perm[i:i+batch]
             x = torch.tensor(feats[bi]).to(device); y = torch.tensor(lbls[bi]).to(device)
+            if augment: x = _augment(x)
             opt.zero_grad()
             loss = crit(model(x).reshape(-1, 13), y.reshape(-1))
             loss.backward(); opt.step(); losses.append(loss.item())
