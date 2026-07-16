@@ -69,6 +69,12 @@ Järjestys, pienimmästä riskistä suurimpaan — **ei aloiteta ennen kuin nimi
 2. **Sisäinen/koodi:** paketin/exe:n nimi, `_version.py`-metatiedot, GUI-otsikko,
    README/AGENTS/CHANGELOG. Pipeline-koodi (`scan2bim`-paketti) voi säilyä
    sisäisenä nimenä tai vaihtua — päätettävä (iso mekaaninen muutos).
+   - **Semanttinen suodatin / koulutettu malli uudelleennimettävä** (nyk.
+     `s3dis_pointnet` on harhaanjohtava — ei S3DIS-dataa, ja "pointnet" sitoo
+     standardiarkkitehtuuriin). Nimetään Ordinate-komponentiksi (koodissa
+     `SemanticFilter` → brändätty), sisäinen kommentti: pohjalla DGCNN/PointNet.
+     Ei väitetä keksityksi arkkitehtuuriksi. Nimiehdotukset: Ordinate Filter/
+     Clean, tai koodinimi (Sieve/seula).
 3. **Julkinen ilme:** nettisivu (scan2bim-web → uusi domain/otsikko/logo),
    release-repo, GitHub-organisaatio/repo-nimet.
 4. **Sisartuote:** päätä pysyykö dwg2ifc erillään vai tuleeko kattobrändi.

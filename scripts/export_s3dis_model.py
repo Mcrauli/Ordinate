@@ -80,6 +80,65 @@ def _build_model(k: int = 13, in_ch: int = 9):
     return _Model()
 
 
+def _build_dgcnn(k: int = 13, in_ch: int = 10, knn_k: int = 16):
+    """DGCNN (EdgeConv) segmentointimalli — oppii paikallista geometriaa kNN-
+    graafilla (naapurisuhteet), toisin kuin perus-PointNetin per-piste-MLP.
+    Yleensä parempi rakenne/kaluste-erottelu."""
+    import torch
+    import torch.nn as nn
+    import torch.nn.functional as F
+
+    def knn(x, kk):                                  # x: (B,C,N)
+        inner = -2 * torch.matmul(x.transpose(2, 1), x)
+        xx = torch.sum(x ** 2, dim=1, keepdim=True)
+        pair = -xx - inner - xx.transpose(2, 1)      # (B,N,N) neg-etäisyys
+        return pair.topk(k=kk, dim=-1)[1]            # (B,N,kk)
+
+    def graph_feat(x, kk):                           # x: (B,C,N) -> (B,2C,N,kk)
+        B, C, N = x.size()
+        idx = knn(x, kk) + torch.arange(0, B, device=x.device).view(-1, 1, 1) * N
+        idx = idx.view(-1)
+        xt = x.transpose(2, 1).contiguous().view(B * N, C)
+        nb = xt[idx].view(B, N, kk, C)
+        xr = x.transpose(2, 1).view(B, N, 1, C).repeat(1, 1, kk, 1)
+        return torch.cat([nb - xr, xr], dim=3).permute(0, 3, 1, 2).contiguous()
+
+    class EdgeConv(nn.Module):
+        def __init__(self, cin, cout):
+            super().__init__()
+            self.conv = nn.Sequential(
+                nn.Conv2d(2 * cin, cout, 1, bias=False),
+                nn.BatchNorm2d(cout), nn.LeakyReLU(0.2))
+
+        def forward(self, x, kk):
+            return self.conv(graph_feat(x, kk)).max(dim=-1)[0]   # (B,cout,N)
+
+    class _DGCNN(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.kk = knn_k
+            self.e1 = EdgeConv(in_ch, 64)
+            self.e2 = EdgeConv(64, 64)
+            self.e3 = EdgeConv(64, 64)
+            self.gconv = nn.Sequential(nn.Conv1d(192, 1024, 1, bias=False),
+                                       nn.BatchNorm1d(1024), nn.LeakyReLU(0.2))
+            self.head = nn.Sequential(
+                nn.Conv1d(1216, 512, 1, bias=False), nn.BatchNorm1d(512), nn.LeakyReLU(0.2),
+                nn.Dropout(0.3),
+                nn.Conv1d(512, 256, 1, bias=False), nn.BatchNorm1d(256), nn.LeakyReLU(0.2),
+                nn.Conv1d(256, k, 1))
+
+        def forward(self, x):                        # (B,N,in_ch) -> (B,N,k)
+            x = x.permute(0, 2, 1)
+            e1 = self.e1(x, self.kk); e2 = self.e2(e1, self.kk); e3 = self.e3(e2, self.kk)
+            cat = torch.cat([e1, e2, e3], dim=1)     # (B,192,N)
+            g = self.gconv(cat).max(dim=-1, keepdim=True)[0].repeat(1, 1, cat.size(-1))
+            out = self.head(torch.cat([cat, g], dim=1))
+            return out.permute(0, 2, 1)
+
+    return _DGCNN()
+
+
 # ---------------------------------------------------------------------------
 # Vaihtoehto A — lataa valmiit painot
 # ---------------------------------------------------------------------------

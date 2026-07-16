@@ -72,6 +72,8 @@ def main():
     ap.add_argument("--rtrain", default="1,4,13"); ap.add_argument("--epochs", type=int, default=20)
     ap.add_argument("--voxel", type=float, default=0.03); ap.add_argument("--max-bps", type=int, default=200)
     ap.add_argument("--rmax", type=int, default=30); ap.add_argument("--out", default="")
+    ap.add_argument("--arch", default="pointnet", choices=["pointnet", "dgcnn"])
+    ap.add_argument("--batch", type=int, default=8)
     a = ap.parse_args()
     import torch
     device = "cuda" if torch.cuda.is_available() else "cpu"; print(f"device={device}", flush=True)
@@ -84,7 +86,7 @@ def main():
     rf, rl = FX._blocks(r_tr, a.voxel, True, a.max_bps, rng); rf = np.delete(rf, 9, axis=2)  # rgb+korkeus
     tf = np.vstack([dtf, rf]); tl = np.vstack([dtl, rl])
     print(f"lohkot: 3DSES {len(dtf)} + Rohbau {len(rf)} = {len(tf)} train | held-out 3DSES {len(dvf)} ({time.time()-t0:.0f}s)", flush=True)
-    model = FX._train(tf, tl, 10, a.epochs, device, "3DSES-FULL")
+    model = FX._train(tf, tl, 10, a.epochs, device, f"3DSES-{a.arch}", arch=a.arch, batch=a.batch)
     sk, rr = FX._eval(model, dvf, dvl, device)
     print(f"==> HELD-OUT 3DSES: rakenne-säilyy={sk:.3f}  kaluste/krääsä-poisto={rr:.3f}", flush=True)
     if a.out:

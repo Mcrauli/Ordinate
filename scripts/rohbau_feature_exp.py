@@ -67,8 +67,8 @@ def _eval(model, feats, lbls, device):
     sk = rr = 0.0
     with torch.no_grad():
         preds = []
-        for i in range(0, len(feats), 16):
-            x = torch.tensor(feats[i:i+16]).to(device)
+        for i in range(0, len(feats), 4):
+            x = torch.tensor(feats[i:i+4]).to(device)
             preds.append(model(x).argmax(-1).cpu().numpy())
     pred = np.concatenate(preds).ravel(); gt = lbls.ravel()
     gt_rm = np.isin(gt, _RM); pr_rm = np.isin(pred, _RM)
@@ -77,9 +77,9 @@ def _eval(model, feats, lbls, device):
     return sk, rr
 
 
-def _train(feats, lbls, in_ch, epochs, device, tag):
+def _train(feats, lbls, in_ch, epochs, device, tag, arch="pointnet", batch=8):
     import torch, torch.nn as nn, torch.optim as optim
-    model = E._build_model(13, in_ch).to(device)
+    model = (E._build_dgcnn(13, in_ch) if arch == "dgcnn" else E._build_model(13, in_ch)).to(device)
     counts = np.maximum(np.bincount(lbls.ravel(), minlength=13).astype(np.float32), 1)
     w = torch.tensor((1/counts)/(1/counts).sum()*13, dtype=torch.float32).to(device)
     opt = optim.Adam(model.parameters(), lr=1e-3)
@@ -88,8 +88,8 @@ def _train(feats, lbls, in_ch, epochs, device, tag):
     n = len(feats)
     for ep in range(epochs):
         model.train(); perm = np.random.permutation(n); losses = []
-        for i in range(0, n, 8):
-            bi = perm[i:i+8]
+        for i in range(0, n, batch):
+            bi = perm[i:i+batch]
             x = torch.tensor(feats[bi]).to(device); y = torch.tensor(lbls[bi]).to(device)
             opt.zero_grad()
             loss = crit(model(x).reshape(-1, 13), y.reshape(-1))
