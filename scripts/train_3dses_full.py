@@ -75,6 +75,7 @@ def main():
     ap.add_argument("--arch", default="pointnet", choices=["pointnet", "dgcnn", "hybrid"])
     ap.add_argument("--batch", type=int, default=8)
     ap.add_argument("--cache", default="", help="npz-lohkovälimuisti — rakenna kerran, lataa jatkossa heti")
+    ap.add_argument("--build-cache-only", action="store_true", help="rakenna vain välimuisti ja lopeta")
     a = ap.parse_args()
     import torch
     device = "cuda" if torch.cuda.is_available() else "cpu"; print(f"device={device}", flush=True)
@@ -95,6 +96,8 @@ def main():
         if a.cache:
             np.savez(a.cache, tf=tf, tl=tl, dvf=dvf, dvl=dvl)
             print(f"välimuisti tallennettu: {a.cache}", flush=True)
+    if a.build_cache_only:
+        print("vain välimuisti pyydetty — lopetetaan.", flush=True); return
     model = FX._train(tf, tl, 10, a.epochs, device, f"3DSES-{a.arch}", arch=a.arch, batch=a.batch)
     sk, rr = FX._eval(model, dvf, dvl, device)
     print(f"==> HELD-OUT 3DSES: rakenne-säilyy={sk:.3f}  kaluste/krääsä-poisto={rr:.3f}", flush=True)
