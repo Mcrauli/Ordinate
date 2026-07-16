@@ -79,7 +79,8 @@ def _eval(model, feats, lbls, device):
 
 def _train(feats, lbls, in_ch, epochs, device, tag, arch="pointnet", batch=8):
     import torch, torch.nn as nn, torch.optim as optim
-    model = (E._build_dgcnn(13, in_ch) if arch == "dgcnn" else E._build_model(13, in_ch)).to(device)
+    _builders = {"dgcnn": E._build_dgcnn, "hybrid": E._build_hybrid, "pointnet": E._build_model}
+    model = _builders.get(arch, E._build_model)(13, in_ch).to(device)
     counts = np.maximum(np.bincount(lbls.ravel(), minlength=13).astype(np.float32), 1)
     w = torch.tensor((1/counts)/(1/counts).sum()*13, dtype=torch.float32).to(device)
     opt = optim.Adam(model.parameters(), lr=1e-3)

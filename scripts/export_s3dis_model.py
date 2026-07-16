@@ -139,6 +139,69 @@ def _build_dgcnn(k: int = 13, in_ch: int = 10, knn_k: int = 16):
     return _DGCNN()
 
 
+def _build_hybrid(k: int = 13, in_ch: int = 10, knn_k: int = 16):
+    """HYBRIDI: yhdistää DGCNN:n paikalliset EdgeConv-piirteet (naapurigeometria)
+    JA PointNetin per-piste-MLP-haaran (piirre-abstraktio) yhteen malliin. Yksi
+    malli, koulutetaan kerran, käytetään kaikkeen — molempien vahvuudet ilman
+    2x-inferenssiä. Globaali konteksti kootaan molempien haarojen piirteistä."""
+    import torch
+    import torch.nn as nn
+
+    def knn(x, kk):
+        inner = -2 * torch.matmul(x.transpose(2, 1), x)
+        xx = torch.sum(x ** 2, dim=1, keepdim=True)
+        return (-xx - inner - xx.transpose(2, 1)).topk(k=kk, dim=-1)[1]
+
+    def graph_feat(x, kk):
+        B, C, N = x.size()
+        idx = knn(x, kk) + torch.arange(0, B, device=x.device).view(-1, 1, 1) * N
+        idx = idx.view(-1)
+        xt = x.transpose(2, 1).contiguous().view(B * N, C)
+        nb = xt[idx].view(B, N, kk, C)
+        xr = x.transpose(2, 1).view(B, N, 1, C).repeat(1, 1, kk, 1)
+        return torch.cat([nb - xr, xr], dim=3).permute(0, 3, 1, 2).contiguous()
+
+    class EdgeConv(nn.Module):
+        def __init__(self, cin, cout):
+            super().__init__()
+            self.conv = nn.Sequential(nn.Conv2d(2 * cin, cout, 1, bias=False),
+                                      nn.BatchNorm2d(cout), nn.LeakyReLU(0.2))
+
+        def forward(self, x, kk):
+            return self.conv(graph_feat(x, kk)).max(dim=-1)[0]
+
+    def mlp1d(cin, cout):
+        return nn.Sequential(nn.Conv1d(cin, cout, 1, bias=False),
+                             nn.BatchNorm1d(cout), nn.LeakyReLU(0.2))
+
+    class _Hybrid(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.kk = knn_k
+            # paikallinen haara (DGCNN)
+            self.e1 = EdgeConv(in_ch, 64); self.e2 = EdgeConv(64, 64); self.e3 = EdgeConv(64, 64)
+            # per-piste haara (PointNet-tyyli)
+            self.p1 = mlp1d(in_ch, 64); self.p2 = mlp1d(64, 128)
+            # globaali kummankin haaran piirteistä (192 + 128 = 320)
+            self.gconv = mlp1d(320, 1024)
+            # pää: local(192) + point(128) + global(1024 tiled) = 1344
+            self.head = nn.Sequential(
+                mlp1d(1344, 512), nn.Dropout(0.3), mlp1d(512, 256),
+                nn.Conv1d(256, k, 1))
+
+        def forward(self, x):                    # (B,N,in_ch)
+            x = x.permute(0, 2, 1)
+            e1 = self.e1(x, self.kk); e2 = self.e2(e1, self.kk); e3 = self.e3(e2, self.kk)
+            local = torch.cat([e1, e2, e3], dim=1)          # (B,192,N)
+            point = self.p2(self.p1(x))                      # (B,128,N)
+            g = self.gconv(torch.cat([local, point], dim=1)).max(dim=-1, keepdim=True)[0]
+            g = g.repeat(1, 1, x.size(-1))                   # (B,1024,N)
+            out = self.head(torch.cat([local, point, g], dim=1))
+            return out.permute(0, 2, 1)
+
+    return _Hybrid()
+
+
 # ---------------------------------------------------------------------------
 # Vaihtoehto A — lataa valmiit painot
 # ---------------------------------------------------------------------------
