@@ -4,6 +4,24 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 [`Mcrauli/scan2bim-web`](https://github.com/Mcrauli/scan2bim-web/releases):iin;
 sovellus päivittää itsensä sieltä.
 
+## v0.7.10 (16.7.2026) — adaptiivinen voxel, rehellinen QA-loki, vähemmän valepilareita
+- **Auto-voxel toimii oikeasti.** Aiemmin tuotantopolku kovakoodasi 12 mm ja
+  tulosti harhaanjohtavasti "Auto-voxel". Nyt kevyt 20 mm-otos ensimmäisen
+  kerroksen kaistasta valitsee voxelikoon datasta: pieni huone → 8 mm (tarkempi,
+  löytää oviakin), iso talo → 25 mm (muistiturvallinen). Mitattu: pintatarkkuus
+  parani ja aukkoja löytyi enemmän.
+- **QA-loki näyttää oikean luvun.** Ennen loki näytti pistetason "% ≤ 2.5 mm"
+  joka on skannerin kohinan (20–27 mm RMS) dominoima → pelotti turhaan. Nyt loki
+  näyttää **mallin pintatarkkuuden** (mediaani mm + montako seinää ≤1.5 mm) ja
+  kohinan erikseen kontekstina.
+- **Vähemmän valepilareita sotkuisissa skanneissa.** Seinänpätkät, skannerin
+  asemapiste-"donitsit" ja vuotorajan roska menivät pilareiksi. Kaksi mitattua,
+  deterministista lisäsuodatinta: (1) **sektoripeitto** — aidon vapaan pilarin
+  ympärillä on avointa lattiaa (0–1 kulmasektoria täynnä vyötärökorkeudella),
+  massaan kiinni oleva vale 6–9 → hylätään; (2) **min-leveys 200 mm** — ohuet
+  donitsi­artefaktit pois (aidot pilarit ≥240 mm). Mitattu 3DSES-huoneilla:
+  valepilarit 3–4 → 1, valepalkki 1 → 0. Aidot pilarit säilyvät.
+
 ## v0.7.9 (15.7.2026) — IFC-georeferointi (koordinaatisto-leima)
 - **IFC saa georef-leiman (`IfcProjectedCRS` + `IfcMapConversion`).** Malli
   kirjoitetaan kuten ennenkin skannin OIKEISIIN maailmakoordinaatteihin (iso
