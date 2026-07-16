@@ -74,18 +74,27 @@ def main():
     ap.add_argument("--rmax", type=int, default=30); ap.add_argument("--out", default="")
     ap.add_argument("--arch", default="pointnet", choices=["pointnet", "dgcnn", "hybrid"])
     ap.add_argument("--batch", type=int, default=8)
+    ap.add_argument("--cache", default="", help="npz-lohkovälimuisti — rakenna kerran, lataa jatkossa heti")
     a = ap.parse_args()
     import torch
     device = "cuda" if torch.cuda.is_available() else "cpu"; print(f"device={device}", flush=True)
     rng = np.random.default_rng(13); t0 = time.time()
-    tiers = [("Bronze", LUT12), ("Silver", LUT12), ("Gold", LUT18)]
-    dtf, dtl, dvf, dvl = dses_blocks(a.zip, tiers, a.voxel, a.max_bps, rng)
-    r_tr = []
-    for s in a.rtrain.split(","): r_tr += sorted(glob.glob(str(Path(a.rohbau) / f"site_{int(s):02d}" / "scene_*")))
-    r_tr = r_tr[:a.rmax]
-    rf, rl = FX._blocks(r_tr, a.voxel, True, a.max_bps, rng); rf = np.delete(rf, 9, axis=2)  # rgb+korkeus
-    tf = np.vstack([dtf, rf]); tl = np.vstack([dtl, rl])
-    print(f"lohkot: 3DSES {len(dtf)} + Rohbau {len(rf)} = {len(tf)} train | held-out 3DSES {len(dvf)} ({time.time()-t0:.0f}s)", flush=True)
+    if a.cache and Path(a.cache).exists():
+        z = np.load(a.cache)
+        tf, tl, dvf, dvl = z["tf"], z["tl"], z["dvf"], z["dvl"]
+        print(f"lohkot VÄLIMUISTISTA {a.cache}: train {len(tf)}, held-out {len(dvf)} ({time.time()-t0:.0f}s)", flush=True)
+    else:
+        tiers = [("Bronze", LUT12), ("Silver", LUT12), ("Gold", LUT18)]
+        dtf, dtl, dvf, dvl = dses_blocks(a.zip, tiers, a.voxel, a.max_bps, rng)
+        r_tr = []
+        for s in a.rtrain.split(","): r_tr += sorted(glob.glob(str(Path(a.rohbau) / f"site_{int(s):02d}" / "scene_*")))
+        r_tr = r_tr[:a.rmax]
+        rf, rl = FX._blocks(r_tr, a.voxel, True, a.max_bps, rng); rf = np.delete(rf, 9, axis=2)  # rgb+korkeus
+        tf = np.vstack([dtf, rf]); tl = np.vstack([dtl, rl])
+        print(f"lohkot: 3DSES {len(dtf)} + Rohbau {len(rf)} = {len(tf)} train | held-out 3DSES {len(dvf)} ({time.time()-t0:.0f}s)", flush=True)
+        if a.cache:
+            np.savez(a.cache, tf=tf, tl=tl, dvf=dvf, dvl=dvl)
+            print(f"välimuisti tallennettu: {a.cache}", flush=True)
     model = FX._train(tf, tl, 10, a.epochs, device, f"3DSES-{a.arch}", arch=a.arch, batch=a.batch)
     sk, rr = FX._eval(model, dvf, dvl, device)
     print(f"==> HELD-OUT 3DSES: rakenne-säilyy={sk:.3f}  kaluste/krääsä-poisto={rr:.3f}", flush=True)
