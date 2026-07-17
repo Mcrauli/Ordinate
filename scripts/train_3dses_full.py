@@ -72,7 +72,7 @@ def main():
     ap.add_argument("--rtrain", default="1,4,13"); ap.add_argument("--epochs", type=int, default=20)
     ap.add_argument("--voxel", type=float, default=0.03); ap.add_argument("--max-bps", type=int, default=200)
     ap.add_argument("--rmax", type=int, default=30); ap.add_argument("--out", default="")
-    ap.add_argument("--arch", default="pointnet", choices=["pointnet", "dgcnn", "hybrid"])
+    ap.add_argument("--arch", default="pointnet", choices=["pointnet", "dgcnn", "hybrid", "hybridpro"])
     ap.add_argument("--batch", type=int, default=8)
     ap.add_argument("--cache", default="", help="npz-lohkovälimuisti — rakenna kerran, lataa jatkossa heti")
     ap.add_argument("--build-cache-only", action="store_true", help="rakenna vain välimuisti ja lopeta")

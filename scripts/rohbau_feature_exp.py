@@ -96,7 +96,8 @@ def _augment(x):
 
 def _train(feats, lbls, in_ch, epochs, device, tag, arch="pointnet", batch=8, augment=False):
     import torch, torch.nn as nn, torch.optim as optim
-    _builders = {"dgcnn": E._build_dgcnn, "hybrid": E._build_hybrid, "pointnet": E._build_model}
+    _builders = {"dgcnn": E._build_dgcnn, "hybrid": E._build_hybrid,
+                 "hybridpro": E._build_hybrid_pro, "pointnet": E._build_model}
     model = _builders.get(arch, E._build_model)(13, in_ch).to(device)
     counts = np.maximum(np.bincount(lbls.ravel(), minlength=13).astype(np.float32), 1)
     w = torch.tensor((1/counts)/(1/counts).sum()*13, dtype=torch.float32).to(device)

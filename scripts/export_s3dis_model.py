@@ -202,6 +202,76 @@ def _build_hybrid(k: int = 13, in_ch: int = 10, knn_k: int = 16):
     return _Hybrid()
 
 
+def _build_hybrid_pro(k: int = 13, in_ch: int = 10, ks=(8, 24)):
+    """HYBRIDI PRO: multi-scale EdgeConv (hieno k=8 + karkea k=24 paikallis-
+    geometria rinnakkain) + syvempi paikallishaara residuaaliyhteyksin +
+    PointNet-globaalihaara. Pyrkii voittamaan DGCNN:n rikkaammalla paikallis-
+    kontekstilla. Yksi malli, yksi inferenssi."""
+    import torch
+    import torch.nn as nn
+
+    def knn(x, kk):
+        inner = -2 * torch.matmul(x.transpose(2, 1), x)
+        xx = torch.sum(x ** 2, dim=1, keepdim=True)
+        return (-xx - inner - xx.transpose(2, 1)).topk(k=kk, dim=-1)[1]
+
+    def graph_feat(x, kk):
+        B, C, N = x.size()
+        idx = knn(x, kk) + torch.arange(0, B, device=x.device).view(-1, 1, 1) * N
+        idx = idx.view(-1)
+        xt = x.transpose(2, 1).contiguous().view(B * N, C)
+        nb = xt[idx].view(B, N, kk, C)
+        xr = x.transpose(2, 1).view(B, N, 1, C).repeat(1, 1, kk, 1)
+        return torch.cat([nb - xr, xr], dim=3).permute(0, 3, 1, 2).contiguous()
+
+    class MultiEdge(nn.Module):
+        """EdgeConv kahdella skaalalla (hieno + karkea), yhdistetty."""
+        def __init__(self, cin, cout):
+            super().__init__()
+            per = cout // len(ks)
+            self.branch = nn.ModuleList([
+                nn.Sequential(nn.Conv2d(2 * cin, per, 1, bias=False),
+                              nn.BatchNorm2d(per), nn.LeakyReLU(0.2)) for _ in ks])
+
+        def forward(self, x):
+            outs = [b(graph_feat(x, kk)).max(dim=-1)[0] for b, kk in zip(self.branch, ks)]
+            return torch.cat(outs, dim=1)
+
+    def mlp1d(cin, cout):
+        return nn.Sequential(nn.Conv1d(cin, cout, 1, bias=False),
+                             nn.BatchNorm1d(cout), nn.LeakyReLU(0.2))
+
+    class _HybridPro(nn.Module):
+        def __init__(self):
+            super().__init__()
+            # syvä paikallishaara residuaaleilla
+            self.m1 = MultiEdge(in_ch, 64)
+            self.m2 = MultiEdge(64, 64)
+            self.m3 = MultiEdge(64, 128)
+            self.res2 = nn.Conv1d(64, 64, 1)          # skip
+            # per-piste PointNet-haara
+            self.p1 = mlp1d(in_ch, 64); self.p2 = mlp1d(64, 128)
+            # globaali kaikista paikallis+piste-piirteistä (64+64+128 + 128 = 384)
+            self.gconv = mlp1d(384, 1024)
+            self.head = nn.Sequential(
+                mlp1d(1408, 512), nn.Dropout(0.4), mlp1d(512, 256), nn.Dropout(0.3),
+                nn.Conv1d(256, k, 1))                 # 256(local)+128(point)+1024(global)=1408
+
+        def forward(self, x):
+            x = x.permute(0, 2, 1)
+            e1 = self.m1(x)
+            e2 = self.m2(e1) + self.res2(e1)          # residuaali
+            e3 = self.m3(e2)
+            local = torch.cat([e1, e2, e3], dim=1)    # (B,256,N)
+            point = self.p2(self.p1(x))               # (B,128,N)
+            g = self.gconv(torch.cat([local, point], dim=1)).max(dim=-1, keepdim=True)[0]
+            g = g.repeat(1, 1, x.size(-1))
+            out = self.head(torch.cat([local, point, g], dim=1))
+            return out.permute(0, 2, 1)
+
+    return _HybridPro()
+
+
 # ---------------------------------------------------------------------------
 # Vaihtoehto A — lataa valmiit painot
 # ---------------------------------------------------------------------------
