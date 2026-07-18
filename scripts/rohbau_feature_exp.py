@@ -28,7 +28,7 @@ def _voxel_repr_idx(pts, voxel_m):
     return order[first]
 
 
-def _load_scene(d, voxel_m, rich):
+def _load_scene(d, voxel_m, rich, geo=False):
     xyz = np.load(os.path.join(d, "coord.npy")).astype(np.float32)
     cls = np.load(os.path.join(d, "class.npy")).astype(np.int64).ravel()
     lbl = E._map_rohbau_labels(cls)
@@ -44,14 +44,20 @@ def _load_scene(d, voxel_m, rich):
         inten = np.clip((inten - lo) / max(hi - lo, 1e-6), 0, 1)
         floor_z = np.percentile(pts[:, 2], 2)
         height = np.clip((pts[:, 2] - floor_z) / 3.0, 0, 1.5)
-        extra = np.column_stack([color, inten, height]).astype(np.float32)  # (N,5)
+        cols = [color, inten[:, None], height[:, None]]
+        if geo:
+            import importlib.util as _u
+            _s = _u.spec_from_file_location("geo", str(Path(__file__).parent / "geo_feats.py"))
+            _g = _u.module_from_spec(_s); _s.loader.exec_module(_g)
+            cols.append(_g.compute(pts))
+        extra = np.column_stack(cols).astype(np.float32)  # (N,5) tai (N,8) geo:lla
     return pts, lbl, extra
 
 
-def _blocks(scene_dirs, voxel_m, rich, max_bps, rng):
+def _blocks(scene_dirs, voxel_m, rich, max_bps, rng, geo=False):
     F, L = [], []
     for d in scene_dirs:
-        pts, lbl, extra = _load_scene(d, voxel_m, rich)
+        pts, lbl, extra = _load_scene(d, voxel_m, rich, geo=geo)
         bf, bl = E._pts_to_blocks(pts, lbl, block_m=1.0, n_pts=4096, stride_m=0.5, extra=extra)
         if bf is None:
             continue
@@ -94,8 +100,9 @@ def _augment(x):
     return x
 
 
-def _train(feats, lbls, in_ch, epochs, device, tag, arch="pointnet", batch=8, augment=False):
+def _train(feats, lbls, in_ch, epochs, device, tag, arch="pointnet", batch=8, augment=False, focal=False):
     import torch, torch.nn as nn, torch.optim as optim
+    import torch.nn.functional as _F
     _builders = {"dgcnn": E._build_dgcnn, "hybrid": E._build_hybrid,
                  "hybridpro": E._build_hybrid_pro, "pointnet": E._build_model}
     model = _builders.get(arch, E._build_model)(13, in_ch).to(device)
@@ -103,7 +110,12 @@ def _train(feats, lbls, in_ch, epochs, device, tag, arch="pointnet", batch=8, au
     w = torch.tensor((1/counts)/(1/counts).sum()*13, dtype=torch.float32).to(device)
     opt = optim.Adam(model.parameters(), lr=1e-3)
     sch = optim.lr_scheduler.StepLR(opt, 6, 0.5)
-    crit = nn.CrossEntropyLoss(weight=w)
+    ce = nn.CrossEntropyLoss(weight=w)
+    def _focal(logits, y, gamma=2.0):    # painotettu focal: (1-p_t)^γ skaalaa helpot alas
+        ce_pp = _F.cross_entropy(logits, y, weight=w, reduction="none")
+        pt = torch.exp(-_F.cross_entropy(logits, y, reduction="none"))
+        return ((1 - pt) ** gamma * ce_pp).mean()
+    crit = (lambda o, y: _focal(o, y)) if focal else ce
     n = len(feats)
     nb = (n + batch - 1) // batch
     heartbeat = max(1, nb // 8)          # ~8 progressiprinttiä/epoch → ei pitkää hiljaisuutta

@@ -17,6 +17,7 @@ import importlib.util
 def _imp(n, p):
     s = importlib.util.spec_from_file_location(n, str(Path(__file__).parent / p)); m = importlib.util.module_from_spec(s); s.loader.exec_module(m); return m
 E = _imp("exp", "export_s3dis_model.py"); FX = _imp("fx", "rohbau_feature_exp.py")
+GEO = _imp("geo", "geo_feats.py")
 
 # 12-luokka (Bronze/Silver) -> S3DIS 13. KEEP rakenne (0-6), REMOVE muut.
 MAP12 = {0:3, 1:0, 2:6, 3:9, 4:9, 5:9, 6:2, 7:1, 8:1, 9:2, 10:5, 11:12}
@@ -34,7 +35,7 @@ def _lut(mp):
 LUT12, LUT18 = _lut(MAP12), _lut(MAP18)
 
 
-def scene_blocks(z, name, mp_lut, voxel, max_bps, rng):
+def scene_blocks(z, name, mp_lut, voxel, max_bps, rng, geo=False):
     with z.open(name) as f: a = np.load(io.BytesIO(f.read()))
     xyz = a[:, :3].astype(np.float32)
     rgb = (a[:, 3:6].astype(np.float32)) / 255.0
@@ -43,7 +44,9 @@ def scene_blocks(z, name, mp_lut, voxel, max_bps, rng):
     lbl = mp_lut[raw]
     idx = FX._voxel_repr_idx(xyz, voxel); xyz, rgb, lbl = xyz[idx], rgb[idx], lbl[idx]
     fz = np.percentile(xyz[:, 2], 2); h = np.clip((xyz[:, 2] - fz) / 3.0, 0, 1.5)
-    extra = np.column_stack([rgb, h]).astype(np.float32)
+    cols = [rgb, h[:, None]]
+    if geo: cols.append(GEO.compute(xyz))
+    extra = np.column_stack(cols).astype(np.float32)
     bf, bl = E._pts_to_blocks(xyz, lbl, 1.0, 4096, 0.5, extra=extra)
     if bf is None: return None, None
     if len(bf) > max_bps:
@@ -51,14 +54,14 @@ def scene_blocks(z, name, mp_lut, voxel, max_bps, rng):
     return bf, bl
 
 
-def dses_blocks(zip_path, tiers, voxel, max_bps, rng, holdout_frac=0.15):
+def dses_blocks(zip_path, tiers, voxel, max_bps, rng, holdout_frac=0.15, geo=False):
     z = zipfile.ZipFile(zip_path)
     tr_F, tr_L, va_F, va_L = [], [], [], []
     for tier, lut in tiers:
         names = sorted([n for n in z.namelist() if n.startswith(tier + "/") and n.endswith(".npy")])
         nva = max(1, int(len(names) * holdout_frac))
         for i, n in enumerate(names):
-            bf, bl = scene_blocks(z, n, lut, voxel, max_bps, rng)
+            bf, bl = scene_blocks(z, n, lut, voxel, max_bps, rng, geo=geo)
             if bf is None: continue
             if i < nva: va_F.append(bf); va_L.append(bl)
             else: tr_F.append(bf); tr_L.append(bl)
@@ -77,6 +80,8 @@ def main():
     ap.add_argument("--cache", default="", help="npz-lohkovälimuisti — rakenna kerran, lataa jatkossa heti")
     ap.add_argument("--build-cache-only", action="store_true", help="rakenna vain välimuisti ja lopeta")
     ap.add_argument("--augment", action="store_true", help="data-augmentaatio (flip/kierto/jitter)")
+    ap.add_argument("--geo", action="store_true", help="geometriset PCA-piirteet (verticality/planarity/sphericity)")
+    ap.add_argument("--focal", action="store_true", help="focal loss (kohdistaa vaikeisiin rajatapauksiin)")
     a = ap.parse_args()
     import torch
     device = "cuda" if torch.cuda.is_available() else "cpu"; print(f"device={device}", flush=True)
@@ -87,11 +92,11 @@ def main():
         print(f"lohkot VÄLIMUISTISTA {a.cache}: train {len(tf)}, held-out {len(dvf)} ({time.time()-t0:.0f}s)", flush=True)
     else:
         tiers = [("Bronze", LUT12), ("Silver", LUT12), ("Gold", LUT18)]
-        dtf, dtl, dvf, dvl = dses_blocks(a.zip, tiers, a.voxel, a.max_bps, rng)
+        dtf, dtl, dvf, dvl = dses_blocks(a.zip, tiers, a.voxel, a.max_bps, rng, geo=a.geo)
         r_tr = []
         for s in a.rtrain.split(","): r_tr += sorted(glob.glob(str(Path(a.rohbau) / f"site_{int(s):02d}" / "scene_*")))
         r_tr = r_tr[:a.rmax]
-        rf, rl = FX._blocks(r_tr, a.voxel, True, a.max_bps, rng); rf = np.delete(rf, 9, axis=2)  # rgb+korkeus
+        rf, rl = FX._blocks(r_tr, a.voxel, True, a.max_bps, rng, geo=a.geo); rf = np.delete(rf, 9, axis=2)  # poista int (rgb+korkeus[+geo])
         tf = np.vstack([dtf, rf]); tl = np.vstack([dtl, rl])
         print(f"lohkot: 3DSES {len(dtf)} + Rohbau {len(rf)} = {len(tf)} train | held-out 3DSES {len(dvf)} ({time.time()-t0:.0f}s)", flush=True)
         if a.cache:
@@ -99,12 +104,14 @@ def main():
             print(f"välimuisti tallennettu: {a.cache}", flush=True)
     if a.build_cache_only:
         print("vain välimuisti pyydetty — lopetetaan.", flush=True); return
-    model = FX._train(tf, tl, 10, a.epochs, device, f"3DSES-{a.arch}", arch=a.arch, batch=a.batch, augment=a.augment)
+    in_ch = tf.shape[2]                           # koko kanavamäärä (base6 + extrat)
+    model = FX._train(tf, tl, in_ch, a.epochs, device, f"3DSES-{a.arch}", arch=a.arch,
+                      batch=a.batch, augment=a.augment, focal=a.focal)
     sk, rr = FX._eval(model, dvf, dvl, device)
     print(f"==> HELD-OUT 3DSES: rakenne-säilyy={sk:.3f}  kaluste/krääsä-poisto={rr:.3f}", flush=True)
     if a.out:
-        import torch as T; T.save({"model_state_dict": model.state_dict(), "in_ch": 10}, a.out)
-        print(f"malli tallennettu: {a.out}", flush=True)
+        import torch as T; T.save({"model_state_dict": model.state_dict(), "in_ch": in_ch}, a.out)
+        print(f"malli tallennettu: {a.out} (in_ch={in_ch})", flush=True)
 
 
 if __name__ == "__main__":
