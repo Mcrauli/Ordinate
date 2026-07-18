@@ -114,7 +114,10 @@ def _train(feats, lbls, in_ch, epochs, device, tag, arch="pointnet", batch=8, au
     def _focal(logits, y, gamma=2.0):    # painotettu focal: (1-p_t)^γ skaalaa helpot alas
         ce_pp = _F.cross_entropy(logits, y, weight=w, reduction="none")
         pt = torch.exp(-_F.cross_entropy(logits, y, reduction="none"))
-        return ((1 - pt) ** gamma * ce_pp).mean()
+        # HUOM: painotettu CE normalisoidaan painojen summalla (kuten
+        # nn.CrossEntropyLoss), EI näytemäärällä — muuten käänteisfrekvenssi-
+        # painot (~1e-5) kutistavat lossin ja gradientit ~1e6-kertaisesti.
+        return ((1 - pt) ** gamma * ce_pp).sum() / w[y].sum().clamp(min=1e-8)
     crit = (lambda o, y: _focal(o, y)) if focal else ce
     n = len(feats)
     nb = (n + batch - 1) // batch
