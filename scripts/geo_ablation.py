@@ -54,11 +54,18 @@ def main():
     ap.add_argument("--focal", action="store_true")
     ap.add_argument("--out-geo", default=""); ap.add_argument("--skip-control", action="store_true")
     ap.add_argument("--skip-geo", action="store_true", help="aja vain CONTROL (jos GEO jo mitattu)")
+    ap.add_argument("--drop-rgb", action="store_true",
+                    help="pudota rgb (kanavat 6-8) — tuotantopolku on XYZ-only, väri heitetään pois latauksessa")
     a = ap.parse_args()
     import torch
     device = "cuda" if torch.cuda.is_available() else "cpu"; print(f"device={device}", flush=True)
     z = np.load(a.cache); tf, tl, dvf, dvl = z["tf"], z["tl"], z["dvf"], z["dvl"]
     ng = tf.shape[2]                                  # 13 (base6+rgb3+h1+geo3)
+    if a.drop_rgb:
+        keep = [0, 1, 2, 3, 4, 5] + list(range(9, ng))     # base6 + korkeus + geo
+        tf, dvf = tf[:, :, keep], dvf[:, :, keep]
+        ng = tf.shape[2]
+        print(f"rgb pudotettu -> {ng} kanavaa (tuotantorealistinen, XYZ-only)", flush=True)
     print(f"cache: train {len(tf)} held-out {len(dvf)}  kanavia={ng}", flush=True)
     # GEO = täysi; CONTROL = pudota 3 viimeistä kanavaa (geo) → identtiset blokit
     if not a.skip_geo:
