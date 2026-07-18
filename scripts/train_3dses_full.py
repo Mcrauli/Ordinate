@@ -17,7 +17,7 @@ import importlib.util
 def _imp(n, p):
     s = importlib.util.spec_from_file_location(n, str(Path(__file__).parent / p)); m = importlib.util.module_from_spec(s); s.loader.exec_module(m); return m
 E = _imp("exp", "export_s3dis_model.py"); FX = _imp("fx", "rohbau_feature_exp.py")
-GEO = _imp("geo", "geo_feats.py")
+GEO = _imp("geo", "geo_feats.py"); COL = _imp("col", "column_feats.py")
 
 # 12-luokka (Bronze/Silver) -> S3DIS 13. KEEP rakenne (0-6), REMOVE muut.
 MAP12 = {0:3, 1:0, 2:6, 3:9, 4:9, 5:9, 6:2, 7:1, 8:1, 9:2, 10:5, 11:12}
@@ -35,7 +35,7 @@ def _lut(mp):
 LUT12, LUT18 = _lut(MAP12), _lut(MAP18)
 
 
-def scene_blocks(z, name, mp_lut, voxel, max_bps, rng, geo=False):
+def scene_blocks(z, name, mp_lut, voxel, max_bps, rng, geo=False, colf=False):
     with z.open(name) as f: a = np.load(io.BytesIO(f.read()))
     xyz = a[:, :3].astype(np.float32)
     rgb = (a[:, 3:6].astype(np.float32)) / 255.0
@@ -46,6 +46,7 @@ def scene_blocks(z, name, mp_lut, voxel, max_bps, rng, geo=False):
     fz = np.percentile(xyz[:, 2], 2); h = np.clip((xyz[:, 2] - fz) / 3.0, 0, 1.5)
     cols = [rgb, h[:, None]]
     if geo: cols.append(GEO.compute(xyz))
+    if colf: cols.append(COL.compute(xyz))   # pystyjatkuvuus lasketaan SKENESTÄ, ei lohkosta
     extra = np.column_stack(cols).astype(np.float32)
     bf, bl = E._pts_to_blocks(xyz, lbl, 1.0, 4096, 0.5, extra=extra)
     if bf is None: return None, None
@@ -54,14 +55,14 @@ def scene_blocks(z, name, mp_lut, voxel, max_bps, rng, geo=False):
     return bf, bl
 
 
-def dses_blocks(zip_path, tiers, voxel, max_bps, rng, holdout_frac=0.15, geo=False):
+def dses_blocks(zip_path, tiers, voxel, max_bps, rng, holdout_frac=0.15, geo=False, colf=False):
     z = zipfile.ZipFile(zip_path)
     tr_F, tr_L, va_F, va_L = [], [], [], []
     for tier, lut in tiers:
         names = sorted([n for n in z.namelist() if n.startswith(tier + "/") and n.endswith(".npy")])
         nva = max(1, int(len(names) * holdout_frac))
         for i, n in enumerate(names):
-            bf, bl = scene_blocks(z, n, lut, voxel, max_bps, rng, geo=geo)
+            bf, bl = scene_blocks(z, n, lut, voxel, max_bps, rng, geo=geo, colf=colf)
             if bf is None: continue
             if i < nva: va_F.append(bf); va_L.append(bl)
             else: tr_F.append(bf); tr_L.append(bl)
@@ -82,6 +83,7 @@ def main():
     ap.add_argument("--augment", action="store_true", help="data-augmentaatio (flip/kierto/jitter)")
     ap.add_argument("--geo", action="store_true", help="geometriset PCA-piirteet (verticality/planarity/sphericity)")
     ap.add_argument("--focal", action="store_true", help="focal loss (kohdistaa vaikeisiin rajatapauksiin)")
+    ap.add_argument("--colfeat", action="store_true", help="pystyjatkuvuuspiirteet (col_fill/col_span/z_rel)")
     a = ap.parse_args()
     import torch
     device = "cuda" if torch.cuda.is_available() else "cpu"; print(f"device={device}", flush=True)
@@ -92,11 +94,12 @@ def main():
         print(f"lohkot VÄLIMUISTISTA {a.cache}: train {len(tf)}, held-out {len(dvf)} ({time.time()-t0:.0f}s)", flush=True)
     else:
         tiers = [("Bronze", LUT12), ("Silver", LUT12), ("Gold", LUT18)]
-        dtf, dtl, dvf, dvl = dses_blocks(a.zip, tiers, a.voxel, a.max_bps, rng, geo=a.geo)
+        dtf, dtl, dvf, dvl = dses_blocks(a.zip, tiers, a.voxel, a.max_bps, rng, geo=a.geo, colf=a.colfeat)
         r_tr = []
         for s in a.rtrain.split(","): r_tr += sorted(glob.glob(str(Path(a.rohbau) / f"site_{int(s):02d}" / "scene_*")))
         r_tr = r_tr[:a.rmax]
-        rf, rl = FX._blocks(r_tr, a.voxel, True, a.max_bps, rng, geo=a.geo); rf = np.delete(rf, 9, axis=2)  # poista int (rgb+korkeus[+geo])
+        rf, rl = FX._blocks(r_tr, a.voxel, True, a.max_bps, rng, geo=a.geo, colf=a.colfeat)
+        rf = np.delete(rf, 9, axis=2)   # poista intensiteetti → base6+rgb3+h1[+geo3][+col3]
         tf = np.vstack([dtf, rf]); tl = np.vstack([dtl, rl])
         print(f"lohkot: 3DSES {len(dtf)} + Rohbau {len(rf)} = {len(tf)} train | held-out 3DSES {len(dvf)} ({time.time()-t0:.0f}s)", flush=True)
         if a.cache:
