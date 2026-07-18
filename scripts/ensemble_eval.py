@@ -54,8 +54,12 @@ def _curve(lg, gt_rm, tag):
 def _interp(rows, sk_target):
     """Poisto interpoloituna annetulle rakennetasolle (käyrä on laskeva sk:ssa)."""
     sks = np.array([r[0] for r in rows]); rrs = np.array([r[1] for r in rows])
-    if sk_target > sks.max() or sk_target < sks.min():
+    # toleranssi: käyräpisteet on pyöristetty tulostuksessa, joten esim. 0.96794
+    # ei saa pudottaa tavoitetta 0.968 pois vertailusta (piilottaisi parhaan mallin)
+    tol = 1e-3
+    if sk_target > sks.max() + tol or sk_target < sks.min() - tol:
         return None
+    sk_target = float(np.clip(sk_target, sks.min(), sks.max()))
     o = np.argsort(sks)
     return float(np.interp(sk_target, sks[o], rrs[o]))
 
