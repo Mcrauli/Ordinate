@@ -35,8 +35,15 @@ _KEEP_CLASSES: frozenset[int] = frozenset(range(7))  # ceiling,floor,wall,beam,c
 _BLOCK_SIZE   = 1000.0   # lohkon sivun pituus
 _BLOCK_STRIDE =  500.0   # ruudukon askel (50 % overlap)
 _N_BLOCK_PTS  = 4096     # pisteitä per lohko (vastattava mallin odottamaa)
-_N_FEATURES   = 9        # xyz_local + xyz_scene + rgb_zeros
+_N_FEATURES   = 9        # xyz_local + xyz_scene + rgb_zeros (vanha malli)
 _N_CLASSES    = 13
+
+# Uudemmat XYZ-only-mallit korvaavat rgb-nollat lasketuilla piirteillä:
+#   9  = base6 + rgb-nollat                    (alkuperäinen)
+#   13 = base6 + korkeus + geo(3) + sarake(3)  (väritön, piirteet skenestä)
+# Kanavamäärä luetaan ONNX-mallista, joten sama koodi ajaa molempia eikä
+# nykyinen tuotantomalli muuta käytöstään.
+_N_FEATURES_GEOCOL = 13
 
 # Työ-voxel äänestystä varten
 _WORK_VOXEL = 30.0       # mm
@@ -67,8 +74,9 @@ class PointNetFilter:
         if path is None and variant != "default":
             path = _find_model_path()   # retail-mallia ei bundlattu → oletusmalli
         self._session = self._load_session(path)
+        self._n_features = _session_n_features(self._session)
         if self._session is not None:
-            log.debug("PointNetFilter: malli ladattu %s", path)
+            log.debug("PointNetFilter: malli ladattu %s (%d piirrettä)", path, self._n_features)
         else:
             log.info("PointNetFilter: ONNX-mallia ei löydy, käytetään geometristä fallbackia")
 
@@ -145,6 +153,19 @@ class PointNetFilter:
         votes = np.zeros((len(wpts), _N_CLASSES), dtype=np.float32)
         input_name = self._session.get_inputs()[0].name
 
+        # Skenetason piirteet kerran koko pilvelle — EI per lohko: sarakkeen
+        # täyttöaste kertoo ulottuuko pinta lattiasta kattoon, mitä 1 m lohko
+        # ei voi nähdä. Sama laskenta kuin koulutuksessa, samalla
+        # voxeliharvennuksella (30 mm = koulutuksen 0.03 m).
+        scene_extra = None
+        if self._n_features == _N_FEATURES_GEOCOL:
+            from . import point_features as pf  # noqa: PLC0415
+            scene_extra = np.column_stack([
+                pf.height(wpts),
+                pf.geometric(wpts),
+                pf.column(wpts),
+            ]).astype(np.float32)
+
         x_starts = np.arange(sc_min[0], sc_max[0] + 1.0, _BLOCK_STRIDE)
         y_starts = np.arange(sc_min[1], sc_max[1] + 1.0, _BLOCK_STRIDE)
 
@@ -202,17 +223,19 @@ class PointNetFilter:
                     ])
                 sampled = block_pts[sel]
 
-                # 9 piirrettä: xyz_local (0-1 lohkossa) + xyz_scene (0-1 skenessä) + rgb=0
-                feat = np.zeros((_N_BLOCK_PTS, _N_FEATURES), dtype=np.float32)
+                # base: xyz_local (0-1 lohkossa) + xyz_scene (0-1 skenessä)
+                feat = np.zeros((_N_BLOCK_PTS, self._n_features), dtype=np.float32)
                 feat[:, 0] = (sampled[:, 0] - xs) / _BLOCK_SIZE
                 feat[:, 1] = (sampled[:, 1] - ys) / _BLOCK_SIZE
                 feat[:, 2] = (sampled[:, 2] - sc_min[2]) / sc_range[2]
                 feat[:, 3] = (sampled[:, 0] - sc_min[0]) / sc_range[0]
                 feat[:, 4] = (sampled[:, 1] - sc_min[1]) / sc_range[1]
                 feat[:, 5] = (sampled[:, 2] - sc_min[2]) / sc_range[2]
-                # feat[:, 6:9] = 0  # rgb — ei väridataa pistepilvessä
+                if scene_extra is not None:
+                    feat[:, 6:] = scene_extra[idx[sel]]
+                # muuten feat[:, 6:9] = 0 — rgb, ei väridataa pistepilvessä
 
-                inp = feat[np.newaxis]  # (1, N_BLOCK_PTS, 9)
+                inp = feat[np.newaxis]  # (1, N_BLOCK_PTS, n_features)
                 logits = self._session.run(None, {input_name: inp})[0]  # (1, N_BLOCK_PTS, 13)
                 probs = _softmax(logits[0])  # (N_BLOCK_PTS, 13)
 
@@ -228,6 +251,17 @@ class PointNetFilter:
 
         # Siirrä maski täydelle pilvelle: piste perii oman voxelinsa päätöksen
         return structural[inv]
+
+
+def _session_n_features(session) -> int:
+    """Mallin odottama piirremäärä ONNX-syötteen viimeisestä ulottuvuudesta.
+
+    Dynaaminen akseli (str/None) → oletetaan alkuperäinen 9-piirteinen malli.
+    """
+    if session is None:
+        return _N_FEATURES
+    dim = session.get_inputs()[0].shape[-1]
+    return dim if isinstance(dim, int) and dim > 0 else _N_FEATURES
 
 
 def _softmax(x: np.ndarray) -> np.ndarray:
