@@ -55,6 +55,40 @@ def scene_blocks(z, name, mp_lut, voxel, max_bps, rng, geo=False, colf=False):
     return bf, bl
 
 
+def synth_retail_blocks(n_rooms, voxel, max_bps, rng, geo=False, colf=False, holdout_frac=0.15):
+    """Synteettisiä liiketiloja (lattia-katto-hyllyrivit label 10 + tavaraa 12).
+
+    3DSES ja Rohbau eivät sisällä myymälähyllyjä, joten niillä koulutettu malli
+    ei osaa erottaa täyskorkeaa hyllyä seinästä — mitattu: samalla rakenne-
+    tasolla 96 % hyllyistä jää, kun retail-koulutettu malli jättää 26 %.
+    Väri = 0 (synteettisellä ei ole väriä; tuotantopolku on XYZ-only muutenkin).
+    """
+    tr_F, tr_L, va_F, va_L = [], [], [], []
+    # holdout_frac=0 → kaikki koulutukseen: 3DSES-held-out pysyy silloin
+    # vertailukelpoisena aiempiin ajoihin, ja hyllynpoisto mitataan erikseen
+    # liiketilatestillä (joka ajaa myös tuotannon oikean inferenssipolun).
+    nva = max(1, int(n_rooms * holdout_frac)) if holdout_frac > 0 else 0
+    for i in range(n_rooms):
+        xyz, lbl = E._gen_retail_room(rng)
+        xyz = np.asarray(xyz, np.float32)
+        idx = FX._voxel_repr_idx(xyz, voxel); xyz, lbl = xyz[idx], np.asarray(lbl).ravel()[idx]
+        fz = np.percentile(xyz[:, 2], 2); h = np.clip((xyz[:, 2] - fz) / 3.0, 0, 1.5)
+        cols = [np.zeros((len(xyz), 3), np.float32), h[:, None]]
+        if geo: cols.append(GEO.compute(xyz))
+        if colf: cols.append(COL.compute(xyz))
+        extra = np.column_stack(cols).astype(np.float32)
+        bf, bl = E._pts_to_blocks(xyz, lbl, 1.0, 4096, 0.5, extra=extra)
+        if bf is None: continue
+        if len(bf) > max_bps:
+            p = rng.choice(len(bf), max_bps, replace=False); bf, bl = bf[p], bl[p]
+        if i < nva: va_F.append(bf); va_L.append(bl)
+        else: tr_F.append(bf); tr_L.append(bl)
+        print(f"  liiketila {i+1}/{n_rooms}: {len(bf)} lohkoa", flush=True)
+    if not tr_F: return None, None, None, None
+    return (np.vstack(tr_F), np.vstack(tr_L),
+            np.vstack(va_F) if va_F else None, np.vstack(va_L) if va_L else None)
+
+
 def dses_blocks(zip_path, tiers, voxel, max_bps, rng, holdout_frac=0.15, geo=False, colf=False):
     z = zipfile.ZipFile(zip_path)
     tr_F, tr_L, va_F, va_L = [], [], [], []
@@ -84,6 +118,8 @@ def main():
     ap.add_argument("--geo", action="store_true", help="geometriset PCA-piirteet (verticality/planarity/sphericity)")
     ap.add_argument("--focal", action="store_true", help="focal loss (kohdistaa vaikeisiin rajatapauksiin)")
     ap.add_argument("--colfeat", action="store_true", help="pystyjatkuvuuspiirteet (col_fill/col_span/z_rel)")
+    ap.add_argument("--synth-retail", type=int, default=0,
+                    help="synteettisiä liiketiloja koulutukseen (lattia-katto-hyllyt)")
     a = ap.parse_args()
     import torch
     device = "cuda" if torch.cuda.is_available() else "cpu"; print(f"device={device}", flush=True)
@@ -100,8 +136,18 @@ def main():
         r_tr = r_tr[:a.rmax]
         rf, rl = FX._blocks(r_tr, a.voxel, True, a.max_bps, rng, geo=a.geo, colf=a.colfeat)
         rf = np.delete(rf, 9, axis=2)   # poista intensiteetti → base6+rgb3+h1[+geo3][+col3]
-        tf = np.vstack([dtf, rf]); tl = np.vstack([dtl, rl])
-        print(f"lohkot: 3DSES {len(dtf)} + Rohbau {len(rf)} = {len(tf)} train | held-out 3DSES {len(dvf)} ({time.time()-t0:.0f}s)", flush=True)
+        parts_f, parts_l, n_ret = [dtf, rf], [dtl, rl], 0
+        if a.synth_retail:
+            sf, sl, svf, svl = synth_retail_blocks(a.synth_retail, a.voxel, a.max_bps, rng,
+                                                   geo=a.geo, colf=a.colfeat, holdout_frac=0.0)
+            if sf is not None:
+                parts_f.append(sf); parts_l.append(sl); n_ret = len(sf)
+                # liiketila-held-out mukaan: 3DSES ei mittaa hyllynpoistoa lainkaan
+                if svf is not None:
+                    dvf = np.vstack([dvf, svf]); dvl = np.vstack([dvl, svl])
+        tf = np.vstack(parts_f); tl = np.vstack(parts_l)
+        print(f"lohkot: 3DSES {len(dtf)} + Rohbau {len(rf)} + liiketila {n_ret} = {len(tf)} train "
+              f"| held-out {len(dvf)} ({time.time()-t0:.0f}s)", flush=True)
         if a.cache:
             np.savez(a.cache, tf=tf, tl=tl, dvf=dvf, dvl=dvl)
             print(f"välimuisti tallennettu: {a.cache}", flush=True)
