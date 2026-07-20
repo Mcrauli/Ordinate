@@ -30,6 +30,7 @@ _MODEL_FILENAME_RETAIL = "s3dis_pointnet_retail.onnx"   # liiketila/tyomaa-varia
 
 # S3DIS 13 luokkaa: 0-6 rakenteellisia, 7-12 kalusteet/krääsä
 _KEEP_CLASSES: frozenset[int] = frozenset(range(7))  # ceiling,floor,wall,beam,column,window,door
+_RM_CLASSES: list[int] = list(range(7, 13))          # table,chair,sofa,bookcase,board,clutter
 
 # Lohkoprosessoinnin parametrit (mm)
 _BLOCK_SIZE   = 1000.0   # lohkon sivun pituus
@@ -69,12 +70,18 @@ def _find_model_path(variant: str = "default") -> Path | None:
 class PointNetFilter:
     """S3DIS PointNet ONNX -kalustesuodatin. Fallback geometriseen jos malli puuttuu."""
 
-    def __init__(self, model_path: Path | None = None, variant: str = "default") -> None:
+    def __init__(self, model_path: Path | None = None, variant: str = "default",
+                 removal_bias: float = 0.0) -> None:
+        """removal_bias siirtää operointipistettä: lisätään poistoluokkien
+        logiteihin ennen softmaxia. 0 = mallin oma piste (oletus, ei muutosta),
+        suurempi = poistaa enemmän mutta säilyttää vähemmän rakennetta.
+        Malleja saa verrata vain SAMALLA rakennetasolla, ei tällä arvolla."""
         path = model_path or _find_model_path(variant)
         if path is None and variant != "default":
             path = _find_model_path()   # retail-mallia ei bundlattu → oletusmalli
         self._session = self._load_session(path)
         self._n_features = _session_n_features(self._session)
+        self._removal_bias = float(removal_bias)
         if self._session is not None:
             log.debug("PointNetFilter: malli ladattu %s (%d piirrettä)", path, self._n_features)
         else:
@@ -237,7 +244,11 @@ class PointNetFilter:
 
                 inp = feat[np.newaxis]  # (1, N_BLOCK_PTS, n_features)
                 logits = self._session.run(None, {input_name: inp})[0]  # (1, N_BLOCK_PTS, 13)
-                probs = _softmax(logits[0])  # (N_BLOCK_PTS, 13)
+                lg = logits[0]
+                if self._removal_bias:
+                    lg = lg.copy()
+                    lg[:, _RM_CLASSES] += self._removal_bias
+                probs = _softmax(lg)  # (N_BLOCK_PTS, 13)
 
                 # Kasaa äänet takaisin työ-voxeli-indekseihin (np.add.at käsittelee toistot)
                 wpts_idx = idx[sel]
