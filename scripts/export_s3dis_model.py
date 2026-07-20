@@ -447,7 +447,7 @@ def _gen_mep(rng, W: float, D: float, H: float, density: float):
     return (np.vstack(pts_list).astype(np.float32), np.concatenate(lbl_list))
 
 
-def _gen_retail_room(rng, n_pts: int = 120_000):
+def _gen_retail_room(rng, n_pts: int = 120_000, wall_t: float = 0.0):
     """Synteettinen LIIKETILA: iso halli + lattia-katto-hyllyrivit (label 10)
     + tavaraa hyllyillä (label 12). Hyllyrivit läpäisevät geometrisen pysty-
     maskin ja näyttävät seiniltä — suodattimen on opittava ne pois."""
@@ -470,15 +470,24 @@ def _gen_retail_room(rng, n_pts: int = 120_000):
     _emit(np.c_[xy + rng.uniform(-0.01, 0.01, (n_floor, 2)),
                 rng.normal(H, surf, n_floor) + _undulate(rng, xy, rng.uniform(0, 0.03))], 0)
 
-    for axis, fixed, lo, hi in [(0, 0.0, 0, D), (0, W, 0, D), (1, 0.0, 0, W), (1, D, 0, W)]:
-        n_wall = max(100, int(density * (hi - lo) * H))
-        u = rng.uniform(lo, hi, n_wall)
-        v = rng.uniform(0.0, H, n_wall)
-        tilt = rng.uniform(-0.03, 0.03)
-        noise = rng.normal(0, surf, n_wall) + tilt * (v - H / 2)
-        w = (np.c_[np.full(n_wall, fixed) + noise, u, v] if axis == 0
-             else np.c_[u, np.full(n_wall, fixed) + noise, v])
-        _emit(w, 2)
+    # wall_t > 0 emittoi seinille MOLEMMAT pinnat. Oletus 0 = vain sisapinta,
+    # kuten ennen — vanhat liiketilaluvut pysyvat vertailukelpoisina. HUOM:
+    # yksipuolisilla seinilla paksuuteen nojaavat menetelmat eivat voi toimia
+    # (mitattu: seinaparipiirteen osumat 89 % -> 34 % pelkastaan tasta syysta),
+    # joten arvioinnissa kannattaa kayttaa wall_t > 0.
+    for axis, fixed, lo, hi, out in [(0, 0.0, 0, D, -1.0), (0, W, 0, D, 1.0),
+                                     (1, 0.0, 0, W, -1.0), (1, D, 0, W, 1.0)]:
+        faces = [fixed] if wall_t <= 0 else [fixed, fixed + out * wall_t]
+        tilt = rng.uniform(-0.03, 0.03)      # sama kallistus molemmille pinnoille:
+                                             # aidon seinan pinnat ovat yhdensuuntaiset
+        for face in faces:
+            n_wall = max(100, int(density * (hi - lo) * H))
+            u = rng.uniform(lo, hi, n_wall)
+            v = rng.uniform(0.0, H, n_wall)
+            noise = rng.normal(0, surf, n_wall) + tilt * (v - H / 2)
+            w = (np.c_[np.full(n_wall, face) + noise, u, v] if axis == 0
+                 else np.c_[u, np.full(n_wall, face) + noise, v])
+            _emit(w, 2)
 
     # Hyllyrivit: yhdensuuntaiset, käytävävälein, LÄHES kattoon (myymälähylly
     # 2.0–2.5m tai varastohylly kattoon asti)
