@@ -33,8 +33,8 @@ def _sweep(model, dvf, dvl, device):
 
 
 def _run(tag, tf, tl, dvf, dvl, in_ch, a, device, out=""):
-    print(f"\n===== {tag} (in_ch={in_ch}) =====", flush=True)
-    model = FX._train(tf, tl, in_ch, a.epochs, device, tag, arch="dgcnn",
+    print(f"\n===== {tag} (in_ch={in_ch}, {a.arch}) =====", flush=True)
+    model = FX._train(tf, tl, in_ch, a.epochs, device, tag, arch=a.arch,
                       batch=a.batch, augment=True, focal=a.focal)
     sk, rr = FX._eval(model, dvf, dvl, device)
     print(f"==> [{tag}] HELD-OUT rakenne={sk:.3f} poisto={rr:.3f}", flush=True)
@@ -52,6 +52,8 @@ def main():
     ap.add_argument("--cache", required=True)
     ap.add_argument("--epochs", type=int, default=30); ap.add_argument("--batch", type=int, default=8)
     ap.add_argument("--focal", action="store_true")
+    ap.add_argument("--arch", default="dgcnn", choices=["dgcnn", "pointnet", "hybrid", "hybridpro"],
+                    help="pointnet = tuotannon nykyinen arkkitehtuuri, ~7x nopeampi kuin dgcnn")
     ap.add_argument("--out-geo", default=""); ap.add_argument("--skip-control", action="store_true")
     ap.add_argument("--skip-geo", action="store_true", help="aja vain CONTROL (jos GEO jo mitattu)")
     ap.add_argument("--drop-rgb", action="store_true",
