@@ -28,7 +28,7 @@ def _voxel_repr_idx(pts, voxel_m):
     return order[first]
 
 
-def _load_scene(d, voxel_m, rich, geo=False, colf=False):
+def _load_scene(d, voxel_m, rich, geo=False, colf=False, pairf=False):
     xyz = np.load(os.path.join(d, "coord.npy")).astype(np.float32)
     cls = np.load(os.path.join(d, "class.npy")).astype(np.int64).ravel()
     lbl = E._map_rohbau_labels(cls)
@@ -55,14 +55,19 @@ def _load_scene(d, voxel_m, rich, geo=False, colf=False):
             _s = _u.spec_from_file_location("col", str(Path(__file__).parent / "column_feats.py"))
             _c = _u.module_from_spec(_s); _s.loader.exec_module(_c)
             cols.append(_c.compute(pts))
+        if pairf:
+            import importlib.util as _u
+            _s = _u.spec_from_file_location("pair", str(Path(__file__).parent / "pair_feats.py"))
+            _p = _u.module_from_spec(_s); _s.loader.exec_module(_p)
+            cols.append(_p.compute(pts))
         extra = np.column_stack(cols).astype(np.float32)  # (N,5) tai (N,8) geo:lla
     return pts, lbl, extra
 
 
-def _blocks(scene_dirs, voxel_m, rich, max_bps, rng, geo=False, colf=False):
+def _blocks(scene_dirs, voxel_m, rich, max_bps, rng, geo=False, colf=False, pairf=False):
     F, L = [], []
     for d in scene_dirs:
-        pts, lbl, extra = _load_scene(d, voxel_m, rich, geo=geo, colf=colf)
+        pts, lbl, extra = _load_scene(d, voxel_m, rich, geo=geo, colf=colf, pairf=pairf)
         bf, bl = E._pts_to_blocks(pts, lbl, block_m=1.0, n_pts=4096, stride_m=0.5, extra=extra)
         if bf is None:
             continue

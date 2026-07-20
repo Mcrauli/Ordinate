@@ -18,6 +18,7 @@ def _imp(n, p):
     s = importlib.util.spec_from_file_location(n, str(Path(__file__).parent / p)); m = importlib.util.module_from_spec(s); s.loader.exec_module(m); return m
 E = _imp("exp", "export_s3dis_model.py"); FX = _imp("fx", "rohbau_feature_exp.py")
 GEO = _imp("geo", "geo_feats.py"); COL = _imp("col", "column_feats.py")
+PAIR = _imp("pair", "pair_feats.py")
 
 # 12-luokka (Bronze/Silver) -> S3DIS 13. KEEP rakenne (0-6), REMOVE muut.
 MAP12 = {0:3, 1:0, 2:6, 3:9, 4:9, 5:9, 6:2, 7:1, 8:1, 9:2, 10:5, 11:12}
@@ -35,7 +36,7 @@ def _lut(mp):
 LUT12, LUT18 = _lut(MAP12), _lut(MAP18)
 
 
-def scene_blocks(z, name, mp_lut, voxel, max_bps, rng, geo=False, colf=False):
+def scene_blocks(z, name, mp_lut, voxel, max_bps, rng, geo=False, colf=False, pairf=False):
     with z.open(name) as f: a = np.load(io.BytesIO(f.read()))
     xyz = a[:, :3].astype(np.float32)
     rgb = (a[:, 3:6].astype(np.float32)) / 255.0
@@ -47,6 +48,7 @@ def scene_blocks(z, name, mp_lut, voxel, max_bps, rng, geo=False, colf=False):
     cols = [rgb, h[:, None]]
     if geo: cols.append(GEO.compute(xyz))
     if colf: cols.append(COL.compute(xyz))   # pystyjatkuvuus lasketaan SKENESTÄ, ei lohkosta
+    if pairf: cols.append(PAIR.compute(xyz))  # seinäpari: vastapinta standardipaksuuden päässä
     extra = np.column_stack(cols).astype(np.float32)
     bf, bl = E._pts_to_blocks(xyz, lbl, 1.0, 4096, 0.5, extra=extra)
     if bf is None: return None, None
@@ -55,7 +57,7 @@ def scene_blocks(z, name, mp_lut, voxel, max_bps, rng, geo=False, colf=False):
     return bf, bl
 
 
-def synth_retail_blocks(n_rooms, voxel, max_bps, rng, geo=False, colf=False, holdout_frac=0.15):
+def synth_retail_blocks(n_rooms, voxel, max_bps, rng, geo=False, colf=False, pairf=False, holdout_frac=0.15):
     """Synteettisiä liiketiloja (lattia-katto-hyllyrivit label 10 + tavaraa 12).
 
     3DSES ja Rohbau eivät sisällä myymälähyllyjä, joten niillä koulutettu malli
@@ -76,6 +78,7 @@ def synth_retail_blocks(n_rooms, voxel, max_bps, rng, geo=False, colf=False, hol
         cols = [np.zeros((len(xyz), 3), np.float32), h[:, None]]
         if geo: cols.append(GEO.compute(xyz))
         if colf: cols.append(COL.compute(xyz))
+        if pairf: cols.append(PAIR.compute(xyz))
         extra = np.column_stack(cols).astype(np.float32)
         bf, bl = E._pts_to_blocks(xyz, lbl, 1.0, 4096, 0.5, extra=extra)
         if bf is None: continue
@@ -89,14 +92,14 @@ def synth_retail_blocks(n_rooms, voxel, max_bps, rng, geo=False, colf=False, hol
             np.vstack(va_F) if va_F else None, np.vstack(va_L) if va_L else None)
 
 
-def dses_blocks(zip_path, tiers, voxel, max_bps, rng, holdout_frac=0.15, geo=False, colf=False):
+def dses_blocks(zip_path, tiers, voxel, max_bps, rng, holdout_frac=0.15, geo=False, colf=False, pairf=False):
     z = zipfile.ZipFile(zip_path)
     tr_F, tr_L, va_F, va_L = [], [], [], []
     for tier, lut in tiers:
         names = sorted([n for n in z.namelist() if n.startswith(tier + "/") and n.endswith(".npy")])
         nva = max(1, int(len(names) * holdout_frac))
         for i, n in enumerate(names):
-            bf, bl = scene_blocks(z, n, lut, voxel, max_bps, rng, geo=geo, colf=colf)
+            bf, bl = scene_blocks(z, n, lut, voxel, max_bps, rng, geo=geo, colf=colf, pairf=pairf)
             if bf is None: continue
             if i < nva: va_F.append(bf); va_L.append(bl)
             else: tr_F.append(bf); tr_L.append(bl)
@@ -118,6 +121,8 @@ def main():
     ap.add_argument("--geo", action="store_true", help="geometriset PCA-piirteet (verticality/planarity/sphericity)")
     ap.add_argument("--focal", action="store_true", help="focal loss (kohdistaa vaikeisiin rajatapauksiin)")
     ap.add_argument("--colfeat", action="store_true", help="pystyjatkuvuuspiirteet (col_fill/col_span/z_rel)")
+    ap.add_argument("--pairfeat", action="store_true",
+                    help="seinäparipiirteet (pair_score/pair_thickness)")
     ap.add_argument("--synth-retail", type=int, default=0,
                     help="synteettisiä liiketiloja koulutukseen (lattia-katto-hyllyt)")
     a = ap.parse_args()
@@ -130,16 +135,16 @@ def main():
         print(f"lohkot VÄLIMUISTISTA {a.cache}: train {len(tf)}, held-out {len(dvf)} ({time.time()-t0:.0f}s)", flush=True)
     else:
         tiers = [("Bronze", LUT12), ("Silver", LUT12), ("Gold", LUT18)]
-        dtf, dtl, dvf, dvl = dses_blocks(a.zip, tiers, a.voxel, a.max_bps, rng, geo=a.geo, colf=a.colfeat)
+        dtf, dtl, dvf, dvl = dses_blocks(a.zip, tiers, a.voxel, a.max_bps, rng, geo=a.geo, colf=a.colfeat, pairf=a.pairfeat)
         r_tr = []
         for s in a.rtrain.split(","): r_tr += sorted(glob.glob(str(Path(a.rohbau) / f"site_{int(s):02d}" / "scene_*")))
         r_tr = r_tr[:a.rmax]
-        rf, rl = FX._blocks(r_tr, a.voxel, True, a.max_bps, rng, geo=a.geo, colf=a.colfeat)
+        rf, rl = FX._blocks(r_tr, a.voxel, True, a.max_bps, rng, geo=a.geo, colf=a.colfeat, pairf=a.pairfeat)
         rf = np.delete(rf, 9, axis=2)   # poista intensiteetti → base6+rgb3+h1[+geo3][+col3]
         parts_f, parts_l, n_ret = [dtf, rf], [dtl, rl], 0
         if a.synth_retail:
             sf, sl, svf, svl = synth_retail_blocks(a.synth_retail, a.voxel, a.max_bps, rng,
-                                                   geo=a.geo, colf=a.colfeat, holdout_frac=0.0)
+                                                   geo=a.geo, colf=a.colfeat, pairf=a.pairfeat, holdout_frac=0.0)
             if sf is not None:
                 parts_f.append(sf); parts_l.append(sl); n_ret = len(sf)
                 # liiketila-held-out mukaan: 3DSES ei mittaa hyllynpoistoa lainkaan
