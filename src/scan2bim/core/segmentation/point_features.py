@@ -29,6 +29,7 @@ _GEO_K = 16              # kNN neighbourhood; scale-free, so mm vs m is moot her
 _CELL_MM = 100.0         # XY cell for the column grid (0.10 m in training)
 _Z_BIN_MM = 200.0        # vertical bin height (0.20 m in training)
 _HEIGHT_REF_MM = 3000.0  # height normalisation reference (3 m in training)
+_STORY_MM = 3000.0       # storey reference for the column features (multi-height robust)
 
 
 def height(xyz_mm: np.ndarray) -> np.ndarray:
@@ -66,38 +67,48 @@ def geometric(xyz_mm: np.ndarray, k: int = _GEO_K) -> np.ndarray:
 
 
 def column(xyz_mm: np.ndarray) -> np.ndarray:
-    """(N,3) [col_fill, col_span, z_rel] — vertical continuity of the XY column.
+    """(N,3) [col_fill, col_span, z_story] — vertical continuity of the XY column.
+
+    Multi-height robust: all three are measured against the column's OWN local
+    floor and a fixed storey reference (3 m), NOT the global scene height.
+    Normalising by scene height put an intermediate-level beam in a 6 m space at
+    z_rel 0.45 — the training furniture zone — so the filter dropped beams,
+    columns and stairs on multi-level scans (Rohbau site_10). Against a local
+    floor the same beam reads ~0.8 (ceiling zone) regardless of building height.
 
     Must be computed over the whole scene: a 1 m block cannot tell whether the
-    surface it contains continues to the floor and ceiling.
+    surface it contains continues to its floor and ceiling.
     """
     xyz = np.ascontiguousarray(xyz_mm[:, :3].astype(np.float64))
     n = len(xyz)
     if n < 8:
         return np.zeros((n, 3), np.float32)
     lo = xyz.min(axis=0)
-    z_lo, z_hi = np.percentile(xyz[:, 2], 1), np.percentile(xyz[:, 2], 99)
-    z_h = max(z_hi - z_lo, 1e-6)
+    z = xyz[:, 2]
 
     gx = np.floor((xyz[:, 0] - lo[0]) / _CELL_MM).astype(np.int64)
     gy = np.floor((xyz[:, 1] - lo[1]) / _CELL_MM).astype(np.int64)
-    gz = np.clip(np.floor((xyz[:, 2] - z_lo) / _Z_BIN_MM).astype(np.int64), 0, None)
+    gz = np.clip(np.floor((z - lo[2]) / _Z_BIN_MM).astype(np.int64), 0, None)
     nz = int(gz.max()) + 1
 
     ny = int(gy.max()) + 1
     ucol, cinv = np.unique(gx * ny + gy, return_inverse=True)
 
+    # per-column local floor and ceiling (NOT global scene)
+    col_floor = np.full(len(ucol), np.inf)
+    col_ceil = np.full(len(ucol), -np.inf)
+    np.minimum.at(col_floor, cinv, z)
+    np.maximum.at(col_ceil, cinv, z)
+    local_h = np.maximum(col_ceil - col_floor, 1e-6)
+
     # filled bins per column = unique (column, z-bin) pairs
     upair = np.unique(cinv.astype(np.int64) * nz + gz)
-    filled = np.bincount(upair // nz, minlength=len(ucol)).astype(np.float32)
+    filled = np.bincount(upair // nz, minlength=len(ucol)).astype(np.float64)
 
-    zmax = np.full(len(ucol), -np.inf)
-    zmin = np.full(len(ucol), np.inf)
-    np.maximum.at(zmax, cinv, xyz[:, 2])
-    np.minimum.at(zmin, cinv, xyz[:, 2])
-
+    # col_fill uses a FIXED storey-bin count so a flat floor reads ~0, not 1/1
+    story_bins = _STORY_MM / _Z_BIN_MM
     return np.column_stack([
-        np.clip(filled / max(nz, 1), 0.0, 1.0)[cinv],        # col_fill
-        np.clip((zmax - zmin) / z_h, 0.0, 1.0)[cinv],        # col_span
-        np.clip((xyz[:, 2] - z_lo) / z_h, 0.0, 1.0),         # z_rel
+        np.clip(filled / story_bins, 0.0, 1.0)[cinv],        # col_fill
+        np.clip(local_h / _STORY_MM, 0.0, 1.0)[cinv],        # col_span
+        np.clip((z - col_floor[cinv]) / _STORY_MM, 0.0, 1.0),  # z_story
     ]).astype(np.float32)

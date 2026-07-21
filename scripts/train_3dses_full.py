@@ -17,7 +17,7 @@ import importlib.util
 def _imp(n, p):
     s = importlib.util.spec_from_file_location(n, str(Path(__file__).parent / p)); m = importlib.util.module_from_spec(s); s.loader.exec_module(m); return m
 E = _imp("exp", "export_s3dis_model.py"); FX = _imp("fx", "rohbau_feature_exp.py")
-GEO = _imp("geo", "geo_feats.py"); COL = _imp("col", "column_feats.py")
+GEO = _imp("geo", "geo_feats.py"); COL = _imp("col", "column_feats_v2.py")
 PAIR = _imp("pair", "pair_feats.py")
 
 # 12-luokka (Bronze/Silver) -> S3DIS 13. KEEP rakenne (0-6), REMOVE muut.

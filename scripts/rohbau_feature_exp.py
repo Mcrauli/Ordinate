@@ -52,7 +52,7 @@ def _load_scene(d, voxel_m, rich, geo=False, colf=False, pairf=False):
             cols.append(_g.compute(pts))
         if colf:
             import importlib.util as _u
-            _s = _u.spec_from_file_location("col", str(Path(__file__).parent / "column_feats.py"))
+            _s = _u.spec_from_file_location("col", str(Path(__file__).parent / "column_feats_v2.py"))
             _c = _u.module_from_spec(_s); _s.loader.exec_module(_c)
             cols.append(_c.compute(pts))
         if pairf:
