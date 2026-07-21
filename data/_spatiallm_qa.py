@@ -12,6 +12,9 @@ from pathlib import Path
 from scan2bim.core.pipeline import Pipeline, PipelineConfig
 
 DIR = Path(sys.argv[1])
+# valinnainen 2. argumentti: PointNet-mallipolku (uuden mallin testaus koskematta
+# tuotantoon). Tyhja = tuotannon oletusmalli.
+_MODEL = Path(sys.argv[2]) if len(sys.argv) > 2 and sys.argv[2] else None
 OUT = Path(tempfile.gettempdir()) / "_spatiallm_qa"
 
 def parse_gt(txt):
@@ -51,7 +54,8 @@ for ply in sorted(DIR.glob("*.ply")):
     pts = np.asarray(pc.points)
     if np.ptp(pts[:, 0]) < 100: pts = pts * 1000.0
     cfg = PipelineConfig(auto_voxel=True, detector="contour", export_ifc=False,
-                         export_dxf=False, export_qa=False, semantic_filter_mode="pointnet")
+                         export_dxf=False, export_qa=False, semantic_filter_mode="pointnet",
+                         semantic_model_path=_MODEL)
     t0 = time.time()
     try:
         m = Pipeline(cfg).run_floors([ply], OUT / ply.stem)[0]

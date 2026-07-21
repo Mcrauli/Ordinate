@@ -34,6 +34,7 @@ class PipelineConfig:
     semantic_filter_mode: Literal["off", "geometric", "pointnet", "pointnet-retail"] = "off"
     # pointnet-retail: liiketila/tyomaa-malli — poistaa lattia-katto-hyllyrivit
     # (95% vs oletusmallin 17%); asunnoissa oletusmalli on tarkempi.
+    semantic_model_path: "Path | None" = None   # yliaja PointNet-mallitiedosto (esim. uuden mallin testaus)
     crs_epsg: int = 3067    # georef-leima IFC:hen (EPSG). Geometria pysyy skannin
                             # oikeissa koordinaateissa; ks. core/ifc/crs.py CRS_PRESETS.
                             # 0 = ei leimaa. Oletus ETRS-TM35FIN.
@@ -868,7 +869,8 @@ class Pipeline:
         n0 = len(cloud.points)
         if mode in ("pointnet", "pointnet-retail"):
             from scan2bim.core.segmentation.pointnet_filter import PointNetFilter  # noqa: PLC0415
-            filt = PointNetFilter(variant="retail" if mode == "pointnet-retail" else "default")
+            filt = PointNetFilter(model_path=self.config.semantic_model_path,
+                                  variant="retail" if mode == "pointnet-retail" else "default")
             out = filt.filter(cloud)
             label = ("PointNet-liiketila" if mode == "pointnet-retail" else "PointNet")                 if filt.is_available() else "geometrinen (PointNet-fallback)"
         else:
