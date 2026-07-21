@@ -18,7 +18,7 @@ def _imp(n, p):
     s = importlib.util.spec_from_file_location(n, str(Path(__file__).parent / p)); m = importlib.util.module_from_spec(s); s.loader.exec_module(m); return m
 E = _imp("exp", "export_s3dis_model.py"); FX = _imp("fx", "rohbau_feature_exp.py")
 GEO = _imp("geo", "geo_feats.py"); COL = _imp("col", "column_feats_v2.py")
-PAIR = _imp("pair", "pair_feats.py")
+PAIR = _imp("pair", "pair_feats.py"); MSTORY = _imp("mstory", "multistory_gen.py")
 
 # 12-luokka (Bronze/Silver) -> S3DIS 13. KEEP rakenne (0-6), REMOVE muut.
 MAP12 = {0:3, 1:0, 2:6, 3:9, 4:9, 5:9, 6:2, 7:1, 8:1, 9:2, 10:5, 11:12}
@@ -92,6 +92,30 @@ def synth_retail_blocks(n_rooms, voxel, max_bps, rng, geo=False, colf=False, pai
             np.vstack(va_F) if va_F else None, np.vstack(va_L) if va_L else None)
 
 
+def synth_multistory_blocks(n_rooms, voxel, max_bps, rng, geo=False, colf=False, pairf=False):
+    """Monikorkeat skenet (palkit/pilarit/portaat välikorkeudella) koulutukseen.
+    Kohdistaa mitatun heikon kohdan (rohbau site_10 palkki 71%). Kaikki
+    koulutukseen (ei held-out) → 3DSES-held-out pysyy vertailukelpoisena."""
+    F, Lb = [], []
+    for i in range(n_rooms):
+        xyz, lbl = MSTORY.gen(rng)
+        idx = FX._voxel_repr_idx(xyz, voxel); xyz, lbl = xyz[idx], lbl[idx]
+        fz = np.percentile(xyz[:, 2], 2); h = np.clip((xyz[:, 2] - fz) / 3.0, 0, 1.5)
+        cols = [np.zeros((len(xyz), 3), np.float32), h[:, None]]
+        if geo: cols.append(GEO.compute(xyz))
+        if colf: cols.append(COL.compute(xyz))
+        if pairf: cols.append(PAIR.compute(xyz))
+        extra = np.column_stack(cols).astype(np.float32)
+        bf, bl = E._pts_to_blocks(xyz, lbl, 1.0, 4096, 0.5, extra=extra)
+        if bf is None: continue
+        if len(bf) > max_bps:
+            p = rng.choice(len(bf), max_bps, replace=False); bf, bl = bf[p], bl[p]
+        F.append(bf); Lb.append(bl)
+        print(f"  monikerros {i+1}/{n_rooms}: {len(bf)} lohkoa", flush=True)
+    if not F: return None, None
+    return np.vstack(F), np.vstack(Lb)
+
+
 def dses_blocks(zip_path, tiers, voxel, max_bps, rng, holdout_frac=0.15, geo=False, colf=False, pairf=False):
     z = zipfile.ZipFile(zip_path)
     tr_F, tr_L, va_F, va_L = [], [], [], []
@@ -125,6 +149,8 @@ def main():
                     help="seinäparipiirteet (pair_score/pair_thickness)")
     ap.add_argument("--synth-retail", type=int, default=0,
                     help="synteettisiä liiketiloja koulutukseen (lattia-katto-hyllyt)")
+    ap.add_argument("--synth-multistory", type=int, default=0,
+                    help="synteettisiä monikorkeita skenejä (palkit/pilarit/portaat välikorkeudella)")
     a = ap.parse_args()
     import torch
     device = "cuda" if torch.cuda.is_available() else "cpu"; print(f"device={device}", flush=True)
@@ -141,7 +167,7 @@ def main():
         r_tr = r_tr[:a.rmax]
         rf, rl = FX._blocks(r_tr, a.voxel, True, a.max_bps, rng, geo=a.geo, colf=a.colfeat, pairf=a.pairfeat)
         rf = np.delete(rf, 9, axis=2)   # poista intensiteetti → base6+rgb3+h1[+geo3][+col3]
-        parts_f, parts_l, n_ret = [dtf, rf], [dtl, rl], 0
+        parts_f, parts_l, n_ret, n_ms = [dtf, rf], [dtl, rl], 0, 0
         if a.synth_retail:
             sf, sl, svf, svl = synth_retail_blocks(a.synth_retail, a.voxel, a.max_bps, rng,
                                                    geo=a.geo, colf=a.colfeat, pairf=a.pairfeat, holdout_frac=0.0)
@@ -150,9 +176,14 @@ def main():
                 # liiketila-held-out mukaan: 3DSES ei mittaa hyllynpoistoa lainkaan
                 if svf is not None:
                     dvf = np.vstack([dvf, svf]); dvl = np.vstack([dvl, svl])
+        if a.synth_multistory:
+            mf, ml = synth_multistory_blocks(a.synth_multistory, a.voxel, a.max_bps, rng,
+                                             geo=a.geo, colf=a.colfeat, pairf=a.pairfeat)
+            if mf is not None:
+                parts_f.append(mf); parts_l.append(ml); n_ms = len(mf)
         tf = np.vstack(parts_f); tl = np.vstack(parts_l)
-        print(f"lohkot: 3DSES {len(dtf)} + Rohbau {len(rf)} + liiketila {n_ret} = {len(tf)} train "
-              f"| held-out {len(dvf)} ({time.time()-t0:.0f}s)", flush=True)
+        print(f"lohkot: 3DSES {len(dtf)} + Rohbau {len(rf)} + liiketila {n_ret} + monikerros {n_ms} "
+              f"= {len(tf)} train | held-out {len(dvf)} ({time.time()-t0:.0f}s)", flush=True)
         if a.cache:
             np.savez(a.cache, tf=tf, tl=tl, dvf=dvf, dvl=dvl)
             print(f"välimuisti tallennettu: {a.cache}", flush=True)
