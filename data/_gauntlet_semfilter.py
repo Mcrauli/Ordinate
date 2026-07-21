@@ -56,13 +56,13 @@ def _eval_rohbau(filt, scene_dir):
 
 
 def _eval_keeprate(filt, ply):
-    cloud = load_point_cloud(str(ply))
+    cloud = load_point_cloud(Path(ply))
     n0 = len(cloud.points)
     kept = len(filt.filter(cloud).points)
     return kept / max(n0, 1), n0
 
 
-def _run_model(tag, model_path):
+def _run_model(tag, model_path, skip_rohbau=False, skip_plys=False):
     print(f"\n########## {tag} ##########", flush=True)
     filt = PointNetFilter(model_path=model_path)
     print(f"malli ladattu: {filt.is_available()}  piirteita={getattr(filt, '_n_features', '?')}", flush=True)
@@ -70,9 +70,12 @@ def _run_model(tag, model_path):
         print("  ONNX-mallia ei ladattu — ohitetaan"); return
 
     # --- rohbau (per-piste-GT) ---
-    print("\n[rohbau held-out — rakenne-saily (poisto ~0: paljas runko, ei kalusteita)]", flush=True)
+    if skip_rohbau:
+        print("\n[rohbau — ohitettu]", flush=True)
+    else:
+        print("\n[rohbau held-out — rakenne-saily (poisto ~0: paljas runko, ei kalusteita)]", flush=True)
     sks, rrs = [], []
-    for d in _rohbau_scenes(2):
+    for d in ([] if skip_rohbau else _rohbau_scenes(2)):
         t = time.time()
         sk, rr, n = _eval_rohbau(filt, d)
         sks.append(sk); rrs.append(rr)
@@ -82,8 +85,9 @@ def _run_model(tag, model_path):
         print(f"  >> KESKIARVO rakenne={np.nanmean(sks):.3f}  poisto={np.nanmean(rrs):.3f}", flush=True)
 
     # --- asunto + talo35 (keep-rate) ---
-    for name, pat in [("asunto", DL / "spatiallm_apartment" / "scene_*_0.ply"),
-                      ("talo35", DL / "spatiallm_talo_000035" / "scene_*_0.ply")]:
+    for name, pat in ([] if skip_plys else
+                      [("asunto", DL / "spatiallm_apartment" / "scene_*_0.ply"),
+                       ("talo35", DL / "spatiallm_talo_000035" / "scene_*_0.ply")]):
         plys = sorted(glob.glob(str(pat)))[:3]
         if not plys:
             print(f"\n[{name}] ei pilvia ({pat})"); continue
@@ -100,11 +104,15 @@ def _run_model(tag, model_path):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", default="", help="ehdokas-ONNX; tyhja = vain tuotanto-baseline")
+    ap.add_argument("--skip-rohbau", action="store_true", help="ohita hidas rohbau (~14 min/malli)")
+    ap.add_argument("--skip-plys", action="store_true", help="ohita SpatialLM asunto/talo")
+    ap.add_argument("--skip-prod", action="store_true", help="ohita tuotanto-baseline (jos jo mitattu)")
     a = ap.parse_args()
     prod = REPO / "models" / "s3dis_pointnet.onnx"
-    _run_model("TUOTANTO (nykyinen)", prod)
+    if not a.skip_prod:
+        _run_model("TUOTANTO (nykyinen)", prod, a.skip_rohbau, a.skip_plys)
     if a.model:
-        _run_model(f"EHDOKAS ({Path(a.model).name})", Path(a.model))
+        _run_model(f"EHDOKAS ({Path(a.model).name})", Path(a.model), a.skip_rohbau, a.skip_plys)
 
 
 if __name__ == "__main__":
