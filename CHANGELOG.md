@@ -4,6 +4,21 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 [`Mcrauli/scan2bim-web`](https://github.com/Mcrauli/scan2bim-web/releases):iin;
 sovellus päivittää itsensä sieltä.
 
+## v0.8.0 (23.7.2026) — uusi semanttinen kalustesuodatin (hyllyt, monikorkeus)
+- **Vaihe 2: semanttinen suodatin uusittu.** Per-piste-segmentointimalli
+  (`models/s3dis_pointnet*.onnx`) korvattu geometria- ja pystyjatkuvuuspiirteillä
+  vahvistetulla PointNet-mallilla, joka on koulutettu myös synteettisillä
+  liiketila- ja monikorkeusskeneillä. Poistaa kalusteet, krääsän JA liiketilojen
+  lattia-katto-hyllyt ennen geometrista putkea — geometrinen pystymaski ei niitä
+  nähnyt. XYZ-only (ei väririippuvuutta), CPU-ONNX, yhtä nopea kuin ennen (27 ms/lohko).
+- **Toimii vaihtuvilla korkeuksilla.** Pystyjatkuvuuspiirteet normalisoidaan
+  paikallisen sarakelattian ja kiinteän 3 m kerroksen suhteen → korkea market-katto,
+  välipalkit ja eri korkuiset huoneet eivät enää sekoita suodatinta (palkit 71→96 %,
+  portaat 83→93 % rohbau-työmaan monikerrosskenessä).
+- **Mitattu (koko pipeline GT:tä vasten):** asunto seinän lateraali 82→62 mm
+  (p90 246→169 mm), talo35 109→105 mm ja kulma 1.68→1.30°, rohbau rakenne-säily
+  0.879→0.947. Puhtaampi pilvi → nurkka- ja kulmaviimeistely osuu paremmin.
+
 ## v0.7.10 (16.7.2026) — adaptiivinen voxel, rehellinen QA-loki, vähemmän valepilareita
 - **Auto-voxel toimii oikeasti.** Aiemmin tuotantopolku kovakoodasi 12 mm ja
   tulosti harhaanjohtavasti "Auto-voxel". Nyt kevyt 20 mm-otos ensimmäisen
