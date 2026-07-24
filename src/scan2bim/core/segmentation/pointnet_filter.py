@@ -48,6 +48,7 @@ _N_FEATURES_GEOCOL = 13
 
 # Työ-voxel äänestystä varten
 _WORK_VOXEL = 30.0       # mm
+_INFER_BATCH = 64        # lohkoa per ONNX-kutsu (nopeus; ei laatuvaikutusta)
 
 
 def _find_model_path(variant: str = "default") -> Path | None:
@@ -92,10 +93,11 @@ class PointNetFilter:
         if path is None:
             return None
         try:
+            import os  # noqa: PLC0415
             import onnxruntime as ort  # noqa: PLC0415
             opts = ort.SessionOptions()
             opts.inter_op_num_threads = 1
-            opts.intra_op_num_threads = 4
+            opts.intra_op_num_threads = min(os.cpu_count() or 4, 8)
             opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
             return ort.InferenceSession(
                 str(path),
@@ -209,6 +211,28 @@ class PointNetFilter:
             idx.sort()
             return idx
 
+        # Lohkot ajetaan ERISSÄ (batch) eikä yksi kerrallaan: iso skanni tuottaa
+        # tuhansia lohkoja ja per-lohko session.run(batch=1) hukkaa ajan kutsu-
+        # overheadiin. PointNet käsittelee lohkot toisistaan riippumatta (eval-BN
+        # = kiinteät tilastot) → batchaus antaa BITTIIN saman tuloksen, vain
+        # nopeammin. rng kulutetaan samassa lohkojärjestyksessä → determinismi säilyy.
+        pend_feat: list[np.ndarray] = []
+        pend_idx: list[np.ndarray] = []
+
+        def _flush() -> None:
+            if not pend_feat:
+                return
+            inp = np.stack(pend_feat, axis=0)  # (B, N_BLOCK_PTS, n_features)
+            out = self._session.run(None, {input_name: inp})[0]  # (B, N_BLOCK_PTS, 13)
+            for bi in range(len(pend_feat)):
+                lg = out[bi]
+                if self._removal_bias:
+                    lg = lg.copy()
+                    lg[:, _RM_CLASSES] += self._removal_bias
+                np.add.at(votes, pend_idx[bi], _softmax(lg))
+            pend_feat.clear()
+            pend_idx.clear()
+
         for kx in range(len(x_starts)):
             xs = x_starts[kx]
             for ky in range(len(y_starts)):
@@ -242,17 +266,11 @@ class PointNetFilter:
                     feat[:, 6:] = scene_extra[idx[sel]]
                 # muuten feat[:, 6:9] = 0 — rgb, ei väridataa pistepilvessä
 
-                inp = feat[np.newaxis]  # (1, N_BLOCK_PTS, n_features)
-                logits = self._session.run(None, {input_name: inp})[0]  # (1, N_BLOCK_PTS, 13)
-                lg = logits[0]
-                if self._removal_bias:
-                    lg = lg.copy()
-                    lg[:, _RM_CLASSES] += self._removal_bias
-                probs = _softmax(lg)  # (N_BLOCK_PTS, 13)
-
-                # Kasaa äänet takaisin työ-voxeli-indekseihin (np.add.at käsittelee toistot)
-                wpts_idx = idx[sel]
-                np.add.at(votes, wpts_idx, probs)
+                pend_feat.append(feat)
+                pend_idx.append(idx[sel])
+                if len(pend_feat) >= _INFER_BATCH:
+                    _flush()
+        _flush()
 
         # Pisteet ilman yhtään ääntä (reunat, ei lohkossa) → pidä
         no_vote = votes.sum(axis=1) == 0
