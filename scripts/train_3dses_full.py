@@ -19,6 +19,7 @@ def _imp(n, p):
 E = _imp("exp", "export_s3dis_model.py"); FX = _imp("fx", "rohbau_feature_exp.py")
 GEO = _imp("geo", "geo_feats.py"); COL = _imp("col", "column_feats_v2.py")
 PAIR = _imp("pair", "pair_feats.py"); MSTORY = _imp("mstory", "multistory_gen.py")
+VCLUT = _imp("vclut", "vclutter_gen.py")
 
 # 12-luokka (Bronze/Silver) -> S3DIS 13. KEEP rakenne (0-6), REMOVE muut.
 MAP12 = {0:3, 1:0, 2:6, 3:9, 4:9, 5:9, 6:2, 7:1, 8:1, 9:2, 10:5, 11:12}
@@ -116,6 +117,31 @@ def synth_multistory_blocks(n_rooms, voxel, max_bps, rng, geo=False, colf=False,
     return np.vstack(F), np.vstack(Lb)
 
 
+def synth_vclutter_blocks(n_rooms, voxel, max_bps, rng, geo=False, colf=False, pairf=False):
+    """Pysty-ohut-clutter-skenet (putket/tolpat/nurkkakasat label 12) koulutukseen.
+    Kohdistaa 3dses_S171-valepilarit: suodatin luokitteli pystyputken window/door/
+    wall:iksi. Opettaa isoloidun ohuen pystyn clutteriksi vaikka col_fill on korkea.
+    Kaikki koulutukseen (ei held-out)."""
+    F, Lb = [], []
+    for i in range(n_rooms):
+        xyz, lbl = VCLUT.gen(rng)
+        idx = FX._voxel_repr_idx(xyz, voxel); xyz, lbl = xyz[idx], lbl[idx]
+        fz = np.percentile(xyz[:, 2], 2); h = np.clip((xyz[:, 2] - fz) / 3.0, 0, 1.5)
+        cols = [np.zeros((len(xyz), 3), np.float32), h[:, None]]
+        if geo: cols.append(GEO.compute(xyz))
+        if colf: cols.append(COL.compute(xyz))
+        if pairf: cols.append(PAIR.compute(xyz))
+        extra = np.column_stack(cols).astype(np.float32)
+        bf, bl = E._pts_to_blocks(xyz, lbl, 1.0, 4096, 0.5, extra=extra)
+        if bf is None: continue
+        if len(bf) > max_bps:
+            p = rng.choice(len(bf), max_bps, replace=False); bf, bl = bf[p], bl[p]
+        F.append(bf); Lb.append(bl)
+        print(f"  vclutter {i+1}/{n_rooms}: {len(bf)} lohkoa", flush=True)
+    if not F: return None, None
+    return np.vstack(F), np.vstack(Lb)
+
+
 def dses_blocks(zip_path, tiers, voxel, max_bps, rng, holdout_frac=0.15, geo=False, colf=False, pairf=False):
     z = zipfile.ZipFile(zip_path)
     tr_F, tr_L, va_F, va_L = [], [], [], []
@@ -151,6 +177,8 @@ def main():
                     help="synteettisiä liiketiloja koulutukseen (lattia-katto-hyllyt)")
     ap.add_argument("--synth-multistory", type=int, default=0,
                     help="synteettisiä monikorkeita skenejä (palkit/pilarit/portaat välikorkeudella)")
+    ap.add_argument("--synth-vclutter", type=int, default=0,
+                    help="synteettisiä pysty-ohut-clutter-skenejä (putket/tolpat/nurkkakasat → clutter)")
     a = ap.parse_args()
     import torch
     device = "cuda" if torch.cuda.is_available() else "cpu"; print(f"device={device}", flush=True)
@@ -181,9 +209,15 @@ def main():
                                              geo=a.geo, colf=a.colfeat, pairf=a.pairfeat)
             if mf is not None:
                 parts_f.append(mf); parts_l.append(ml); n_ms = len(mf)
+        n_vc = 0
+        if a.synth_vclutter:
+            vf, vl = synth_vclutter_blocks(a.synth_vclutter, a.voxel, a.max_bps, rng,
+                                           geo=a.geo, colf=a.colfeat, pairf=a.pairfeat)
+            if vf is not None:
+                parts_f.append(vf); parts_l.append(vl); n_vc = len(vf)
         tf = np.vstack(parts_f); tl = np.vstack(parts_l)
         print(f"lohkot: 3DSES {len(dtf)} + Rohbau {len(rf)} + liiketila {n_ret} + monikerros {n_ms} "
-              f"= {len(tf)} train | held-out {len(dvf)} ({time.time()-t0:.0f}s)", flush=True)
+              f"+ vclutter {n_vc} = {len(tf)} train | held-out {len(dvf)} ({time.time()-t0:.0f}s)", flush=True)
         if a.cache:
             np.savez(a.cache, tf=tf, tl=tl, dvf=dvf, dvl=dvl)
             print(f"välimuisti tallennettu: {a.cache}", flush=True)
