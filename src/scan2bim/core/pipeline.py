@@ -455,6 +455,49 @@ def _count_disjoint_regions(cloud, grid_mm: float = 500.0, min_area_m2: float = 
     return max(big, 1)
 
 
+_ENVELOPE_CELL_MM = 200.0
+_ENVELOPE_ROOF_MIN_MM = 2000.0   # piste yli tämän lattiasta = katto/räystäs
+_ENVELOPE_DILATE_CELLS = 0       # detektio rajataan katetun alueen sisään; ulkopinnat tulevat thick_cloudista
+_ENVELOPE_MIN_REMOVE_FRAC = 0.10  # rajaa vain jos poisto ≥ tämä (= selvästi ulkodataa; suojaa avointa runkoa)
+
+
+def _crop_to_building_envelope(cloud):
+    """Poistaa katteettoman ULKOalueen (maasto/piha/kasvillisuus/ulkoklutteri)
+    ennen kontuuria. Rakennuksen sisätila on katolla peitetty, ulkomaasto on
+    avoin taivaalle: katon 2D-peitto (dilatoituna) = rakennuksen vaippa → sen
+    ulkopuoliset pisteet pois. Ilman tätä ulkoskanni räjäyttää footprintin ja
+    maanpinta voittaa lattiapiikin (mitattu synteettisellä: footprint 6→16 m,
+    lattia 0→−150 mm, 4 jättivaleseinää).
+
+    Sisätila-only-datalla katto peittää koko footprintin → EI poista mitään
+    (no-op). Ulkoseinien ulkopinnat säilyvät dilataation ansiosta; paksuus
+    mitataan joka tapauksessa erillisestä (rajaamattomasta) thick_cloudista."""
+    from scipy.ndimage import binary_dilation
+    pts = np.asarray(cloud.points)
+    if len(pts) < 2000:
+        return cloud
+    z0 = float(np.percentile(pts[:, 2], 1.0))
+    roof = pts[pts[:, 2] > z0 + _ENVELOPE_ROOF_MIN_MM]
+    if len(roof) < 200:
+        return cloud  # kattoa ei erotettavissa (matala tila) → älä koske
+    origin = pts[:, :2].min(axis=0)
+    pc = np.floor((pts[:, :2] - origin) / _ENVELOPE_CELL_MM).astype(np.int64)
+    rc = np.floor((roof[:, :2] - origin) / _ENVELOPE_CELL_MM).astype(np.int64)
+    nx = int(pc[:, 0].max()) + 2
+    ny = int(pc[:, 1].max()) + 2
+    mask = np.zeros((nx, ny), dtype=bool)
+    mask[rc[:, 0], rc[:, 1]] = True
+    if _ENVELOPE_DILATE_CELLS >= 1:
+        mask = binary_dilation(mask, iterations=_ENVELOPE_DILATE_CELLS)
+    inside = mask[pc[:, 0], pc[:, 1]]
+    n_in = int(inside.sum())
+    if n_in < 2000:
+        return cloud  # arvio meni pieleen → älä tyhjennä pilveä
+    if (len(pts) - n_in) < _ENVELOPE_MIN_REMOVE_FRAC * len(pts):
+        return cloud  # vähän katteetonta → sisätila/runko-only → no-op (suojaa avointa runkoa)
+    return cloud.select_by_index(np.where(inside)[0])
+
+
 def _align_faces_to_surface_median(walls, cloud) -> list:
     """Viimeinen pintalinjaus SAMALLA estimaattorilla kuin QA-mittari:
     dominantin puolen pistepinnan MEDIAANI koko seinäkorkeudelta.
@@ -893,6 +936,11 @@ class Pipeline:
 
         from scan2bim.core.semantics.wall_semantics import filter_structural_walls, refine_thicknesses
         from scan2bim.core.semantics.corner_snap import snap_corners, close_open_corners
+
+        # Rakennusvaippa-rajaus: poista katteeton ulkoalue (maasto/piha) ennen
+        # kontuuria. No-op sisätiladatalle. refine_cloud/thick_cloud jäävät
+        # rajaamatta → ulkoseinien paksuus mitataan silti niiden ulkopinnasta.
+        cloud = _crop_to_building_envelope(cloud)
 
         detector = DetectorRegistry.get(self.config.detector)()
         model = detector.detect(cloud)

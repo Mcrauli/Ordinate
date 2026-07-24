@@ -4,6 +4,21 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 [`Mcrauli/scan2bim-web`](https://github.com/Mcrauli/scan2bim-web/releases):iin;
 sovellus päivittää itsensä sieltä.
 
+## v0.8.1 (kehitteillä) — ulkoskanni-robustius + nopeampi suodatin
+- **Rakennusvaippa-rajaus.** Ulkoskannit (maasto, piha, ulkoklutteri) räjäyttivät
+  aiemmin footprintin ja maanpinta voitti lattiapiikin → roskamalli. Nyt katon
+  2D-peitto = rakennuksen vaippa, ja sen ulkopuoliset pisteet karsitaan ennen
+  kontuuria. Mitattu synteettisellä ulko+rakennus-scenellä: footprint 16 m → oikea
+  6 m, lattia −150 mm → 0, 4 jättivaleseinää → 0. Deterministinen, EI vaikuta
+  sisätiladataan (asunto-GT bitilleen sama) eikä avoimeen työmaarunkoon (rajaus
+  vain jos ≥10 % on katteetonta ulkoaluetta). Ulkoseinien paksuus mitataan silti
+  niiden ulkopinnasta (thick_cloud rajaamaton).
+- **Semanttinen suodatin ~1.85× nopeampi.** ONNX-inferenssi ajettiin lohko
+  kerrallaan (batch=1) → iso skanni teki tuhansia erillisiä kutsuja. Batchaus
+  (64 lohkoa/kutsu) + kaikki ytimet: suodatinvaihe 73.6 s → 39.7 s (10.9 M
+  pisteen skene). Ulostulo bitilleen sama (verifioitu: säilyttää tarkalleen
+  saman pistemäärän ennen ja jälkeen).
+
 ## v0.8.0 (23.7.2026) — uusi semanttinen kalustesuodatin (hyllyt, monikorkeus)
 - **Vaihe 2: semanttinen suodatin uusittu.** Per-piste-segmentointimalli
   (`models/s3dis_pointnet*.onnx`) korvattu geometria- ja pystyjatkuvuuspiirteillä
