@@ -4,7 +4,7 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 [`Mcrauli/scan2bim-web`](https://github.com/Mcrauli/scan2bim-web/releases):iin;
 sovellus päivittää itsensä sieltä.
 
-## v0.8.1 (kehitteillä) — ulkoskanni-robustius + nopeampi suodatin
+## v0.8.1 (24.7.2026) — ulkoskanni-robustius + nopeampi suodatin
 - **Rakennusvaippa-rajaus.** Ulkoskannit (maasto, piha, ulkoklutteri) räjäyttivät
   aiemmin footprintin ja maanpinta voitti lattiapiikin → roskamalli. Nyt katon
   2D-peitto = rakennuksen vaippa, ja sen ulkopuoliset pisteet karsitaan ennen
