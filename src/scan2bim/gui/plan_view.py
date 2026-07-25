@@ -27,7 +27,26 @@ _COLUMN_EDGE = "#8a6a3c"
 
 
 class _PlanGraphicsView(QtWidgets.QGraphicsView):
-    """Ruudukko taustalla, mittajana päällä, zoom rullalla."""
+    """Ruudukko taustalla, mittajana päällä, zoom rullalla, klikkaus valitsee."""
+
+    def __init__(self, scene, parent=None) -> None:
+        super().__init__(scene, parent)
+        self._pick = None   # callback(kind|None, id|None); asetetaan PlanView:ssa
+
+    def mousePressEvent(self, event: QtGui.QMouseEvent) -> None:
+        if event.button() == QtCore.Qt.MouseButton.LeftButton and self._pick is not None:
+            pos = event.position().toPoint()
+            data = None
+            for it in self.items(pos):
+                d = it.data(0)
+                if d is not None:
+                    data = d; break
+            if data is not None:
+                self._pick(data[0], data[1])
+                event.accept()
+                return
+            self._pick(None, None)   # tyhjä klikkaus → poista valinta
+        super().mousePressEvent(event)
 
     def drawBackground(self, painter: QtGui.QPainter, rect: QtCore.QRectF) -> None:
         painter.fillRect(rect, QtGui.QColor(BG))
@@ -93,6 +112,7 @@ def _nice_length_mm(raw: float) -> float:
 
 class PlanView(QtWidgets.QWidget):
     """Interaktiivinen pohjapiirros usean kerroksen tuella."""
+    element_picked = QtCore.Signal(int, str, str)   # floor_idx, kind, id ("" = tyhjä)
 
     def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
         super().__init__(parent)
@@ -122,6 +142,7 @@ class PlanView(QtWidgets.QWidget):
         self._view.setTransformationAnchor(
             QtWidgets.QGraphicsView.ViewportAnchor.AnchorUnderMouse
         )
+        self._view._pick = self._on_pick
         layout.addWidget(self._view, stretch=1)
 
         self._placeholder = QtWidgets.QLabel(
@@ -197,6 +218,7 @@ class PlanView(QtWidgets.QWidget):
             wall_pen.setWidthF(th)
             item = self._scene.addLine(x0, -y0, x1, -y1, wall_pen)
             item.setZValue(1)
+            item.setData(0, ("wall", w.id))
             self._items[("wall", w.id)] = item
             if w.id in flags:
                 self._flag_line(x0, -y0, x1, -y1, th)
@@ -209,6 +231,7 @@ class PlanView(QtWidgets.QWidget):
             (x0, y0, *_), (x1, y1, *_) = b.axis[0], b.axis[1]
             item = self._scene.addLine(x0, -y0, x1, -y1, beam_pen)
             item.setZValue(2)
+            item.setData(0, ("beam", b.id))
             self._items[("beam", b.id)] = item
             if b.id in flags:
                 self._flag_line(x0, -y0, x1, -y1, 120.0)
@@ -225,6 +248,7 @@ class PlanView(QtWidgets.QWidget):
             else:
                 item = self._scene.addRect(cx - pw / 2, cy - pd / 2, pw, pd, pen, brush)
             item.setZValue(3)
+            item.setData(0, ("column", c.id))
             self._items[("column", c.id)] = item
             if c.id in flags:
                 self._flag_rect(cx, cy, pw, pd)
@@ -297,6 +321,19 @@ class PlanView(QtWidgets.QWidget):
         r = max(width / 2 + 120, 220)
         self._scene.addEllipse(cx - r, cy - r, 2 * r, 2 * r, self._flag_pen()).setZValue(6)
 
+    def _on_pick(self, kind, elem_id) -> None:
+        if not kind:
+            self.clear_selection()
+            self.element_picked.emit(-1, "", "")
+            return
+        self.highlight(kind, elem_id)
+        fi = max(0, self._floor_combo.currentIndex())
+        self.element_picked.emit(fi, kind, elem_id)
+
+    def clear_selection(self) -> None:
+        if self._hl_item is not None:
+            self._scene.removeItem(self._hl_item); self._hl_item = None
+
     def highlight(self, kind: str, elem_id: str) -> None:
         """Korosta valittu elementti (tarkistuslistasta klikattu)."""
         if self._hl_item is not None:
@@ -330,6 +367,7 @@ class PlanView(QtWidgets.QWidget):
         gline = self._scene.addLine(cx - ux * half, cy - uy * half,
                                     cx + ux * half, cy + uy * half, gap)
         gline.setZValue(2)
+        gline.setData(0, (op.opening_type, op.id))
         self._items[(op.opening_type, op.id)] = gline
         if flagged:
             self._flag_dot(cx, cy, width)

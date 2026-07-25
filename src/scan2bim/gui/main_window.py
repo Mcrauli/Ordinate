@@ -80,6 +80,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self._tabs = QtWidgets.QTabWidget()
         self._plan_view = PlanView()
+        self._plan_view.element_picked.connect(self._on_plan_pick)
         self._review = ReviewPanel()
         self._review.element_selected.connect(self._on_review_select)
         self._review.delete_requested.connect(self._on_review_delete)
@@ -94,6 +95,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._result_models: list = []
         self._result_multi = False
         self._last_cfg: PipelineConfig | None = None
+        self._selected = None
 
         root.addWidget(splitter, stretch=1)
 
@@ -107,6 +109,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self._progress_bar.setVisible(False)
         self._progress_bar.setFixedHeight(6)
         root.addWidget(self._progress_bar)
+
+        # Valintapalkki (näkyy kun elementtiä klikataan pohjassa): poista/peruuta
+        self._select_bar = self._build_select_bar()
+        self._select_bar.setVisible(False)
+        root.addWidget(self._select_bar)
 
         # Tulosfooter (näkyy konversion jälkeen): yhteenveto + avaa-painikkeet
         self._results_bar = self._build_results_bar()
@@ -153,10 +160,70 @@ class MainWindow(QtWidgets.QMainWindow):
         row.addWidget(open_dir)
         return bar
 
+    def _build_select_bar(self) -> QtWidgets.QWidget:
+        bar = QtWidgets.QFrame()
+        bar.setObjectName("panel")
+        row = QtWidgets.QHBoxLayout(bar)
+        row.setContentsMargins(14, 8, 14, 8)
+        row.setSpacing(12)
+        tag = QtWidgets.QLabel("Valittu")
+        tag.setStyleSheet(f"color:{TEXT};font-weight:700;")
+        row.addWidget(tag)
+        self._select_label = QtWidgets.QLabel("")
+        self._select_label.setStyleSheet(f"color:{TEXT};font-size:13px;")
+        row.addWidget(self._select_label)
+        row.addStretch()
+        del_btn = QtWidgets.QPushButton("Poista")
+        del_btn.clicked.connect(self._on_selected_delete)
+        row.addWidget(del_btn)
+        cancel = QtWidgets.QPushButton("Peruuta")
+        cancel.setObjectName("linkbtn")
+        cancel.clicked.connect(self._clear_selection)
+        row.addWidget(cancel)
+        return bar
+
+    def _element_by(self, floor_idx: int, kind: str, elem_id: str):
+        if not (0 <= floor_idx < len(self._result_models)):
+            return None
+        m = self._result_models[floor_idx]
+        if kind == "wall":
+            return next((w for w in m.walls if w.id == elem_id), None)
+        if kind == "column":
+            return next((c for c in m.columns if c.id == elem_id), None)
+        if kind == "beam":
+            return next((b for b in m.beams if b.id == elem_id), None)
+        return next((o for o in m.openings if o.id == elem_id), None)
+
+    def _on_plan_pick(self, floor_idx: int, kind: str, elem_id: str) -> None:
+        if not kind:
+            self._select_bar.setVisible(False)
+            self._selected = None
+            return
+        el = self._element_by(floor_idx, kind, elem_id)
+        conf = f" · luottamus {el.confidence:.2f}" if el is not None else ""
+        _fi = {"wall": "Seinä", "column": "Pilari", "beam": "Palkki",
+               "door": "Ovi", "window": "Ikkuna"}.get(kind, kind)
+        self._select_label.setText(f"{_fi} {elem_id}{conf}")
+        self._selected = (floor_idx, kind, elem_id)
+        self._select_bar.setVisible(True)
+
+    def _on_selected_delete(self) -> None:
+        if getattr(self, "_selected", None) is None:
+            return
+        floor_idx, kind, elem_id = self._selected
+        self._on_review_delete(floor_idx, kind, elem_id)
+        self._clear_selection()
+
+    def _clear_selection(self) -> None:
+        self._select_bar.setVisible(False)
+        self._selected = None
+        self._plan_view.clear_selection()
+
     def _on_convert(self, inputs: list, out: Path, cfg: PipelineConfig) -> None:
         self._log_panel.clear()
         self._last_out = out
         self._last_cfg = cfg
+        self._select_bar.setVisible(False)
         self._results_bar.setVisible(False)
         self._stage.reset()
         self._stage.setVisible(True)
