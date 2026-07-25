@@ -4,7 +4,7 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 [`Mcrauli/scan2bim-web`](https://github.com/Mcrauli/scan2bim-web/releases):iin;
 sovellus päivittää itsensä sieltä.
 
-## v0.8.2 (kehitteillä) — selkeämpi käyttöliittymä
+## v0.8.2 (25.7.2026) — selkeämpi käyttöliittymä
 - **Tulosfooter + "Avaa IFC" / "Avaa kansio".** Konversion jälkeen näkyy
   yhteenveto (seinät, huoneet + pinta-ala, ovet, ikkunat) ja painikkeet jotka
   avaavat IFC:n suoraan (Revit/ArchiCAD/Solibri) tai tuloskansion — ei tarvitse
