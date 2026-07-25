@@ -1,6 +1,9 @@
-"""Pohjapiirros-esikatselu: piirtää StructuralModelin (seinät, huoneet, aukot)
-interaktiiviseen QGraphicsView'iin. Zoom rullalla, panoroi raahaamalla."""
+"""Pohjapiirros-esikatselu: piirtää StructuralModelin (seinät, huoneet, ovet,
+ikkunat) arkkitehtisymbolein interaktiiviseen QGraphicsView'iin.
+Zoom rullalla, panoroi raahaamalla. Taustaruudukko 1 m, mittajana alhaalla."""
 from __future__ import annotations
+
+import math
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
@@ -10,6 +13,75 @@ _ROOM_FILLS = [
     "#39d0d8", "#c6f24e", "#ff9e64", "#bb9af7",
     "#7dcfff", "#f7768e", "#9ece6a", "#e0af68",
 ]
+_WALL_COLOR = "#e6edf7"
+_GRID_MM = 1000.0          # taustaruudukon väli (1 m)
+_DOOR_COLOR = "#ffb35c"
+_WINDOW_COLOR = "#7dcfff"
+
+
+class _PlanGraphicsView(QtWidgets.QGraphicsView):
+    """Ruudukko taustalla, mittajana päällä, zoom rullalla."""
+
+    def drawBackground(self, painter: QtGui.QPainter, rect: QtCore.QRectF) -> None:
+        painter.fillRect(rect, QtGui.QColor(BG))
+        # Näytä ruudukko vain kun ruudut ovat järkevän kokoisia (ei sumua kaukaa).
+        px_per_mm = self.transform().m11()
+        if px_per_mm * _GRID_MM < 6:
+            return
+        left = math.floor(rect.left() / _GRID_MM) * _GRID_MM
+        top = math.floor(rect.top() / _GRID_MM) * _GRID_MM
+        fine = QtGui.QPen(QtGui.QColor(255, 255, 255, 12))
+        fine.setCosmetic(True)
+        painter.setPen(fine)
+        x = left
+        while x < rect.right():
+            painter.drawLine(QtCore.QPointF(x, rect.top()), QtCore.QPointF(x, rect.bottom()))
+            x += _GRID_MM
+        y = top
+        while y < rect.bottom():
+            painter.drawLine(QtCore.QPointF(rect.left(), y), QtCore.QPointF(rect.right(), y))
+            y += _GRID_MM
+
+    def drawForeground(self, painter: QtGui.QPainter, rect: QtCore.QRectF) -> None:
+        # Mittajana kiinteänä viewport-koordinaatistossa (ei zoomaudu).
+        painter.save()
+        painter.resetTransform()
+        px_per_mm = self.transform().m11()
+        if px_per_mm <= 0:
+            painter.restore(); return
+        # Valitse "siisti" metrimäärä jonka jana on ~90–160 px.
+        target_px = 120.0
+        raw_mm = target_px / px_per_mm
+        nice = _nice_length_mm(raw_mm)
+        bar_px = nice * px_per_mm
+        vh = self.viewport().height()
+        x0, y0 = 20.0, vh - 24.0
+        pen = QtGui.QPen(QtGui.QColor(TEXT), 2)
+        painter.setPen(pen)
+        painter.drawLine(QtCore.QPointF(x0, y0), QtCore.QPointF(x0 + bar_px, y0))
+        painter.drawLine(QtCore.QPointF(x0, y0 - 5), QtCore.QPointF(x0, y0 + 5))
+        painter.drawLine(QtCore.QPointF(x0 + bar_px, y0 - 5), QtCore.QPointF(x0 + bar_px, y0 + 5))
+        label = f"{nice/1000:.0f} m" if nice >= 1000 else f"{nice:.0f} mm"
+        painter.setPen(QtGui.QColor(TEXT_DIM))
+        painter.drawText(QtCore.QPointF(x0, y0 - 8), label)
+        painter.restore()
+
+    def wheelEvent(self, event: QtGui.QWheelEvent) -> None:
+        factor = 1.15 if event.angleDelta().y() > 0 else 1 / 1.15
+        self.scale(factor, factor)
+        self.viewport().update()
+
+
+def _nice_length_mm(raw: float) -> float:
+    """Lähin 'siisti' pituus (1/2/5 × 10ⁿ) mm."""
+    if raw <= 0:
+        return 1000.0
+    exp = math.floor(math.log10(raw))
+    base = 10 ** exp
+    for m in (1, 2, 5, 10):
+        if m * base >= raw:
+            return float(m * base)
+    return float(10 * base)
 
 
 class PlanView(QtWidgets.QWidget):
@@ -35,9 +107,8 @@ class PlanView(QtWidgets.QWidget):
         layout.addLayout(bar)
 
         self._scene = QtWidgets.QGraphicsScene(self)
-        self._view = QtWidgets.QGraphicsView(self._scene)
+        self._view = _PlanGraphicsView(self._scene)
         self._view.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
-        self._view.setBackgroundBrush(QtGui.QColor(BG))
         self._view.setDragMode(QtWidgets.QGraphicsView.DragMode.ScrollHandDrag)
         self._view.setTransformationAnchor(
             QtWidgets.QGraphicsView.ViewportAnchor.AnchorUnderMouse
@@ -82,68 +153,113 @@ class PlanView(QtWidgets.QWidget):
 
     def _draw(self, model) -> None:
         self._scene.clear()
-        # Y käännetään (maailman y ylös, ruudun y alas).
-        flip = QtGui.QTransform().scale(1, -1)
 
-        # Huoneet
+        # --- Huoneet: pehmeä täyttö + pinta-alachippi ---
         for i, sp in enumerate(getattr(model, "spaces", []) or []):
-            poly = QtGui.QPolygonF([QtCore.QPointF(x, y) for x, y in sp.boundary])
+            poly = QtGui.QPolygonF([QtCore.QPointF(x, -y) for x, y in sp.boundary])
             fill = QtGui.QColor(_ROOM_FILLS[i % len(_ROOM_FILLS)])
-            fill.setAlpha(55)
-            item = self._scene.addPolygon(
-                flip.map(poly),
-                QtGui.QPen(QtGui.QColor(ACCENT_2), 12),
-                QtGui.QBrush(fill),
-            )
-            item.setZValue(0)
-            c = flip.map(poly).boundingRect().center()
+            fill.setAlpha(38)
+            self._scene.addPolygon(poly, QtGui.QPen(QtCore.Qt.PenStyle.NoPen),
+                                   QtGui.QBrush(fill)).setZValue(0)
             area = _polygon_area(sp.boundary) / 1e6  # m²
-            label = self._scene.addText(f"{area:.1f} m2")
-            label.setDefaultTextColor(QtGui.QColor(TEXT))
-            f = label.font(); f.setPointSize(11); f.setBold(True); label.setFont(f)
-            label.setFlag(QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemIgnoresTransformations)
-            label.setPos(c)
-            label.setZValue(3)
+            self._add_chip(f"{area:.1f} m²", poly.boundingRect().center())
 
-        # Seinät
-        wall_pen = QtGui.QPen(QtGui.QColor("#cbd5e1"))
+        # --- Seinät: umpiviivat, pyöreä pää ---
+        wall_pen = QtGui.QPen(QtGui.QColor(_WALL_COLOR))
         wall_pen.setCapStyle(QtCore.Qt.PenCapStyle.RoundCap)
+        wall_pen.setJoinStyle(QtCore.Qt.PenJoinStyle.RoundJoin)
         for w in getattr(model, "walls", []) or []:
             (x0, y0), (x1, y1) = w.axis[0], w.axis[1]
             wall_pen.setWidthF(max(float(w.thickness), 60.0))
-            line = self._scene.addLine(x0, -y0, x1, -y1, wall_pen)
-            line.setZValue(1)
+            self._scene.addLine(x0, -y0, x1, -y1, wall_pen).setZValue(1)
 
-        # Aukot (ovet/ikkunat)
+        # --- Ovet / ikkunat: aukko seinään + symboli ---
         for op in getattr(model, "openings", []) or []:
             w = next((w for w in model.walls if w.id == op.wall_id), None)
             if not w:
                 continue
-            (x0, y0), (x1, y1) = w.axis[0], w.axis[1]
-            import math
-            L = math.hypot(x1 - x0, y1 - y0) or 1.0
-            t = op.position_along / L
-            px, py = x0 + (x1 - x0) * t, y0 + (y1 - y0) * t
-            col = ACCENT if op.opening_type == "door" else ACCENT_2
-            dot = self._scene.addEllipse(
-                px - 120, -py - 120, 240, 240,
-                QtGui.QPen(QtCore.Qt.PenStyle.NoPen), QtGui.QBrush(QtGui.QColor(col)),
-            )
-            dot.setZValue(2)
+            self._draw_opening(op, w)
 
-        self._view.setSceneRect(self._scene.itemsBoundingRect().adjusted(-500, -500, 500, 500))
-        self._view.fitInView(self._scene.itemsBoundingRect(), QtCore.Qt.AspectRatioMode.KeepAspectRatio)
+        self._view.setSceneRect(self._scene.itemsBoundingRect().adjusted(-800, -800, 800, 800))
+        self._view.fitInView(self._scene.itemsBoundingRect().adjusted(-400, -400, 400, 400),
+                             QtCore.Qt.AspectRatioMode.KeepAspectRatio)
+        self._view.viewport().update()
 
         nw = len(getattr(model, "walls", []) or [])
         ns = len(getattr(model, "spaces", []) or [])
-        no = len(getattr(model, "openings", []) or [])
-        self._stats.setText(f"{nw} seinää · {ns} huonetta · {no} aukkoa")
+        nd = sum(1 for o in getattr(model, "openings", []) or [] if o.opening_type == "door")
+        nwin = sum(1 for o in getattr(model, "openings", []) or [] if o.opening_type != "door")
+        self._stats.setText(f"{nw} seinää · {ns} huonetta · {nd} ovea · {nwin} ikkunaa")
 
-    # --- vuorovaikutus --------------------------------------------------------
+    def _add_chip(self, text: str, center: QtCore.QPointF) -> None:
+        chip = self._scene.addText(text)
+        chip.setDefaultTextColor(QtGui.QColor(TEXT))
+        f = chip.font(); f.setPointSize(10); f.setBold(True); chip.setFont(f)
+        chip.setFlag(QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemIgnoresTransformations)
+        br = chip.boundingRect()
+        chip_path = QtGui.QPainterPath()
+        chip_path.addRoundedRect(QtCore.QRectF(0, 0, br.width() + 14, br.height() + 6), 6, 6)
+        bg = self._scene.addPath(
+            chip_path,
+            QtGui.QPen(QtCore.Qt.PenStyle.NoPen),
+            QtGui.QBrush(QtGui.QColor(BG_PANEL)),
+        )
+        bg.setFlag(QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemIgnoresTransformations)
+        bg.setPos(center.x() - br.width() / 2 - 7, center.y() - br.height() / 2 - 3)
+        bg.setZValue(4)
+        chip.setPos(center.x() - br.width() / 2, center.y() - br.height() / 2)
+        chip.setZValue(5)
 
-    def wheelEvent(self, event: QtGui.QWheelEvent) -> None:
-        factor = 1.15 if event.angleDelta().y() > 0 else 1 / 1.15
-        self._view.scale(factor, factor)
+    def _draw_opening(self, op, wall) -> None:
+        (x0, y0), (x1, y1) = wall.axis[0], wall.axis[1]
+        # Scene-koordinaatit (y käännetty).
+        p0 = QtCore.QPointF(x0, -y0); p1 = QtCore.QPointF(x1, -y1)
+        L = math.hypot(p1.x() - p0.x(), p1.y() - p0.y()) or 1.0
+        ux, uy = (p1.x() - p0.x()) / L, (p1.y() - p0.y()) / L
+        nx, ny = -uy, ux
+        width = float(getattr(op, "width", 0.0)) or 800.0
+        t = float(op.position_along)
+        cx, cy = p0.x() + ux * t, p0.y() + uy * t
+        half = width / 2.0
+        thick = max(float(wall.thickness), 60.0)
+
+        # 1) Aukko: "pyyhi" seinä taustan värillä aukon kohdalta.
+        gap = QtGui.QPen(QtGui.QColor(BG))
+        gap.setWidthF(thick + 4)
+        gap.setCapStyle(QtCore.Qt.PenCapStyle.FlatCap)
+        gline = self._scene.addLine(cx - ux * half, cy - uy * half,
+                                    cx + ux * half, cy + uy * half, gap)
+        gline.setZValue(2)
+
+        if op.opening_type == "door":
+            # Ovilehti + avautumiskaari (neljännesympyrä saranasta).
+            hx, hy = cx - ux * half, cy - uy * half          # sarana
+            lx, ly = hx + nx * width, hy + ny * width          # lehden pää
+            pen = QtGui.QPen(QtGui.QColor(_DOOR_COLOR), 0)
+            pen.setCosmetic(True); pen.setWidthF(2.0)
+            self._scene.addLine(hx, hy, lx, ly, pen).setZValue(3)
+            # kaari: kierrä saranasta lehdestä (n) kohti aukkoa (u)
+            path = QtGui.QPainterPath(QtCore.QPointF(lx, ly))
+            steps = 14
+            cross = nx * uy - ny * ux
+            sign = 1.0 if cross > 0 else -1.0
+            for k in range(1, steps + 1):
+                a = sign * (math.pi / 2) * (k / steps)
+                ca, sa = math.cos(a), math.sin(a)
+                vx = nx * ca - ny * sa
+                vy = nx * sa + ny * ca
+                path.lineTo(hx + vx * width, hy + vy * width)
+            arc = self._scene.addPath(path, pen)
+            arc.setZValue(3)
+        else:
+            # Ikkuna: lasilinja aukon poikki (kaksi ohutta viivaa seinän suunnassa).
+            pen = QtGui.QPen(QtGui.QColor(_WINDOW_COLOR), 0)
+            pen.setCosmetic(True); pen.setWidthF(2.0)
+            off = min(thick, 120.0) * 0.28
+            for s in (-off, off):
+                self._scene.addLine(cx - ux * half + nx * s, cy - uy * half + ny * s,
+                                    cx + ux * half + nx * s, cy + uy * half + ny * s,
+                                    pen).setZValue(3)
 
 
 def _polygon_area(pts: list) -> float:

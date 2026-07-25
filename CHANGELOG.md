@@ -4,6 +4,16 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 [`Mcrauli/scan2bim-web`](https://github.com/Mcrauli/scan2bim-web/releases):iin;
 sovellus päivittää itsensä sieltä.
 
+## v0.8.2 (kehitteillä) — selkeämpi käyttöliittymä
+- **Pohjapiirros-esikatselu näyttää oikealta pohjakuvalta.** Ovet piirretään
+  aukkona + avautumiskaarena ja ikkunat aukkona + lasilinjana (ennen pelkkä
+  piste), lisäksi hienovarainen 1 m -taustaruudukko, mittajana ja huoneiden
+  pinta-alachipit. Aiempi köyhä "viivat + pisteet" -näkymä korvattu.
+- **Voxel-koko-kenttä siistitty.** Manuaalinen syöttö on piilossa kun
+  "Automaattinen" on valittuna (oletus) — ilmestyy vain jos auto otetaan pois.
+  Auto valitsee koon datasta (pieni tila 8 mm → iso talo 25 mm), joten
+  useimpien ei tarvitse koskea siihen.
+
 ## v0.8.1 (24.7.2026) — ulkoskanni-robustius + nopeampi suodatin
 - **Rakennusvaippa-rajaus.** Ulkoskannit (maasto, piha, ulkoklutteri) räjäyttivät
   aiemmin footprintin ja maanpinta voitti lattiapiikin → roskamalli. Nyt katon

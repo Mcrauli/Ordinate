@@ -130,8 +130,14 @@ class FilePanel(QtWidgets.QWidget):
 
         self._auto_voxel = QtWidgets.QCheckBox("Automaattinen (suositeltu)")
         self._auto_voxel.setChecked(True)
-        self._auto_voxel.toggled.connect(lambda on: self._voxel.setEnabled(not on))
-        self._voxel.setEnabled(False)
+        self._auto_voxel.setToolTip(
+            "Valitsee voxelikoon datasta: pieni tila → tarkempi (8 mm), iso talo →\n"
+            "muistiturvallinen (25 mm). Manuaalinen säätö vain erikoistapauksiin."
+        )
+        # Auto on oletus → manuaalinen spinner PIILOSSA (ei harmaana häiritsemässä);
+        # ilmestyy vain jos auto otetaan pois.
+        self._auto_voxel.toggled.connect(lambda on: self._voxel.setVisible(not on))
+        self._voxel.setVisible(False)
         vx_row = QtWidgets.QVBoxLayout()
         vx_row.setSpacing(4)
         vx_row.addWidget(self._auto_voxel)
