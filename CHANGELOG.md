@@ -4,6 +4,15 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 [`Mcrauli/scan2bim-web`](https://github.com/Mcrauli/scan2bim-web/releases):iin;
 sovellus päivittää itsensä sieltä.
 
+## v0.8.3 (kehitteillä) — layout-korjaus + QA siistitty
+- **Vasen paneeli vierii pienessä ikkunassa.** Aiemmin asetukset puristuivat
+  päällekkäin kun sovellusta pienensi; nyt paneeli on scroll-alueessa ja
+  ylimenevä osa vierii siististi.
+- **Tarkkuusraportin mm-säädin poistettu.** Toleranssi oli vain raportin
+  läpäisyrima (montako % pisteistä ≤ X mm mallin pinnasta) — se ei koskaan
+  vaikuta itse malliin. Kiinteä 2.5 mm, ja rasti nimetty "Tarkkuusraportti"
+  selittävällä työkaluvihjeellä.
+
 ## v0.8.2 (25.7.2026) — selkeämpi käyttöliittymä
 - **Tulosfooter + "Avaa IFC" / "Avaa kansio".** Konversion jälkeen näkyy
   yhteenveto (seinät, huoneet + pinta-ala, ovet, ikkunat) ja painikkeet jotka

@@ -154,19 +154,15 @@ class FilePanel(QtWidgets.QWidget):
         )
         form.addRow("Rekisteröinti:", self._icp)
 
-        self._qa = QtWidgets.QCheckBox("QA/LOA-raportti")
+        self._qa = QtWidgets.QCheckBox("Tarkkuusraportti")
         self._qa.setChecked(True)
-        self._qa_tol = QtWidgets.QDoubleSpinBox()
-        self._qa_tol.setRange(0.5, 25.0)
-        self._qa_tol.setSingleStep(0.5)
-        self._qa_tol.setValue(2.5)
-        self._qa_tol.setSuffix(" mm")
-        qa_row = QtWidgets.QHBoxLayout()
-        qa_row.addWidget(self._qa)
-        qa_row.addWidget(QtWidgets.QLabel("tol:"))
-        qa_row.addWidget(self._qa_tol)
-        qa_row.addStretch()
-        form.addRow("Tarkkuus:", qa_row)
+        self._qa.setToolTip(
+            "Vertaa valmiin mallin pinnat takaisin raakaskanniin ja kirjoittaa\n"
+            "qa_report.txt:n: mediaani- ja maksimipoikkeama, % pisteistä\n"
+            "toleranssin sisällä, per seinä/laatta (USIBD LOA -tyylinen laatu-\n"
+            "todiste). EI vaikuta itse malliin — pelkkä raportti."
+        )
+        form.addRow("Tarkkuus:", self._qa)
 
         self._sem_filter = QtWidgets.QCheckBox("Kalustesuodatus (PointNet)")
         self._sem_filter.setChecked(_MODEL_AVAILABLE)
@@ -259,7 +255,7 @@ class FilePanel(QtWidgets.QWidget):
             export_ifc=self._ifc.isChecked(),
             export_dxf=False,   # pääkäyttö IFC (Revit/ArchiCAD); DXF poistettu GUI:sta
             export_qa=self._qa.isChecked(),
-            qa_tolerance=self._qa_tol.value(),
+            qa_tolerance=2.5,   # raportin läpäisyrima (mm); ei vaikuta malliin
             icp_refine=self._icp.isChecked(),
             semantic_filter_mode=(
                 ("pointnet-retail" if self._site_type.currentIndex() == 1 else "pointnet")

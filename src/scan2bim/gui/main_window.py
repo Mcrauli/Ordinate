@@ -66,8 +66,16 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self._file_panel = FilePanel()
         self._file_panel.convert_requested.connect(self._on_convert)
-        self._file_panel.setFixedWidth(320)
-        splitter.addWidget(self._file_panel)
+        # Scroll-alue: kun ikkuna madaltuu, paneeli vierii eikä puristu kasaan.
+        panel_scroll = QtWidgets.QScrollArea()
+        panel_scroll.setWidget(self._file_panel)
+        panel_scroll.setWidgetResizable(True)
+        panel_scroll.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
+        panel_scroll.setHorizontalScrollBarPolicy(
+            QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        panel_scroll.setFixedWidth(330)
+        splitter.addWidget(panel_scroll)
 
         self._tabs = QtWidgets.QTabWidget()
         self._plan_view = PlanView()
