@@ -4,7 +4,7 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 [`Mcrauli/scan2bim-web`](https://github.com/Mcrauli/scan2bim-web/releases):iin;
 sovellus päivittää itsensä sieltä.
 
-## v0.8.3 (kehitteillä) — layout-korjaus + QA siistitty
+## v0.8.3 (25.7.2026) — layout-korjaus + QA siistitty
 - **Pohjapiirros näyttää nyt myös laatat, pilarit ja palkit.** Lattia-laatan
   footprint hienovaraisena katkoviivana, pilarit umpitäyttönä (poché)
   profiilin kokoisina, palkit katkoviivana (yläpuolinen rakenne). Ennen näkyi
