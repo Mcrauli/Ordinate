@@ -4,6 +4,13 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 [`Mcrauli/scan2bim-web`](https://github.com/Mcrauli/scan2bim-web/releases):iin;
 sovellus päivittää itsensä sieltä.
 
+## v0.8.7 (25.7.2026) — ammattimainen ulkoasu
+- **Käyttöliittymän visuaalinen uudistus.** Selkeä sivupalkki-rakenne (oma tausta
+  + reuna erottaa asetukset sisällöstä), siistit lime-valintaruudut checkmarkilla
+  (ei enää emoji-vedokset), alleviivatut välilehdet, viimeistellyt syöttökentät ja
+  napit (ensisijainen lime / toissijainen ääriviiva), hienovaraiset reunat ja
+  syvyys, hiotut vierityspalkit ja työkaluvihjeet. Yhtenäinen, myyntikelpoinen ilme.
+
 ## v0.8.6 (25.7.2026) — maalaa-valinta, IFC-nappi pohjaan, kapea-ikkuna-korjaus
 - **Maalaamalla valinta.** Vasen veto tyhjästä piirtää valintalaatikon ja valitsee
   kaikki sen sisään osuvat elementit kerralla → **Poista** poistaa ne yhdellä

@@ -89,8 +89,8 @@ class FilePanel(QtWidgets.QWidget):
         self._input_paths: list[Path] = []
 
         layout = QtWidgets.QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(16)
+        layout.setContentsMargins(18, 16, 18, 16)
+        layout.setSpacing(13)
 
         # Syötetiedosto
         in_label = QtWidgets.QLabel("Pistepilvi")
@@ -110,7 +110,8 @@ class FilePanel(QtWidgets.QWidget):
         self._out_edit = QtWidgets.QLineEdit("output")
         out_row.addWidget(self._out_edit, stretch=1)
         browse = QtWidgets.QPushButton("…")
-        browse.setFixedWidth(36)
+        browse.setObjectName("iconbtn")
+        browse.setFixedSize(38, 36)
         browse.clicked.connect(self._browse_out)
         out_row.addWidget(browse)
         layout.addLayout(out_row)
