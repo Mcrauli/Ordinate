@@ -4,6 +4,14 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 [`Mcrauli/scan2bim-web`](https://github.com/Mcrauli/scan2bim-web/releases):iin;
 sovellus päivittää itsensä sieltä.
 
+## v0.8.4 (kehitteillä) — tarkistus-kerros
+- **Epävarmat elementit merkitään ja voi poistaa ennen exporttia.** Matalan
+  luottamuksen elementit (esim. yksipuoliset ulkoseinät, heikot aukot) näkyvät
+  pohjakuvassa punaisella tarkistusmerkinnällä, ja uusi **Tarkistus**-välilehti
+  listaa ne. Klikkaa → korostuu pohjassa; **Poista** → pois mallista;
+  **Kirjoita IFC uudelleen** → puhtaampi IFC arkkitehdille. Lunastaa "ei tarvitse
+  korjata jälkikäteen" -lupauksen niiltä osin kuin luottamus paljastaa virheet.
+
 ## v0.8.3 (25.7.2026) — layout-korjaus + QA siistitty
 - **Pohjapiirros näyttää nyt myös laatat, pilarit ja palkit.** Lattia-laatan
   footprint hienovaraisena katkoviivana, pilarit umpitäyttönä (poché)

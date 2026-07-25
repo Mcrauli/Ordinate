@@ -7,7 +7,10 @@ import math
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
+from scan2bim.core.qa.deviation import flag_low_confidence
 from scan2bim.gui.theme import ACCENT, ACCENT_2, BG, BG_PANEL, TEXT, TEXT_DIM
+
+_FLAG_COLOR = "#ff5c5c"    # tarkistettava (matala luottamus)
 
 _ROOM_FILLS = [
     "#39d0d8", "#c6f24e", "#ff9e64", "#bb9af7",
@@ -94,6 +97,8 @@ class PlanView(QtWidgets.QWidget):
     def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
         super().__init__(parent)
         self._models: list = []
+        self._items: dict = {}
+        self._hl_item = None
 
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -157,6 +162,9 @@ class PlanView(QtWidgets.QWidget):
 
     def _draw(self, model) -> None:
         self._scene.clear()
+        self._items = {}          # (kind, id) -> QGraphicsItem (highlightia varten)
+        self._hl_item = None
+        flags = {f["id"] for f in flag_low_confidence(model)}
 
         # --- Laatta (lattia-footprint): hienovarainen ääriviiva pohjalle ---
         for s in getattr(model, "slabs", []) or []:
@@ -185,8 +193,13 @@ class PlanView(QtWidgets.QWidget):
         wall_pen.setJoinStyle(QtCore.Qt.PenJoinStyle.RoundJoin)
         for w in getattr(model, "walls", []) or []:
             (x0, y0), (x1, y1) = w.axis[0], w.axis[1]
-            wall_pen.setWidthF(max(float(w.thickness), 60.0))
-            self._scene.addLine(x0, -y0, x1, -y1, wall_pen).setZValue(1)
+            th = max(float(w.thickness), 60.0)
+            wall_pen.setWidthF(th)
+            item = self._scene.addLine(x0, -y0, x1, -y1, wall_pen)
+            item.setZValue(1)
+            self._items[("wall", w.id)] = item
+            if w.id in flags:
+                self._flag_line(x0, -y0, x1, -y1, th)
 
         # --- Palkit: katkoviiva (yläpuolinen rakenne, plan-konventio) ---
         beam_pen = QtGui.QPen(QtGui.QColor(_BEAM_COLOR))
@@ -194,7 +207,11 @@ class PlanView(QtWidgets.QWidget):
         beam_pen.setStyle(QtCore.Qt.PenStyle.DashLine)
         for b in getattr(model, "beams", []) or []:
             (x0, y0, *_), (x1, y1, *_) = b.axis[0], b.axis[1]
-            self._scene.addLine(x0, -y0, x1, -y1, beam_pen).setZValue(2)
+            item = self._scene.addLine(x0, -y0, x1, -y1, beam_pen)
+            item.setZValue(2)
+            self._items[("beam", b.id)] = item
+            if b.id in flags:
+                self._flag_line(x0, -y0, x1, -y1, 120.0)
 
         # --- Pilarit: umpitäyttö (poché) sijainnissa profiilin kokoisena ---
         for c in getattr(model, "columns", []) or []:
@@ -208,13 +225,16 @@ class PlanView(QtWidgets.QWidget):
             else:
                 item = self._scene.addRect(cx - pw / 2, cy - pd / 2, pw, pd, pen, brush)
             item.setZValue(3)
+            self._items[("column", c.id)] = item
+            if c.id in flags:
+                self._flag_rect(cx, cy, pw, pd)
 
         # --- Ovet / ikkunat: aukko seinään + symboli ---
         for op in getattr(model, "openings", []) or []:
             w = next((w for w in model.walls if w.id == op.wall_id), None)
             if not w:
                 continue
-            self._draw_opening(op, w)
+            self._draw_opening(op, w, flagged=op.id in flags)
 
         self._view.setSceneRect(self._scene.itemsBoundingRect().adjusted(-800, -800, 800, 800))
         self._view.fitInView(self._scene.itemsBoundingRect().adjusted(-400, -400, 400, 400),
@@ -253,7 +273,44 @@ class PlanView(QtWidgets.QWidget):
         chip.setPos(center.x() - br.width() / 2, center.y() - br.height() / 2)
         chip.setZValue(5)
 
-    def _draw_opening(self, op, wall) -> None:
+    # --- tarkistus-merkinnät (matala luottamus) -------------------------------
+
+    def _flag_pen(self) -> QtGui.QPen:
+        pen = QtGui.QPen(QtGui.QColor(_FLAG_COLOR))
+        pen.setCosmetic(True); pen.setWidthF(2.2)
+        pen.setStyle(QtCore.Qt.PenStyle.DashLine)
+        return pen
+
+    def _flag_line(self, x0: float, y0: float, x1: float, y1: float, width: float) -> None:
+        pen = self._flag_pen()
+        pen.setCosmetic(False); pen.setWidthF(width + 90)
+        pen.setCapStyle(QtCore.Qt.PenCapStyle.RoundCap)
+        col = QtGui.QColor(_FLAG_COLOR); col.setAlpha(150); pen.setColor(col)
+        self._scene.addLine(x0, y0, x1, y1, pen).setZValue(6)
+
+    def _flag_rect(self, cx: float, cy: float, w: float, d: float) -> None:
+        m = 130.0
+        self._scene.addRect(cx - w / 2 - m, cy - d / 2 - m, w + 2 * m, d + 2 * m,
+                            self._flag_pen()).setZValue(6)
+
+    def _flag_dot(self, cx: float, cy: float, width: float) -> None:
+        r = max(width / 2 + 120, 220)
+        self._scene.addEllipse(cx - r, cy - r, 2 * r, 2 * r, self._flag_pen()).setZValue(6)
+
+    def highlight(self, kind: str, elem_id: str) -> None:
+        """Korosta valittu elementti (tarkistuslistasta klikattu)."""
+        if self._hl_item is not None:
+            self._scene.removeItem(self._hl_item); self._hl_item = None
+        item = self._items.get((kind, elem_id))
+        if item is None:
+            return
+        r = item.sceneBoundingRect().adjusted(-180, -180, 180, 180)
+        pen = QtGui.QPen(QtGui.QColor(ACCENT)); pen.setCosmetic(True); pen.setWidthF(2.5)
+        self._hl_item = self._scene.addRect(r, pen)
+        self._hl_item.setZValue(7)
+        self._view.centerOn(r.center())
+
+    def _draw_opening(self, op, wall, flagged: bool = False) -> None:
         (x0, y0), (x1, y1) = wall.axis[0], wall.axis[1]
         # Scene-koordinaatit (y käännetty).
         p0 = QtCore.QPointF(x0, -y0); p1 = QtCore.QPointF(x1, -y1)
@@ -273,6 +330,9 @@ class PlanView(QtWidgets.QWidget):
         gline = self._scene.addLine(cx - ux * half, cy - uy * half,
                                     cx + ux * half, cy + uy * half, gap)
         gline.setZValue(2)
+        self._items[(op.opening_type, op.id)] = gline
+        if flagged:
+            self._flag_dot(cx, cy, width)
 
         if op.opening_type == "door":
             # Ovilehti + avautumiskaari (neljännesympyrä saranasta).

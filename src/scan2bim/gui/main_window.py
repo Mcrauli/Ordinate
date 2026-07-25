@@ -11,6 +11,7 @@ from scan2bim.gui.file_panel import FilePanel
 from scan2bim.gui.log_panel import LogPanel
 from scan2bim.gui.plan_view import PlanView, _polygon_area
 from scan2bim.gui.process_worker import ProcessWorker
+from scan2bim.gui.review_panel import ReviewPanel
 from scan2bim.gui.stage_indicator import StageIndicator, stage_for_message
 from scan2bim.gui.update_banner import UpdateBanner, UpdateChecker, perform_update
 from scan2bim.gui.brand import app_icon, logo_pixmap
@@ -79,11 +80,20 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self._tabs = QtWidgets.QTabWidget()
         self._plan_view = PlanView()
+        self._review = ReviewPanel()
+        self._review.element_selected.connect(self._on_review_select)
+        self._review.delete_requested.connect(self._on_review_delete)
+        self._review.reexport_requested.connect(self._on_reexport)
         self._log_panel = LogPanel()
         self._tabs.addTab(self._plan_view, "Pohja")
+        self._review_tab_idx = self._tabs.addTab(self._review, "Tarkistus")
         self._tabs.addTab(self._log_panel, "Loki")
         splitter.addWidget(self._tabs)
         splitter.setStretchFactor(1, 1)
+
+        self._result_models: list = []
+        self._result_multi = False
+        self._last_cfg: PipelineConfig | None = None
 
         root.addWidget(splitter, stretch=1)
 
@@ -146,6 +156,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def _on_convert(self, inputs: list, out: Path, cfg: PipelineConfig) -> None:
         self._log_panel.clear()
         self._last_out = out
+        self._last_cfg = cfg
         self._results_bar.setVisible(False)
         self._stage.reset()
         self._stage.setVisible(True)
@@ -179,8 +190,61 @@ class MainWindow(QtWidgets.QMainWindow):
             self._log_panel.set_results(result.summary())
             self._plan_view.show_model(result)
         self._tabs.setCurrentWidget(self._plan_view)   # näytä pohja heti
+        self._result_models = models
+        self._result_multi = isinstance(result, list)
+        self._review.set_models(models)
+        self._update_review_tab()
         self._show_results(models)
         self.statusBar().showMessage("Valmis")
+
+    def _update_review_tab(self) -> None:
+        n = self._review.flag_count()
+        self._tabs.setTabText(self._review_tab_idx, f"Tarkistus ({n})" if n else "Tarkistus")
+
+    def _on_review_select(self, floor_idx: int, kind: str, elem_id: str) -> None:
+        if 0 <= floor_idx < len(self._result_models):
+            self._plan_view._floor_combo.setCurrentIndex(floor_idx)
+        self._tabs.setCurrentWidget(self._plan_view)
+        self._plan_view.highlight(kind, elem_id)
+
+    def _on_review_delete(self, floor_idx: int, kind: str, elem_id: str) -> None:
+        if not (0 <= floor_idx < len(self._result_models)):
+            return
+        m = self._result_models[floor_idx]
+        if kind == "wall":
+            m.walls = [w for w in m.walls if w.id != elem_id]
+        elif kind == "column":
+            m.columns = [c for c in m.columns if c.id != elem_id]
+        elif kind == "beam":
+            m.beams = [b for b in m.beams if b.id != elem_id]
+        else:  # door / window
+            m.openings = [o for o in m.openings if o.id != elem_id]
+        self._plan_view.show_models(self._result_models)
+        self._review.mark_edited()
+        self._update_review_tab()
+        self._log_panel.info(f"Poistettu {kind} {elem_id} (kerros {floor_idx}).")
+
+    def _on_reexport(self) -> None:
+        from scan2bim.core.ifc.writer import write_ifc, write_building_ifc
+        crs = self._last_cfg.crs_epsg if self._last_cfg else 3067
+        out = self._last_out
+        try:
+            if self._result_multi:
+                for i, m in enumerate(self._result_models):
+                    fd = out / f"floor_{i:02d}"; fd.mkdir(exist_ok=True)
+                    write_ifc(m, fd / "model.ifc", crs_epsg=crs)
+                    m.save(fd / "model.json")
+                write_building_ifc(self._result_models, out / "building.ifc", crs_epsg=crs)
+            else:
+                write_ifc(self._result_models[0], out / "model.ifc", crs_epsg=crs)
+                self._result_models[0].save(out / "model.json")
+        except Exception as e:
+            self._log_panel.error(f"IFC:n uudelleenkirjoitus epäonnistui: {e}")
+            QtWidgets.QMessageBox.warning(self, "Virhe", str(e))
+            return
+        self._review.mark_saved()
+        self._log_panel.success("✓ IFC kirjoitettu uudelleen muokatusta mallista.")
+        self.statusBar().showMessage("IFC päivitetty")
 
     def _show_results(self, models: list) -> None:
         walls = sum(len(getattr(m, "walls", []) or []) for m in models)
