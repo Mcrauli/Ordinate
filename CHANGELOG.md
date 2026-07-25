@@ -4,7 +4,7 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 [`Mcrauli/scan2bim-web`](https://github.com/Mcrauli/scan2bim-web/releases):iin;
 sovellus päivittää itsensä sieltä.
 
-## v0.8.5 (kehitteillä) — klikkaa & poista pohjakuvassa
+## v0.8.5 (25.7.2026) — klikkaa & poista pohjakuvassa
 - **Klikkaa mitä tahansa elementtiä pohjassa → poista.** Seinän, pilarin, palkin
   tai aukon voi valita suoraan pohjapiirroksesta (ei vain tarkistuslistasta):
   klikkaus korostaa sen ja näyttää valintapalkin (tyyppi + luottamus) jossa
