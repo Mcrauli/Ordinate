@@ -5,6 +5,10 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 sovellus päivittää itsensä sieltä.
 
 ## v0.8.3 (kehitteillä) — layout-korjaus + QA siistitty
+- **Pohjapiirros näyttää nyt myös laatat, pilarit ja palkit.** Lattia-laatan
+  footprint hienovaraisena katkoviivana, pilarit umpitäyttönä (poché)
+  profiilin kokoisina, palkit katkoviivana (yläpuolinen rakenne). Ennen näkyi
+  vain seinät/huoneet/aukot.
 - **Vasen paneeli vierii pienessä ikkunassa.** Aiemmin asetukset puristuivat
   päällekkäin kun sovellusta pienensi; nyt paneeli on scroll-alueessa ja
   ylimenevä osa vierii siististi.

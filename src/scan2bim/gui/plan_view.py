@@ -17,6 +17,10 @@ _WALL_COLOR = "#e6edf7"
 _GRID_MM = 1000.0          # taustaruudukon väli (1 m)
 _DOOR_COLOR = "#ffb35c"
 _WINDOW_COLOR = "#7dcfff"
+_SLAB_COLOR = "#5b6b7f"     # lattia-footprintin ääriviiva (himmeä)
+_BEAM_COLOR = "#bb9af7"     # palkki (katkoviiva, yläpuolinen)
+_COLUMN_FILL = "#e0af68"    # pilari (umpitäyttö)
+_COLUMN_EDGE = "#8a6a3c"
 
 
 class _PlanGraphicsView(QtWidgets.QGraphicsView):
@@ -154,6 +158,17 @@ class PlanView(QtWidgets.QWidget):
     def _draw(self, model) -> None:
         self._scene.clear()
 
+        # --- Laatta (lattia-footprint): hienovarainen ääriviiva pohjalle ---
+        for s in getattr(model, "slabs", []) or []:
+            if getattr(s, "slab_type", "") != "floor" or len(getattr(s, "boundary", []) or []) < 3:
+                continue
+            poly = QtGui.QPolygonF([QtCore.QPointF(x, -y) for x, y in s.boundary])
+            pen = QtGui.QPen(QtGui.QColor(_SLAB_COLOR))
+            pen.setCosmetic(True); pen.setWidthF(1.4)
+            pen.setStyle(QtCore.Qt.PenStyle.DashLine)
+            fill = QtGui.QColor(_SLAB_COLOR); fill.setAlpha(20)
+            self._scene.addPolygon(poly, pen, QtGui.QBrush(fill)).setZValue(-1)
+
         # --- Huoneet: pehmeä täyttö + pinta-alachippi ---
         for i, sp in enumerate(getattr(model, "spaces", []) or []):
             poly = QtGui.QPolygonF([QtCore.QPointF(x, -y) for x, y in sp.boundary])
@@ -173,6 +188,27 @@ class PlanView(QtWidgets.QWidget):
             wall_pen.setWidthF(max(float(w.thickness), 60.0))
             self._scene.addLine(x0, -y0, x1, -y1, wall_pen).setZValue(1)
 
+        # --- Palkit: katkoviiva (yläpuolinen rakenne, plan-konventio) ---
+        beam_pen = QtGui.QPen(QtGui.QColor(_BEAM_COLOR))
+        beam_pen.setCosmetic(True); beam_pen.setWidthF(1.6)
+        beam_pen.setStyle(QtCore.Qt.PenStyle.DashLine)
+        for b in getattr(model, "beams", []) or []:
+            (x0, y0, *_), (x1, y1, *_) = b.axis[0], b.axis[1]
+            self._scene.addLine(x0, -y0, x1, -y1, beam_pen).setZValue(2)
+
+        # --- Pilarit: umpitäyttö (poché) sijainnissa profiilin kokoisena ---
+        for c in getattr(model, "columns", []) or []:
+            cx, cy = c.location[0], -c.location[1]
+            pw = max(float(c.profile.width), 120.0)
+            pd = max(float(c.profile.depth), 120.0)
+            pen = QtGui.QPen(QtGui.QColor(_COLUMN_EDGE)); pen.setCosmetic(True); pen.setWidthF(1.5)
+            brush = QtGui.QBrush(QtGui.QColor(_COLUMN_FILL))
+            if c.profile.shape == "circle":
+                item = self._scene.addEllipse(cx - pw / 2, cy - pd / 2, pw, pd, pen, brush)
+            else:
+                item = self._scene.addRect(cx - pw / 2, cy - pd / 2, pw, pd, pen, brush)
+            item.setZValue(3)
+
         # --- Ovet / ikkunat: aukko seinään + symboli ---
         for op in getattr(model, "openings", []) or []:
             w = next((w for w in model.walls if w.id == op.wall_id), None)
@@ -189,7 +225,14 @@ class PlanView(QtWidgets.QWidget):
         ns = len(getattr(model, "spaces", []) or [])
         nd = sum(1 for o in getattr(model, "openings", []) or [] if o.opening_type == "door")
         nwin = sum(1 for o in getattr(model, "openings", []) or [] if o.opening_type != "door")
-        self._stats.setText(f"{nw} seinää · {ns} huonetta · {nd} ovea · {nwin} ikkunaa")
+        nc = len(getattr(model, "columns", []) or [])
+        nb = len(getattr(model, "beams", []) or [])
+        parts = [f"{nw} seinää", f"{ns} huonetta", f"{nd} ovea", f"{nwin} ikkunaa"]
+        if nc:
+            parts.append(f"{nc} pilaria")
+        if nb:
+            parts.append(f"{nb} palkkia")
+        self._stats.setText(" · ".join(parts))
 
     def _add_chip(self, text: str, center: QtCore.QPointF) -> None:
         chip = self._scene.addText(text)
