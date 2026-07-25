@@ -42,6 +42,15 @@ QPushButton {{
 QPushButton:hover {{ background: {ACCENT_HOVER}; }}
 QPushButton:disabled {{ background: {BG_WIDGET}; color: {TEXT_DIM}; }}
 
+/* Toissijainen "link"-painike (avaa kansio, palaute) — huomaamaton */
+QPushButton#linkbtn {{
+    background: transparent;
+    color: {TEXT_DIM};
+    font-weight: 600;
+    padding: 8px 12px;
+}}
+QPushButton#linkbtn:hover {{ background: {BG_WIDGET}; color: {ACCENT}; }}
+
 /* Välilehdet */
 QTabWidget::pane {{ border: 1px solid {BG_WIDGET}; border-radius: 8px; top: -1px; }}
 QTabBar::tab {{

@@ -5,6 +5,13 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 sovellus päivittää itsensä sieltä.
 
 ## v0.8.2 (kehitteillä) — selkeämpi käyttöliittymä
+- **Tulosfooter + "Avaa IFC" / "Avaa kansio".** Konversion jälkeen näkyy
+  yhteenveto (seinät, huoneet + pinta-ala, ovet, ikkunat) ja painikkeet jotka
+  avaavat IFC:n suoraan (Revit/ArchiCAD/Solibri) tai tuloskansion — ei tarvitse
+  etsiä tiedostoa käsin resurssienhallinnasta.
+- **Vaihekohtainen edistyminen.** Pyörivän spinnerin tilalle vaiherivi
+  (Lataus → Esikäsittely → Suodatus → Detektio → IFC) joka syttyy ajon edetessä
+  → pitkä ajo ei tunnu jumilta, näkee missä mennään.
 - **Pohjapiirros-esikatselu näyttää oikealta pohjakuvalta.** Ovet piirretään
   aukkona + avautumiskaarena ja ikkunat aukkona + lasilinjana (ennen pelkkä
   piste), lisäksi hienovarainen 1 m -taustaruudukko, mittajana ja huoneiden
