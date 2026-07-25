@@ -65,21 +65,13 @@ class MainWindow(QtWidgets.QMainWindow):
         splitter = QtWidgets.QSplitter(QtCore.Qt.Orientation.Horizontal)
         splitter.setChildrenCollapsible(False)
 
+        # Sivupalkki: asetukset vierivät, Konvertoi kiinnitetty alalaitaan
+        # (FilePanel hoitaa oman vieritys/footer-rakenteensa).
         self._file_panel = FilePanel()
         self._file_panel.setObjectName("sidebar")
+        self._file_panel.setFixedWidth(336)
         self._file_panel.convert_requested.connect(self._on_convert)
-        # Scroll-alue: kun ikkuna madaltuu, paneeli vierii eikä puristu kasaan.
-        panel_scroll = QtWidgets.QScrollArea()
-        panel_scroll.setObjectName("sidebarscroll")
-        panel_scroll.setWidget(self._file_panel)
-        panel_scroll.setWidgetResizable(True)
-        panel_scroll.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
-        panel_scroll.setHorizontalScrollBarPolicy(
-            QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-        )
-        panel_scroll.setFixedWidth(336)
-        panel_scroll.viewport().setStyleSheet("background: transparent;")
-        splitter.addWidget(panel_scroll)
+        splitter.addWidget(self._file_panel)
 
         self._tabs = QtWidgets.QTabWidget()
         self._plan_view = PlanView()

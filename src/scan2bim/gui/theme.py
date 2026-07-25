@@ -30,12 +30,13 @@ QMainWindow, QWidget {{
 }}
 
 /* Sivupalkki */
-QScrollArea#sidebarscroll {{
+QWidget#sidebar {{
     background: {BG_PANEL};
-    border: none;
     border-right: 1px solid {BORDER};
 }}
-QWidget#sidebar {{ background: {BG_PANEL}; }}
+QScrollArea#sidebarscroll {{ background: transparent; border: none; }}
+QWidget#sidebarcontent {{ background: transparent; }}
+QWidget#sidebarfooter {{ background: {BG_PANEL}; border-top: 1px solid {BORDER}; }}
 
 /* Kortit / palkit */
 QFrame#panel {{

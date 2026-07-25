@@ -4,6 +4,12 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 [`Mcrauli/scan2bim-web`](https://github.com/Mcrauli/scan2bim-web/releases):iin;
 sovellus päivittää itsensä sieltä.
 
+## v0.8.8 (25.7.2026) — Konvertoi aina näkyvissä
+- **Konvertoi-nappi kiinnitetty sivupalkin alalaitaan.** Aiemmin se jäi
+  vieritysalueen alle piiloon; nyt asetukset vierivät ja Konvertoi (+ palaute)
+  pysyvät aina näkyvissä alhaalla, isompana ja selkeämpänä. Nappi on aktiivinen
+  vain kun pistepilvi on valittu.
+
 ## v0.8.7 (25.7.2026) — ammattimainen ulkoasu
 - **Käyttöliittymän visuaalinen uudistus.** Selkeä sivupalkki-rakenne (oma tausta
   + reuna erottaa asetukset sisällöstä), siistit lime-valintaruudut checkmarkilla

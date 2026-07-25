@@ -88,8 +88,15 @@ class FilePanel(QtWidgets.QWidget):
         super().__init__(parent)
         self._input_paths: list[Path] = []
 
-        layout = QtWidgets.QVBoxLayout(self)
-        layout.setContentsMargins(18, 16, 18, 16)
+        outer = QtWidgets.QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
+        # Vieritettävä asetusalue (Konvertoi pysyy kiinnitettynä alalaitaan)
+        content = QtWidgets.QWidget()
+        content.setObjectName("sidebarcontent")
+        layout = QtWidgets.QVBoxLayout(content)
+        layout.setContentsMargins(18, 16, 18, 10)
         layout.setSpacing(13)
 
         # Syötetiedosto
@@ -222,14 +229,29 @@ class FilePanel(QtWidgets.QWidget):
         form.addRow("Export:", ex_row)
 
         layout.addLayout(form)
-
         layout.addStretch()
 
-        # Convert
+        scroll = QtWidgets.QScrollArea()
+        scroll.setObjectName("sidebarscroll")
+        scroll.setWidget(content)
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.viewport().setStyleSheet("background: transparent;")
+        outer.addWidget(scroll, stretch=1)
+
+        # Kiinnitetty alalaita: Konvertoi + palaute (aina näkyvissä)
+        footer = QtWidgets.QWidget()
+        footer.setObjectName("sidebarfooter")
+        fl = QtWidgets.QVBoxLayout(footer)
+        fl.setContentsMargins(18, 12, 18, 14)
+        fl.setSpacing(9)
         self._btn = QtWidgets.QPushButton("Konvertoi")
+        self._btn.setObjectName("primary")
+        self._btn.setMinimumHeight(42)
         self._btn.setEnabled(False)
         self._btn.clicked.connect(self._on_convert)
-        layout.addWidget(self._btn)
+        fl.addWidget(self._btn)
 
         # Palaute/diagnostiikka kehittäjälle (ei geometriaa) — pilotin tukikanava
         self._feedback_btn = QtWidgets.QPushButton("Lähetä diagnostiikka kehittäjälle")
@@ -240,7 +262,8 @@ class FilePanel(QtWidgets.QWidget):
             "etätuessa ja pilari/palkkimallin parantamisessa."
         )
         self._feedback_btn.clicked.connect(self._on_feedback)
-        layout.addWidget(self._feedback_btn)
+        fl.addWidget(self._feedback_btn)
+        outer.addWidget(footer)
 
     def _on_files(self, paths: list[Path]) -> None:
         self._input_paths = paths
@@ -309,5 +332,5 @@ class FilePanel(QtWidgets.QWidget):
             feedback.open_gmail()
 
     def set_busy(self, busy: bool) -> None:
-        self._btn.setEnabled(not busy)
+        self._btn.setEnabled(not busy and bool(self._input_paths))
         self._btn.setText("Käsitellään…" if busy else "Konvertoi")
