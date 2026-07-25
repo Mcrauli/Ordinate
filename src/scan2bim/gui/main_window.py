@@ -81,6 +81,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._tabs = QtWidgets.QTabWidget()
         self._plan_view = PlanView()
         self._plan_view.element_picked.connect(self._on_plan_pick)
+        self._plan_view.elements_boxed.connect(self._on_plan_box)
         self._review = ReviewPanel()
         self._review.element_selected.connect(self._on_review_select)
         self._review.delete_requested.connect(self._on_review_delete)
@@ -95,7 +96,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._result_models: list = []
         self._result_multi = False
         self._last_cfg: PipelineConfig | None = None
-        self._selected = None
+        self._selected: list = []
 
         root.addWidget(splitter, stretch=1)
 
@@ -151,6 +152,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self._results_label.setStyleSheet(f"color:{TEXT};font-size:13px;")
         row.addWidget(self._results_label)
         row.addStretch()
+        # Näkyy vasta kun mallia on muokattu (poistoja) → puhtaan IFC:n voi
+        # kirjoittaa myös suoraan pohjanäkymästä, ei vain Tarkistus-välilehdeltä.
+        self._footer_reexport = QtWidgets.QPushButton("Kirjoita IFC uudelleen")
+        self._footer_reexport.setVisible(False)
+        self._footer_reexport.clicked.connect(self._on_reexport)
+        row.addWidget(self._footer_reexport)
         self._open_ifc_btn = QtWidgets.QPushButton("Avaa IFC")
         self._open_ifc_btn.clicked.connect(self._open_ifc)
         row.addWidget(self._open_ifc_btn)
@@ -197,26 +204,27 @@ class MainWindow(QtWidgets.QMainWindow):
     def _on_plan_pick(self, floor_idx: int, kind: str, elem_id: str) -> None:
         if not kind:
             self._select_bar.setVisible(False)
-            self._selected = None
+            self._selected = []
             return
         el = self._element_by(floor_idx, kind, elem_id)
         conf = f" · luottamus {el.confidence:.2f}" if el is not None else ""
         _fi = {"wall": "Seinä", "column": "Pilari", "beam": "Palkki",
                "door": "Ovi", "window": "Ikkuna"}.get(kind, kind)
         self._select_label.setText(f"{_fi} {elem_id}{conf}")
-        self._selected = (floor_idx, kind, elem_id)
+        self._selected = [(floor_idx, kind, elem_id)]
         self._select_bar.setVisible(True)
 
     def _on_selected_delete(self) -> None:
-        if getattr(self, "_selected", None) is None:
+        if not self._selected:
             return
-        floor_idx, kind, elem_id = self._selected
-        self._on_review_delete(floor_idx, kind, elem_id)
+        n = sum(1 for (fi, k, i) in self._selected if self._remove_one(fi, k, i))
+        if n:
+            self._after_edit(n)
         self._clear_selection()
 
     def _clear_selection(self) -> None:
         self._select_bar.setVisible(False)
-        self._selected = None
+        self._selected = []
         self._plan_view.clear_selection()
 
     def _on_convert(self, inputs: list, out: Path, cfg: PipelineConfig) -> None:
@@ -274,9 +282,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self._tabs.setCurrentWidget(self._plan_view)
         self._plan_view.highlight(kind, elem_id)
 
-    def _on_review_delete(self, floor_idx: int, kind: str, elem_id: str) -> None:
+    def _remove_one(self, floor_idx: int, kind: str, elem_id: str) -> bool:
         if not (0 <= floor_idx < len(self._result_models)):
-            return
+            return False
         m = self._result_models[floor_idx]
         if kind == "wall":
             m.walls = [w for w in m.walls if w.id != elem_id]
@@ -286,10 +294,23 @@ class MainWindow(QtWidgets.QMainWindow):
             m.beams = [b for b in m.beams if b.id != elem_id]
         else:  # door / window
             m.openings = [o for o in m.openings if o.id != elem_id]
+        return True
+
+    def _after_edit(self, n: int) -> None:
         self._plan_view.show_models(self._result_models)
         self._review.mark_edited()
+        self._footer_reexport.setVisible(True)
         self._update_review_tab()
-        self._log_panel.info(f"Poistettu {kind} {elem_id} (kerros {floor_idx}).")
+        self._log_panel.info(f"Poistettu {n} elementti{'ä' if n != 1 else ''}.")
+
+    def _on_review_delete(self, floor_idx: int, kind: str, elem_id: str) -> None:
+        if self._remove_one(floor_idx, kind, elem_id):
+            self._after_edit(1)
+
+    def _on_plan_box(self, floor_idx: int, pairs: list) -> None:
+        self._selected = [(floor_idx, k, i) for (k, i) in pairs]
+        self._select_label.setText(f"{len(pairs)} elementtiä valittu")
+        self._select_bar.setVisible(True)
 
     def _on_reexport(self) -> None:
         from scan2bim.core.ifc.writer import write_ifc, write_building_ifc
@@ -310,6 +331,7 @@ class MainWindow(QtWidgets.QMainWindow):
             QtWidgets.QMessageBox.warning(self, "Virhe", str(e))
             return
         self._review.mark_saved()
+        self._footer_reexport.setVisible(False)
         self._log_panel.success("✓ IFC kirjoitettu uudelleen muokatusta mallista.")
         self.statusBar().showMessage("IFC päivitetty")
 
@@ -326,6 +348,7 @@ class MainWindow(QtWidgets.QMainWindow):
             parts.insert(0, f"<b>{len(models)}</b> kerrosta")
         self._results_label.setText("&nbsp;&nbsp;·&nbsp;&nbsp;".join(parts))
         self._open_ifc_btn.setEnabled(self._find_ifc() is not None)
+        self._footer_reexport.setVisible(False)   # ei muokkauksia vielä
         self._results_bar.setVisible(True)
 
     def _find_ifc(self) -> Path | None:

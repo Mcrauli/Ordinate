@@ -27,26 +27,61 @@ _COLUMN_EDGE = "#8a6a3c"
 
 
 class _PlanGraphicsView(QtWidgets.QGraphicsView):
-    """Ruudukko taustalla, mittajana päällä, zoom rullalla, klikkaus valitsee."""
+    """Vasen klikkaus = valitse elementti, vasen veto tyhjästä = maalaa valinta-
+    laatikko (monta), keski/oikea veto = panoroi, rulla = zoom."""
 
     def __init__(self, scene, parent=None) -> None:
         super().__init__(scene, parent)
-        self._pick = None   # callback(kind|None, id|None); asetetaan PlanView:ssa
+        self._pick = None       # callback(kind|None, id|None)
+        self._box_pick = None   # callback(list[(kind,id)])
+        self._pan = None
+        self.setDragMode(QtWidgets.QGraphicsView.DragMode.RubberBandDrag)
+
+    def _data_at(self, pos):
+        for it in self.items(pos):
+            if it.data(0) is not None:
+                return it.data(0)
+        return None
 
     def mousePressEvent(self, event: QtGui.QMouseEvent) -> None:
-        if event.button() == QtCore.Qt.MouseButton.LeftButton and self._pick is not None:
-            pos = event.position().toPoint()
-            data = None
-            for it in self.items(pos):
-                d = it.data(0)
-                if d is not None:
-                    data = d; break
+        b = event.button()
+        if b == QtCore.Qt.MouseButton.LeftButton and self._pick is not None:
+            data = self._data_at(event.position().toPoint())
             if data is not None:
                 self._pick(data[0], data[1])
                 event.accept()
                 return
-            self._pick(None, None)   # tyhjä klikkaus → poista valinta
+            self._pick(None, None)   # tyhjä → poista valinta, aloita maalaus
+        elif b in (QtCore.Qt.MouseButton.MiddleButton, QtCore.Qt.MouseButton.RightButton):
+            self._pan = event.position()
+            self.viewport().setCursor(QtCore.Qt.CursorShape.ClosedHandCursor)
+            event.accept()
+            return
         super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event: QtGui.QMouseEvent) -> None:
+        if self._pan is not None:
+            d = event.position() - self._pan
+            self._pan = event.position()
+            hb = self.horizontalScrollBar(); vb = self.verticalScrollBar()
+            hb.setValue(hb.value() - int(d.x())); vb.setValue(vb.value() - int(d.y()))
+            event.accept()
+            return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event: QtGui.QMouseEvent) -> None:
+        if self._pan is not None and event.button() in (
+                QtCore.Qt.MouseButton.MiddleButton, QtCore.Qt.MouseButton.RightButton):
+            self._pan = None
+            self.viewport().unsetCursor()
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)   # viimeistelee valintalaatikon
+        if event.button() == QtCore.Qt.MouseButton.LeftButton and self._box_pick is not None:
+            pairs = [it.data(0) for it in self.scene().selectedItems() if it.data(0) is not None]
+            self.scene().clearSelection()
+            if pairs:
+                self._box_pick(pairs)
 
     def drawBackground(self, painter: QtGui.QPainter, rect: QtCore.QRectF) -> None:
         painter.fillRect(rect, QtGui.QColor(BG))
@@ -113,12 +148,13 @@ def _nice_length_mm(raw: float) -> float:
 class PlanView(QtWidgets.QWidget):
     """Interaktiivinen pohjapiirros usean kerroksen tuella."""
     element_picked = QtCore.Signal(int, str, str)   # floor_idx, kind, id ("" = tyhjä)
+    elements_boxed = QtCore.Signal(int, list)        # floor_idx, [(kind, id), ...]
 
     def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
         super().__init__(parent)
         self._models: list = []
         self._items: dict = {}
-        self._hl_item = None
+        self._hl_items: list = []
 
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -138,11 +174,11 @@ class PlanView(QtWidgets.QWidget):
         self._scene = QtWidgets.QGraphicsScene(self)
         self._view = _PlanGraphicsView(self._scene)
         self._view.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
-        self._view.setDragMode(QtWidgets.QGraphicsView.DragMode.ScrollHandDrag)
         self._view.setTransformationAnchor(
             QtWidgets.QGraphicsView.ViewportAnchor.AnchorUnderMouse
         )
         self._view._pick = self._on_pick
+        self._view._box_pick = self._on_box
         layout.addWidget(self._view, stretch=1)
 
         self._placeholder = QtWidgets.QLabel(
@@ -184,7 +220,7 @@ class PlanView(QtWidgets.QWidget):
     def _draw(self, model) -> None:
         self._scene.clear()
         self._items = {}          # (kind, id) -> QGraphicsItem (highlightia varten)
-        self._hl_item = None
+        self._hl_items = []
         flags = {f["id"] for f in flag_low_confidence(model)}
 
         # --- Laatta (lattia-footprint): hienovarainen ääriviiva pohjalle ---
@@ -260,6 +296,10 @@ class PlanView(QtWidgets.QWidget):
                 continue
             self._draw_opening(op, w, flagged=op.id in flags)
 
+        # Rubber-band-valinta (maalaamalla): elementit valittavissa.
+        for it in self._items.values():
+            it.setFlag(QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
+
         self._view.setSceneRect(self._scene.itemsBoundingRect().adjusted(-800, -800, 800, 800))
         self._view.fitInView(self._scene.itemsBoundingRect().adjusted(-400, -400, 400, 400),
                              QtCore.Qt.AspectRatioMode.KeepAspectRatio)
@@ -330,22 +370,33 @@ class PlanView(QtWidgets.QWidget):
         fi = max(0, self._floor_combo.currentIndex())
         self.element_picked.emit(fi, kind, elem_id)
 
+    def _on_box(self, pairs: list) -> None:
+        self.highlight_many(pairs, center=False)
+        fi = max(0, self._floor_combo.currentIndex())
+        self.elements_boxed.emit(fi, pairs)
+
     def clear_selection(self) -> None:
-        if self._hl_item is not None:
-            self._scene.removeItem(self._hl_item); self._hl_item = None
+        for it in self._hl_items:
+            self._scene.removeItem(it)
+        self._hl_items = []
 
     def highlight(self, kind: str, elem_id: str) -> None:
-        """Korosta valittu elementti (tarkistuslistasta klikattu)."""
-        if self._hl_item is not None:
-            self._scene.removeItem(self._hl_item); self._hl_item = None
-        item = self._items.get((kind, elem_id))
-        if item is None:
-            return
-        r = item.sceneBoundingRect().adjusted(-180, -180, 180, 180)
+        """Korosta yksi valittu elementti (myös tarkistuslistasta klikattu)."""
+        self.highlight_many([(kind, elem_id)], center=True)
+
+    def highlight_many(self, pairs: list, center: bool = False) -> None:
+        self.clear_selection()
         pen = QtGui.QPen(QtGui.QColor(ACCENT)); pen.setCosmetic(True); pen.setWidthF(2.5)
-        self._hl_item = self._scene.addRect(r, pen)
-        self._hl_item.setZValue(7)
-        self._view.centerOn(r.center())
+        rects = []
+        for pair in pairs:
+            item = self._items.get(tuple(pair))
+            if item is None:
+                continue
+            r = item.sceneBoundingRect().adjusted(-180, -180, 180, 180)
+            ring = self._scene.addRect(r, pen); ring.setZValue(7)
+            self._hl_items.append(ring); rects.append(r)
+        if center and rects:
+            self._view.centerOn(rects[0].center())
 
     def _draw_opening(self, op, wall, flagged: bool = False) -> None:
         (x0, y0), (x1, y1) = wall.axis[0], wall.axis[1]

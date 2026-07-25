@@ -4,6 +4,18 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 [`Mcrauli/scan2bim-web`](https://github.com/Mcrauli/scan2bim-web/releases):iin;
 sovellus päivittää itsensä sieltä.
 
+## v0.8.6 (25.7.2026) — maalaa-valinta, IFC-nappi pohjaan, kapea-ikkuna-korjaus
+- **Maalaamalla valinta.** Vasen veto tyhjästä piirtää valintalaatikon ja valitsee
+  kaikki sen sisään osuvat elementit kerralla → **Poista** poistaa ne yhdellä
+  kertaa. Helpompi kuin tarkka klikkaus. Yksittäisklikkaus valitsee yhden;
+  panorointi tapahtuu nyt keski- tai oikealla napilla vetämällä.
+- **"Kirjoita IFC uudelleen" myös pohjanäkymässä.** Kun poistat elementtejä
+  suoraan pohjasta, puhtaan IFC:n voi kirjoittaa alapalkin napista — ei tarvitse
+  vaihtaa Tarkistus-välilehdelle.
+- **Kapean ikkunan asettelu korjattu.** Pitkä CRS-nimi ja drop-alue venyttivät
+  vasenta paneelia liikaa scroll-alueessa → sisältö ja checkmarkit leikkautuivat.
+  Combot elidataan ja drop-alue rivittyy → paneeli mahtuu siististi.
+
 ## v0.8.5 (25.7.2026) — klikkaa & poista pohjakuvassa
 - **Klikkaa mitä tahansa elementtiä pohjassa → poista.** Seinän, pilarin, palkin
   tai aukon voi valita suoraan pohjapiirroksesta (ei vain tarkistuslistasta):

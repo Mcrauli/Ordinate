@@ -35,6 +35,7 @@ class DropZone(QtWidgets.QLabel):
         super().__init__(parent)
         self.setAcceptDrops(True)
         self.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        self.setWordWrap(True)   # ei pakota paneelia leveäksi kapeassa ikkunassa
         self.setMinimumHeight(100)
         self._set_empty()
         self.setStyleSheet(
@@ -204,6 +205,13 @@ class FilePanel(QtWidgets.QWidget):
             "ETRS-TM35FIN. Löytyy yleensä skannin/E57:n headerista."
         )
         form.addRow("Koordinaatisto:", self._crs)
+
+        # Combot eivät saa pakottaa paneelia leveäksi (pitkä CRS-nimi venytti sen
+        # 793 px:iin scroll-alueessa → sisältö leikkautui). Elidataan pitkä teksti.
+        for _cb in (self._site_type, self._crs):
+            _cb.setSizeAdjustPolicy(
+                QtWidgets.QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+            _cb.setMinimumContentsLength(10)
 
         self._ifc = QtWidgets.QCheckBox("IFC (Revit / ArchiCAD)")
         self._ifc.setChecked(True)
