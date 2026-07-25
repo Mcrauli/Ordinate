@@ -209,13 +209,10 @@ class FilePanel(QtWidgets.QWidget):
         )
         form.addRow("Koordinaatisto:", self._crs)
 
-        self._ifc = QtWidgets.QCheckBox("IFC")
+        self._ifc = QtWidgets.QCheckBox("IFC (Revit / ArchiCAD)")
         self._ifc.setChecked(True)
-        self._dxf = QtWidgets.QCheckBox("DXF")
-        self._dxf.setChecked(True)
         ex_row = QtWidgets.QHBoxLayout()
         ex_row.addWidget(self._ifc)
-        ex_row.addWidget(self._dxf)
         ex_row.addStretch()
         form.addRow("Export:", ex_row)
 
@@ -260,7 +257,7 @@ class FilePanel(QtWidgets.QWidget):
             auto_voxel=self._auto_voxel.isChecked(),
             detector="contour",
             export_ifc=self._ifc.isChecked(),
-            export_dxf=self._dxf.isChecked(),
+            export_dxf=False,   # pääkäyttö IFC (Revit/ArchiCAD); DXF poistettu GUI:sta
             export_qa=self._qa.isChecked(),
             qa_tolerance=self._qa_tol.value(),
             icp_refine=self._icp.isChecked(),

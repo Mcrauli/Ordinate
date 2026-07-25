@@ -13,6 +13,9 @@ sovellus päivittää itsensä sieltä.
   "Automaattinen" on valittuna (oletus) — ilmestyy vain jos auto otetaan pois.
   Auto valitsee koon datasta (pieni tila 8 mm → iso talo 25 mm), joten
   useimpien ei tarvitse koskea siihen.
+- **DXF-export poistettu käyttöliittymästä.** Pääkäyttö on IFC (Revit /
+  ArchiCAD), joten sovellus tuottaa vain IFC:n. DXF-export-koodi jää repoon
+  (CLI/config voi yhä käyttää), mutta se ei ole enää oletusvalintana tiellä.
 
 ## v0.8.1 (24.7.2026) — ulkoskanni-robustius + nopeampi suodatin
 - **Rakennusvaippa-rajaus.** Ulkoskannit (maasto, piha, ulkoklutteri) räjäyttivät
