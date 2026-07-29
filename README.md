@@ -13,7 +13,7 @@ ArchiCADissa / Solibrissa.
 Tavoite: tuottaa **inventointimallitason** pohja niin että arkkitehdin ei
 tarvitse juuri korjailla mallia käsin.
 
-Nykyinen versio: **v0.4.11** — pre-release-vaiheessa.
+Nykyinen versio: **v0.8.8** — pre-release-vaiheessa.
 
 ## Mitä se osaa
 
@@ -139,10 +139,12 @@ Python 3.12 · **open3d** (pistepilvet) · **opencv-python** (ääriviiva-raster
 
 ## Roadmap
 
-- **Vaihe 2 — semanttinen suodatin (työn alla):** pistepilven per-piste-
-  luokitus (seinä/lattia/katto vs. kaluste/hylly/krääsä) → suodattaa
-  kalusteet ja **liiketilojen hyllyt** robustisti ennen geometrista putkea.
-  Avaa millimetritarkkuuden myös kalustetulla datalla. Ks. [`AGENTS.md`](AGENTS.md).
+- **Vaihe 2 — semanttinen suodatin (valmis, v0.8.0):** PointNet-ONNX-malli
+  luokittelee pisteet (seinä/lattia/katto vs. kaluste/hylly/krääsä) ja suodattaa
+  kalusteet, krääsän ja **liiketilojen lattia-katto-hyllyt** ennen geometrista
+  putkea. CPU-inferenssi (ei GPU-pakkoa). Ks. [`AGENTS.md`](AGENTS.md).
+- **Seuraavaksi:** nurkka-/kulmaviimeistely puhtaammalla pilvellä, lisää
+  GT-validointia (SpatialLM-scenet), monikerros/monikorkuiset tilat.
 
 ## Dokumentaatio
 
