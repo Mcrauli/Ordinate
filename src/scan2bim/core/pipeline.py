@@ -1130,8 +1130,10 @@ class Pipeline:
         from scan2bim.core.semantics.room_detector import detect_rooms
         model.spaces = detect_rooms(model.walls, floor_z, ceiling_z)
 
-        from scan2bim.core.segmentation.opening_detector import detect_openings
+        from scan2bim.core.segmentation.opening_detector import detect_openings, reclassify_interior_windows
         model.openings = detect_openings(model.walls, cloud, floor_z, scanner_origins=self._scanner_origins)
+        # Ikkuna vaatii ulkoseinän: sisäseinän (huone molemmin puolin) leveä aukko → ovi.
+        model.openings = reclassify_interior_windows(model.walls, model.spaces, model.openings)
 
         from scan2bim.core.segmentation.column_detector import detect_columns
         model.columns = detect_columns(cloud, model.walls, floor_z, ceiling_z)

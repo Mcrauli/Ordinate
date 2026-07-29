@@ -466,6 +466,57 @@ def _find_openings(
     return openings
 
 
+def reclassify_interior_windows(walls, spaces, openings):
+    """Ikkuna vaatii ULKOseinän. Jos aukko on sisäseinällä (huone MOLEMMIN puolin),
+    se on läpikäynti/ovi, ei ikkuna → reklassifioi 'window' -> 'door'.
+
+    Sisä/ulko päätellään datasta (huonepolygonit kummallakin puolella), ei
+    seinätyyppilipusta → yleistyy: ulkoseinän ikkuna (ulkopuoli ei ole huone)
+    säilyy ikkunana, sisäseinän leveä aukko korjautuu oveksi."""
+    try:
+        from shapely.geometry import Point, Polygon
+    except ImportError:
+        return openings
+    polys = []
+    for s in spaces:
+        if len(getattr(s, "boundary", []) or []) >= 3:
+            try:
+                p = Polygon([(float(x), float(y)) for x, y in s.boundary])
+                if p.is_valid and p.area > 1.0:
+                    polys.append(p)
+            except Exception:
+                continue
+    if not polys:
+        return openings
+    wmap = {w.id: w for w in walls}
+    _MARGIN = 350.0   # mm — testipiste näin kauas seinäpinnasta kummallekin puolelle
+    out = []
+    for op in openings:
+        if op.opening_type != "window":
+            out.append(op)
+            continue
+        w = wmap.get(op.wall_id)
+        if w is None or len(w.axis) < 2:
+            out.append(op)
+            continue
+        a = np.array(w.axis[0], float); b = np.array(w.axis[1], float)
+        d = b - a; L = float(np.linalg.norm(d))
+        if L < 1.0:
+            out.append(op)
+            continue
+        u = d / L; n = np.array([-u[1], u[0]])
+        c = a + u * (op.position_along + op.width / 2.0)   # aukon keskipiste
+        off = w.thickness / 2.0 + _MARGIN
+        p_in = Point(*(c + n * off)); p_out = Point(*(c - n * off))
+        side1 = any(pl.contains(p_in) for pl in polys)
+        side2 = any(pl.contains(p_out) for pl in polys)
+        if side1 and side2:
+            out.append(op.model_copy(update={"opening_type": "door"}))   # sisäseinä → ovi
+        else:
+            out.append(op)
+    return out
+
+
 def _classify(sill_h: float, width: float, height: float) -> str:
     # Ovi: lattiatason sill (matala) + uskottava korkeus. Leveys saa olla kapeahko
     # (kapea ovi / läpikäynti) kunhan se ei ole sokkelillinen ikkuna.
