@@ -123,3 +123,29 @@ def test_disjoint_floor_regions_all_returned():
         for p in polys
     )
     assert areas[0] > 6_000_000, "pienen huoneen kontuuri puuttuu/vajaa"
+
+
+def test_furniture_shadows_do_not_break_contour():
+    """Kalusteiden keilausvarjot syovat lattiaan lahdet ulkoreunaan asti. Ennen
+    korjausta ulkokontuuri kiersi joka lahden ja suhteellinen approxPolyDP-epsilon
+    romahdutti ne ITSENSA LEIKKAAVAKSI monikulmioksi → signed area (perimetrin
+    ULOSPAIN-normaali) meni vaarin ja seinia syntyi fiktiivisille reunoille."""
+    from shapely.geometry import Polygon
+
+    from scan2bim.core.segmentation.slab_detector import detect_floor_contours
+
+    floor = _plane(0, 8000, 0, 8000, 0.0)   # 8 x 8 m = 64 m²
+    # 18 kapeaa lahtea vuorotellen ylä- ja alareunasta, syvyys 3–5 m
+    keep = np.ones(len(floor), dtype=bool)
+    for k in range(18):
+        x0 = 400.0 + k * (7200.0 / 18)
+        cut = (floor[:, 0] > x0) & (floor[:, 0] < x0 + 250)
+        keep &= ~(cut & ((floor[:, 1] > 3000.0) if k % 2 == 0 else (floor[:, 1] < 5000.0)))
+    cloud = _cloud(floor[keep])
+
+    polys = detect_floor_contours(cloud, 0.0)
+    assert polys, "kontuuri katosi"
+    poly = Polygon(polys[0])
+    # vanha koodi: 34 karkea, 24.2 m2, is_valid=False
+    assert poly.is_valid, "kontuuri leikkaa itsensa"
+    assert poly.area > 55e6, f"huoneala {poly.area / 1e6:.1f} m2, odotettiin ~64 m2"

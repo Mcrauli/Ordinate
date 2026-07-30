@@ -78,6 +78,62 @@ def test_asymmetric_visibility_pair_still_found():
     assert abs(out.axis[0][0] - th_true / 2.0) < 1.5, "akseli ei pintojen puolivalissa"
 
 
+def test_clutter_face_rejected_by_ceiling_in_body():
+    """Yksipuolinen ulkoseina x=0 (vain sisapinta keilattu) + kaappi 300mm
+    huoneen sisalla x=-300. Pari antaisi 300mm paksuuden ja siirtaisi akselin
+    150mm huoneeseen → naapuripatka jaa eri linjalle eika sulaudu (mitattu apt2:
+    huone 33 m2 katosi). KATTO nakyy kaapin PAALLA eli rungon sisalla → hylkaa
+    pari ja mittaa vain nakyva pinta."""
+    # virhetila kuten tuotannossa: akseli JO valeparin puolivalissa (t=330)
+    clutter_x = -330.0
+    w = _wall(x_axis=clutter_x / 2.0, th=-clutter_x)
+    # seinapinta on tiheampi kuin kaluste (mitattu asunnolla 560k vs 171k = 3.3x)
+    n_face, n_clut = 24000, 7000
+    face = np.column_stack([_RNG.normal(0, 2.0, n_face),
+                            _RNG.uniform(0, 4000, n_face), _RNG.uniform(300, 2400, n_face)])
+    clut = np.column_stack([clutter_x + _RNG.normal(0, 2.0, n_clut),
+                            _RNG.uniform(0, 4000, n_clut), _RNG.uniform(300, 2400, n_clut)])
+    # katto koko huoneen ylla, MYOS kaapin paalla (x=-330..0) = rungon sisalla
+    m = 40000
+    ceil = np.column_stack([
+        _RNG.uniform(-2000, 0, m), _RNG.uniform(0, 4000, m),
+        2700.0 + _RNG.normal(0, 2.0, m),
+    ])
+    pc = o3d.geometry.PointCloud()
+    pc.points = o3d.utility.Vector3dVector(np.vstack([face, clut]))
+
+    ilman = _thickness_lock_walls([w], pc, ceiling_xy=None)[0]
+    assert abs(ilman.thickness - 330.0) < 3.0, \
+        f"testi ei toista virhetta: paksuus {ilman.thickness}"
+
+    out = _thickness_lock_walls([w], pc, ceiling_xy=ceil[:, :2])[0]
+    assert abs(out.thickness - 200.0) < 1.0, \
+        f"valeparia ei hylatty: paksuus {out.thickness}"
+    seen = min(out.axis[0][0] - out.thickness / 2.0,
+               out.axis[0][0] + out.thickness / 2.0, key=abs)
+    assert abs(seen) < 1.0, f"nakyva pinta jai {seen:.2f}mm paahan"
+    assert out.axis[0][0] > 0.0, "runko kasvoi huoneen puolelle"
+
+
+def test_real_thick_pair_kept_when_body_empty():
+    """Aito 300mm seina: runko on umpinainen (ei kattoa sisalla) → pari kelpaa."""
+    th_true = 300.0
+    w = _wall(x_axis=th_true / 2.0 + 6.0, th=250.0)
+    n = 16000
+    y = _RNG.uniform(0, 4000, 2 * n); z = _RNG.uniform(300, 2400, 2 * n)
+    x = np.concatenate([_RNG.normal(0, 2.0, n), th_true + _RNG.normal(0, 2.0, n)])
+    m = 40000
+    ceil = np.column_stack([                       # kattoa vain rungon ULKOpuolella
+        np.concatenate([_RNG.uniform(-2000, -20, m // 2),
+                        _RNG.uniform(th_true + 20, th_true + 2000, m // 2)]),
+        _RNG.uniform(0, 4000, m), 2700.0 + _RNG.normal(0, 2.0, m),
+    ])
+    pc = o3d.geometry.PointCloud()
+    pc.points = o3d.utility.Vector3dVector(np.column_stack([x, y, z]))
+    out = _thickness_lock_walls([w], pc, ceiling_xy=ceil[:, :2])[0]
+    assert abs(out.thickness - th_true) < 1.5, f"aito pari hylattiin: {out.thickness}"
+
+
 def test_junk_band_wall_flagged_low_confidence():
     """Rohbau wall_ext_000: perimetriseinan kaistassa vain tasaista massoa
     (rakennustelineet/tavara), ei pintaa → mediaanilinjaus on fiktiota.

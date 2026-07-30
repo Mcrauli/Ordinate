@@ -4,6 +4,33 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 [`Mcrauli/scan2bim-web`](https://github.com/Mcrauli/scan2bim-web/releases):iin;
 sovellus päivittää itsensä sieltä.
 
+## v0.8.9 (30.7.2026) — huoneala ja perimetri kuntoon, valeseinät pois
+- **Lattiakontuuri ei enää leikkaa itseään.** Kalusteiden keilausvarjot syövät
+  ohueen lattiaviipaleeseen lahdet, ja suhteellinen `approxPolyDP`-epsilon
+  romahdutti ne ristiin meneväksi siksakiksi (mitattu asunnolla: 25 kärkeä,
+  36.9 m² kun ala on 58 m²). Silloin perimetrin ULOSPÄIN-normaali oli
+  merkityksetön ja seiniä syntyi fiktiivisille reunoille — asuntomallissa
+  **haamuseinä 600 mm rakennuksen ulkopuolella, 0 pistettä koko 3.4 m matkalla**.
+  Nyt huoneala lasketaan lattian ja katon yhdisteestä (katossa ei ole kalusteita),
+  reiät täytetään ja epsilon on absoluuttinen → 31 kärkeä, 57.7 m², validi.
+- **Huoneala ei ylitä seinää.** Detektoidut seinät katkaisevat alueen, joten se ei
+  vuoda oviaukoista ja lasin läpi naapuritilaan. Katto vain sulkee varjot: alueesta
+  on oltava ≥20 % lattiapisteiden peitossa, muuten se on keilausvuoto eikä huone.
+- **Perimetri per rako, ei koko reunalle.** Aiemmin reuna hylättiin kokonaan jos
+  detektoitu seinä kattoi siitä 35 % — metrien raot jäivät auki eikä huone
+  sulkeutunut. Nyt katetut jänteet vähennetään ja seinä luodaan vain aidoille
+  raoille, **mitatulle keskilinjalle** projisoituna (kontuurin sijaintivirhe voi
+  olla satoja mm; väärässä paikassa oleva perimetri kaappasi nurkkasnapin ja
+  tappoi aidon seinän).
+- **Paksuus ei paisu kalusteesta.** Yksipuolisella ulkoseinällä huoneen puolella
+  oleva kaappi ~300 mm pinnasta tuotti toisen "pinnan" → 372 mm paksuus ja akseli
+  puoli valepaksuutta huoneen sisään. Pari hylätään jos seinän rungossa on kattoa
+  (katossa ei ole kalusteita) → asunnon ulkoseinä 372 → 200 mm.
+- **Mitattu vaikutus** (4 dataa, tuotantoajo PointNet-suodattimella): asunto
+  55.8 → 58.0 m² huoneita ja haamuseinä pois; harvennettu asunto 54.2 → 55.7 m²
+  ja 4 → 5 huonetta; makuuhuone 0 → 1 huone; autohalli tyhjästä mallista
+  perimetriin. Testejä 84 → 86.
+
 ## v0.8.8 (25.7.2026) — Konvertoi aina näkyvissä
 - **Konvertoi-nappi kiinnitetty sivupalkin alalaitaan.** Aiemmin se jäi
   vieritysalueen alle piiloon; nyt asetukset vierivät ja Konvertoi (+ palaute)

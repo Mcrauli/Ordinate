@@ -14,8 +14,18 @@ _THICKNESS_DEFAULT = 200.0       # mm — betonirakenteen oletuspaksuus
 _GRID_MM        = 25.0           # mm/pikseli kontuuriverkkoon (oli 80)
 _DILATE_PX      = 3              # morfologinen laajennus pikseleinä
 _CLOSE_PX       = 5              # closing-ydinkoko aukkojen sulkemiseen
-_CONTOUR_SIMPLIFY = 0.008        # approxPolyDP epsilon-kerroin (pienempi = tarkempi)
+_SIMPLIFY_MM    = 150.0          # approxPolyDP epsilon ABSOLUUTTISENA — suhteellinen
+                                 # (0.008×arcLength) räjähtää lahdekkaalla kontuurilla:
+                                 # varjolahdet paisuttavat arcLengthin → epsilon ~800 mm →
+                                 # lahdet romahtavat ITSENSÄ LEIKKAAVAKSI siksakiksi
 _Z_BAND_MM      = 8.0            # ±mm lasertason ympärillä
+_FOOT_BAND_MM   = 40.0           # ±mm huonealan maskin z-kaista (8 mm on liian ohut → reikäinen)
+_FOOT_CLOSE_PX  = 16             # 400 mm — sulkee kalusteiden keilausvarjot huonealasta
+_FOOT_DILATE_PX = 2              # mitattu: reuna osuu aitoon sisäpintaan (3 px = +25 mm bias)
+_FOOT_MIN_FLOOR_FRAC = 0.20      # huonealueen pinta-alasta oltava LATTIApisteiden peitossa:
+                                 # katto vain sulkee varjot, se EI saa luoda aluetta. Mitattu
+                                 # apt2: keilausvuoto lasin/oviaukon läpi 0.02, aidot huoneet
+                                 # 0.60–0.97 (bedroom 0.74) → raja on kaukana molemmista
 _Z_BIN_MM       = 5.0            # histogrammin resoluutio
 _Z_SMOOTH_BINS  = 4              # histogrammin tasoitusikkuna
 _Z_MIN_FRAC     = 0.08           # minimikorkeus päähuipusta
@@ -160,48 +170,150 @@ def _measure_thickness(pts: np.ndarray, z: float, slab_type: str) -> float:
     return thickness if 180.0 < thickness < 600.0 else _THICKNESS_DEFAULT
 
 
-def detect_floor_contours(cloud, elevation: float, min_area_m2: float = 1.5) -> list[list[tuple[float, float]]]:
-    """Kaikki lattia-alueiden kontuurit (suurin ensin) — erilliset huoneet paksun
-    seinän takana ovat omia polygonejaan eikä niitä saa pudottaa (perimetri ei
-    muuten koskaan sulje niitä)."""
+def detect_floor_contours(
+    cloud,
+    elevation: float,
+    min_area_m2: float = 1.5,
+    ceiling_elevation: float | None = None,
+    walls: list | None = None,
+) -> list[list[tuple[float, float]]]:
+    """Huonealan kontuurit (suurin ensin) — erilliset huoneet paksun seinän
+    takana ovat omia polygonejaan eikä niitä saa pudottaa (perimetri ei muuten
+    koskaan sulje niitä).
+
+    Pelkkä ohut lattiaviipale EI riitä lähteeksi: kalusteiden keilausvarjot
+    syövät siihen lahdet ulkoreunaan asti, ulkokontuuri kiertää joka lahden ja
+    epsilon romahduttaa ne itsensä leikkaavaksi siksakiksi (mitattu asunnolla:
+    25 kärkeä, 36.9 m² kun ala on 58 m², is_valid=False). Silloin signed area
+    on merkityksetön → perimetrin ULOSPÄIN-normaali kääntyy väärin ja seiniä
+    syntyy fiktiivisille diagonaalireunoille. Katossa ei ole kalusteita, joten
+    lattia ∪ katto + varjojen sulkeminen antaa kiinteän ja validin alan.
+
+    ``walls``: huoneala EI saa ylittää seinää. Ilman katkaisua yhtenäinen ala
+    vuotaa oviaukoista ja lasiseinien läpi naapuritilaan (mitattu: 114 639
+    kattopistettä yläseinän takana) → perimetri rakentaa seinän yhdistyneen
+    alueen ULKOreunaan ja aito seinä kuolee snap-kaskadissa."""
     pts = np.asarray(cloud.points)
-    return _contour_boundaries(pts, elevation, min_area_m2 * 1e6)
+    zs = [elevation] if ceiling_elevation is None else [elevation, ceiling_elevation]
+    grid = _occupancy_grid(pts, zs, _FOOT_BAND_MM, _FOOT_CLOSE_PX, _FOOT_DILATE_PX,
+                           fill_holes=True)
+    grid = _cut_walls(grid, walls)
+    return _contours_from_grid(grid, min_area_m2 * 1e6,
+                               floor_mask=_level_mask(pts, elevation, grid))
+
+
+_CUT_MIN_MM = 120.0   # mm — katkaisuviivan minimileveys (ohut seinä ei katkaise 25 mm ruudukossa)
+
+
+def _cut_walls(
+    grid: tuple[np.ndarray, float, float] | None, walls: list | None
+) -> tuple[np.ndarray, float, float] | None:
+    """Nollaa seinien peittämät pikselit → huoneala katkeaa seinän kohdalta."""
+    if grid is None or not walls:
+        return grid
+    binary, x_min, y_min = grid
+    binary = binary.copy()
+    for w in walls:
+        axis = getattr(w, "axis", None)
+        if not axis or len(axis) < 2:
+            continue
+        p0 = np.asarray(axis[0], dtype=float)
+        p1 = np.asarray(axis[1], dtype=float)
+        d = p1 - p0
+        length = float(np.linalg.norm(d))
+        if length < 1.0:
+            continue
+        u = d / length
+        n = np.array([-u[1], u[0]])
+        half = max(float(getattr(w, "thickness", 0.0)), _CUT_MIN_MM) / 2.0
+        quad = np.array([p0 + n * half, p1 + n * half, p1 - n * half, p0 - n * half])
+        px = np.column_stack([(quad[:, 0] - x_min) / _GRID_MM,
+                              (quad[:, 1] - y_min) / _GRID_MM])
+        cv2.fillPoly(binary, [np.round(px).astype(np.int32)], 0)
+    return binary, x_min, y_min
 
 
 def _contour_boundary(
     pts: np.ndarray, z: float
 ) -> list[tuple[float, float]] | None:
     """Pisteet z-tasolla → OpenCV-kontuuri → suurin monikulmio."""
-    polys = _contour_boundaries(pts, z, min_area_mm2=0.0)
+    grid = _occupancy_grid(pts, [z], _Z_BAND_MM, _CLOSE_PX, _DILATE_PX, fill_holes=False)
+    polys = _contours_from_grid(grid, min_area_mm2=0.0)
     return polys[0] if polys else None
 
 
-def _contour_boundaries(
-    pts: np.ndarray, z: float, min_area_mm2: float
-) -> list[list[tuple[float, float]]]:
-    mask = np.abs(pts[:, 2] - z) < _Z_BAND_MM
-    slab_pts = pts[mask, :2]
-    if len(slab_pts) < 10:
-        return []
+def _occupancy_grid(
+    pts: np.ndarray,
+    z_levels: list[float],
+    band: float,
+    close_px: int,
+    dilate_px: int,
+    fill_holes: bool,
+) -> tuple[np.ndarray, float, float] | None:
+    """Binäärimaski (rivi=y, sarake=x) annettujen z-tasojen pisteistä."""
+    sel = np.zeros(len(pts), dtype=bool)
+    for z in z_levels:
+        sel |= np.abs(pts[:, 2] - z) < band
+    plane_pts = pts[sel, :2]
+    if len(plane_pts) < 10:
+        return None
 
-    x_min = float(slab_pts[:, 0].min())
-    y_min = float(slab_pts[:, 1].min())
-    cols = max(int((slab_pts[:, 0].max() - x_min) / _GRID_MM) + 2, 4)
-    rows = max(int((slab_pts[:, 1].max() - y_min) / _GRID_MM) + 2, 4)
+    x_min = float(plane_pts[:, 0].min())
+    y_min = float(plane_pts[:, 1].min())
+    cols = max(int((plane_pts[:, 0].max() - x_min) / _GRID_MM) + 2, 4)
+    rows = max(int((plane_pts[:, 1].max() - y_min) / _GRID_MM) + 2, 4)
 
     grid, _, _ = np.histogram2d(
-        slab_pts[:, 0], slab_pts[:, 1],
+        plane_pts[:, 0], plane_pts[:, 1],
         bins=[cols, rows],
         range=[[x_min, x_min + cols * _GRID_MM],
                [y_min, y_min + rows * _GRID_MM]],
     )
     binary = (grid.T >= 1).astype(np.uint8) * 255
 
-    close_k = np.ones((_CLOSE_PX, _CLOSE_PX), np.uint8)
-    dilate_k = np.ones((_DILATE_PX, _DILATE_PX), np.uint8)
-    binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, close_k)
-    binary = cv2.dilate(binary, dilate_k)
+    binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE,
+                              np.ones((close_px, close_px), np.uint8))
+    binary = cv2.dilate(binary, np.ones((dilate_px, dilate_px), np.uint8))
+    if fill_holes:
+        binary = _fill_holes(binary)
+    return binary, x_min, y_min
 
+
+def _fill_holes(binary: np.ndarray) -> np.ndarray:
+    """Täytä sisäiset reiät (kalusteiden keilausvarjot) — flood-fill reunalta."""
+    pad = cv2.copyMakeBorder(binary, 1, 1, 1, 1, cv2.BORDER_CONSTANT, value=0)
+    ff_mask = np.zeros((pad.shape[0] + 2, pad.shape[1] + 2), np.uint8)
+    cv2.floodFill(pad, ff_mask, (0, 0), 255)
+    outside = pad[1:-1, 1:-1]
+    return np.where(outside == 0, 255, binary).astype(np.uint8)
+
+
+def _level_mask(
+    pts: np.ndarray, z: float, grid: tuple[np.ndarray, float, float] | None
+) -> np.ndarray | None:
+    """Raaka (morfologioimaton) maski yhdeltä z-tasolta samaan ruudukkoon."""
+    if grid is None:
+        return None
+    binary, x_min, y_min = grid
+    rows, cols = binary.shape
+    sel = np.abs(pts[:, 2] - z) < _FOOT_BAND_MM
+    if not sel.any():
+        return None
+    hist, _, _ = np.histogram2d(
+        pts[sel, 0], pts[sel, 1], bins=[cols, rows],
+        range=[[x_min, x_min + cols * _GRID_MM], [y_min, y_min + rows * _GRID_MM]],
+    )
+    return hist.T >= 1
+
+
+def _contours_from_grid(
+    grid: tuple[np.ndarray, float, float] | None,
+    min_area_mm2: float,
+    floor_mask: np.ndarray | None = None,
+) -> list[list[tuple[float, float]]]:
+    if grid is None:
+        return []
+    binary, x_min, y_min = grid
     contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     px_area = _GRID_MM * _GRID_MM
     polys: list[tuple[float, list[tuple[float, float]]]] = []
@@ -209,14 +321,54 @@ def _contour_boundaries(
         area = float(cv2.contourArea(c)) * px_area
         if polys and area < min_area_mm2:
             break
-        epsilon = _CONTOUR_SIMPLIFY * cv2.arcLength(c, True)
-        approx = cv2.approxPolyDP(c, epsilon, True)
+        approx = cv2.approxPolyDP(c, _SIMPLIFY_MM / _GRID_MM, True)
         poly = [(x_min + float(pt[0][0]) * _GRID_MM, y_min + float(pt[0][1]) * _GRID_MM)
                 for pt in approx]
-        if len(poly) >= 3:
-            polys.append((area, poly))
+        poly = _repair_polygon(poly)
+        if poly is None:
+            continue
+        if floor_mask is not None and _floor_fraction(approx, binary.shape, floor_mask) \
+                < _FOOT_MIN_FLOOR_FRAC:
+            continue   # keilausvuoto (lasi/oviaukko): kattoa on, lattiaa ei → ei huone
+        polys.append((area, poly))
 
     return [p for _, p in polys]
+
+
+def _floor_fraction(approx: np.ndarray, shape, floor_mask: np.ndarray) -> float:
+    region = np.zeros(shape, np.uint8)
+    cv2.fillPoly(region, [approx.reshape(-1, 2).astype(np.int32)], 1)
+    n = int(region.sum())
+    if n == 0:
+        return 0.0
+    return float((region.astype(bool) & floor_mask).sum()) / n
+
+
+def _repair_polygon(
+    poly: list[tuple[float, float]]
+) -> list[tuple[float, float]] | None:
+    """Pudota tai korjaa itsensä leikkaava monikulmio.
+
+    Fiktiivisiä perimetriseiniä ei saa rakentaa rikkinäiselle rajalle: signed
+    area (= ulospäin-normaalin suunta) on silloin merkityksetön."""
+    if len(poly) < 3:
+        return None
+    try:
+        from shapely.geometry import Polygon
+    except ImportError:
+        return poly
+    sp = Polygon(poly)
+    if sp.is_valid:
+        return poly
+    fixed = sp.buffer(0)
+    if fixed.is_empty:
+        return None
+    if fixed.geom_type == "MultiPolygon":
+        fixed = max(fixed.geoms, key=lambda g: g.area)
+    if fixed.geom_type != "Polygon" or fixed.area <= 0.0:
+        return None
+    return [(round(float(x), 1), round(float(y), 1))
+            for x, y in fixed.exterior.coords[:-1]]
 
 
 def _polygon_area(pts: list[tuple[float, float]]) -> float:

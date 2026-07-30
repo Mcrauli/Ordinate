@@ -167,6 +167,42 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
 - **Lattiakontuurin lovi voi olla kalusteen keilausvarjo** (sänky/sohva): siitä
   tehty perimetriseinä risteilee huoneen halki. Testi: jos katto jatkuu reunan
   ULKOpuolella, reuna on sisätilassa → ei seinää (`perimeter._ceiling_continues_beyond`).
+- **HUONEALA ≠ ohut lattiaviipale.** Kalusteiden keilausvarjot syövät ±8 mm
+  viipaleeseen lahdet ulkoreunaan asti, cv2:n ulkokontuuri kiertää joka lahden ja
+  **suhteellinen** `approxPolyDP`-epsilon (`0.008 × arcLength`) räjähtää lahtien
+  myötä ~800 mm:iin → lahdet romahtavat **itsensä leikkaavaksi** monikulmioksi
+  (mitattu asunnolla: 25 kärkeä, 36.9 m² kun ala on 58 m², `is_valid=False`).
+  Silloin signed area — eli perimetrin ULOSPÄIN-normaali — on merkityksetön ja
+  seiniä syntyy fiktiivisille diagonaalireunoille (haamu 600 mm rakennuksen ulkona,
+  **0 pistettä** koko 3.4 m matkalla). Resepti (`_occupancy_grid`): lattia ∪ katto,
+  ±40 mm kaista, 400 mm closing, reikien flood-fill, **absoluuttinen** epsilon
+  150 mm, `_repair_polygon` (buffer(0) tai pudota). → 31 kärkeä, 57.7 m², validi.
+- **Huoneala ei saa ylittää seinää** (`_cut_walls`): detektoidut seinät rasteroidaan
+  maskiin katkaisijoiksi (min 120 mm leveys — 66 mm seinä ei katkaise 25 mm
+  ruudukossa). Ilman tätä ala vuotaa oviaukoista ja lasin läpi naapuritilaan
+  (mitattu: 114 639 kattopistettä yläseinän takana) → perimetri asettuu
+  yhdistyneen alueen ULKOreunaan ja aito seinä kuolee snap-kaskadissa.
+  Siksi kontuuri lasketaan VASTA seinien suodatuksen jälkeen.
+- **Katto vain SULKEE varjot, se ei saa LUODA aluetta**: alueen pinta-alasta oltava
+  ≥20 % lattiapisteiden peitossa (`_FOOT_MIN_FLOOR_FRAC`). Mitattu: keilausvuoto
+  lasin/oviaukon läpi 0.02, aidot huoneet 0.60–0.97.
+- **Mitattu linja voittaa kontuuri-priorin** (`perimeter._adopt_measured_line`):
+  jos samalla linjalla on detektoitu seinä (≤700 mm, <8°, ≥1000 mm) mutta eri
+  kohdassa pitkittäin — jolloin `_edge_covered`:n 0.35-peitto ei laukea —
+  perimetri projisoidaan SEN keskilinjalle ja perii sen paksuuden, eikä
+  `push`-korjausta käytetä. Kontuurin sijaintivirhe voi olla satoja mm eikä
+  floorplan-seinän 90 mm linjauskorjaus riitä.
+- **Paksuuspari hylätään jos seinän RUNGOSSA on kattoa** (`_pair_body_has_ceiling`,
+  vain ≥210 mm pareille — ohuemman rungosta ei voi mitata). Yksipuolisella
+  ulkoseinällä huoneen puolella oleva kaluste ~300 mm pinnasta tuottaa toisen
+  piikin → paksuus 330–372 mm ja akseli **puoli valepaksuutta huoneen sisään** →
+  naapuripätkä jää eri linjalle, `merge_collinear` (130 mm) ei sulauta → huone ei
+  sulkeudu (apt2: 33 m² huone katosi). Katossa ei ole kalusteita, joten kattoa
+  rungon sisällä = runko on osittain huonetilaa (mitattu: valepari 0.93–0.97,
+  aidot ≤0.52). **Hylkäys palauttaa yksipuoliseksi MYÖS paksuudelta** (200 mm) —
+  pelkkä paksuuden säilytys jättäisi akselin edelleen pieleen. Kattopisteet on
+  annettava erikseen: `thick_cloud` on vain keskikaista (35–65 % z:stä), siinä ei
+  ole kattoa lainkaan.
 - **Valeseinät toimivat snap-ankkureina** — kaskadi: valeseinä → `snap_corners`
   venyttää naapurit sen risteyksiin → oikea seinä jää orvoksi → `remove_dangling_walls`
   poisti sen (3.4 m seinä, 34 k pisteen evidenssi!). Siksi dangling-poisto koskee

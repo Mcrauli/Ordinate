@@ -289,6 +289,12 @@ _TL_WEAK_FRAC = 0.08     # heikko vastapinta hyväksytään jos istuu odotetussa
                          # (epäsymmetrinen näkyvyys: toinen puoli skannattu kauempaa)
 _TL_ALONG_MARGIN = 400.0 # mm — along-suunnan ylitys (= QA -400..L+400)
 _TL_FACE_WIN = 60.0      # mm — yksipuolinen: huipun oltava näin lähellä odotettua
+_TL_BODY_MIN_T = 210.0   # mm — runkotesti vain tätä paksummalle parille (ohuemman
+                         # rungosta ei voi mitata: pintakohina täyttää kaistan)
+_TL_BODY_MARGIN = 45.0   # mm — pintakohinan marginaali rungon sisään
+_TL_BODY_FRAC = 0.60     # kattoa yli tämän osuuden rungosta → pari ei kelpaa
+_TL_BODY_ZBAND = 60.0    # mm — ±kaista kattotason ympärillä
+_TL_ONE_SIDED_T = 200.0  # mm — hylätyn valeparin jälkeen: yksipuolisen oletuspaksuus
                          # mallipintaa (±th/2), muuten se on naapuri/kaluste → ei lukita
 
 
@@ -305,16 +311,58 @@ def _parabolic_peak(hist: np.ndarray, centers: np.ndarray, pk: int) -> float:
     return float(centers[pk]) + max(-1.0, min(1.0, delta)) * bin_w
 
 
-def _thickness_lock_walls(walls, cloud, iters: int = 3) -> list:
+def _thickness_lock_walls(walls, cloud, iters: int = 3, ceiling_xy=None) -> list:
     # Iteroi: akselin keskitys siirtää mittausikkunaa → mittaus tarkentuu kun
     # akseli osuu pintojen puoliväliin. 1 kierros ~2mm mediaani, 3 kierrosta
     # ~1.15mm (suppenee). Halpa (sama pilvi muistissa).
     pts = np.asarray(cloud.points)
     if len(pts) == 0:
         return walls
+    ceil_xy = None if ceiling_xy is None or len(ceiling_xy) == 0 else np.asarray(ceiling_xy)
     for _ in range(iters):
-        walls = [_thickness_lock_wall(w, pts) for w in walls]
+        walls = [_thickness_lock_wall(w, pts, ceil_xy) for w in walls]
     return walls
+
+
+def _ceiling_band_xy(cloud, ceiling_z: float | None) -> np.ndarray | None:
+    """Kattotason XY-pisteet. Paksuusmittauksen `thick_cloud` on VAIN keskikaista
+    (35–65 % z-alueesta) → siinä ei ole kattoa lainkaan, joten runkotesti tarvitsee
+    oman pilven."""
+    if cloud is None or ceiling_z is None:
+        return None
+    pts = np.asarray(cloud.points)
+    if len(pts) == 0:
+        return None
+    sel = np.abs(pts[:, 2] - ceiling_z) < _TL_BODY_ZBAND
+    return pts[sel, :2] if sel.any() else None
+
+
+def _pair_body_has_ceiling(
+    ceiling_xy: np.ndarray | None, p0: np.ndarray, along: np.ndarray, normal: np.ndarray,
+    length: float, center: float, t_new: float,
+) -> bool:
+    """Pintapari ei kelpaa jos seinän RUNGON sisällä on kattoa.
+
+    Yksipuolisella (ulko)seinällä huoneen puolella oleva kaluste — kaappi/hylly
+    ~300 mm pinnasta — tuottaa toisen piikin. Pari paisuttaa paksuuden ja siirtää
+    akselin puoli paksuutta HUONEEN sisään; naapuripätkä jää eri linjalle eikä
+    merge_collinear enää sulauta niitä → huone ei sulkeudu. Katossa ei ole
+    kalusteita, joten kattoa rungon sisällä = runko on osittain huonetilaa.
+    Mitattu asunnolla: valepari 0.93–0.97, aidot ≤0.52."""
+    if ceiling_xy is None or t_new < _TL_BODY_MIN_T or length < 800.0:
+        return False
+    half = t_new / 2.0 - _TL_BODY_MARGIN
+    if half <= 60.0:
+        return False
+    rel = ceiling_xy - p0
+    s = rel @ along
+    t = rel @ normal
+    m = (s > 150.0) & (s < length - 150.0) & (np.abs(t - center) < half)
+    if not m.any():
+        return False
+    n_bins = max(int(length // 250.0), 1)
+    hist, _ = np.histogram(s[m], bins=n_bins, range=(0.0, length))
+    return float((hist > 3).mean()) > _TL_BODY_FRAC
 
 
 def _single_face_lock(wall, hist, centers, pks, normal, p0, p1):
@@ -352,7 +400,7 @@ def _single_face_lock(wall, hist, centers, pks, normal, p0, p1):
     ]})
 
 
-def _thickness_lock_wall(wall, pts: np.ndarray):
+def _thickness_lock_wall(wall, pts: np.ndarray, ceiling_xy: np.ndarray | None = None):
     if len(wall.axis) < 2:
         return wall
     p0 = np.array(wall.axis[0], dtype=float)
@@ -419,6 +467,23 @@ def _thickness_lock_wall(wall, pts: np.ndarray):
     if not (_TL_MIN_THICK <= t_new <= _TL_MAX_THICK):
         return wall
     center_offset = 0.5 * (f_dom + f_sec)
+
+    if _pair_body_has_ceiling(ceiling_xy, p0, along, normal, length, center_offset, t_new):
+        # Toinen "pinta" on kaluste huoneen sisällä → yksipuolinen seinä. Pelkkä
+        # paksuuden säilyttäminen ei riitä: akseli jäisi puoli VALEpaksuutta
+        # huoneen sisään eikä naapuripätkä enää sulaudu samalle linjalle.
+        # Runko kasvaa NÄKYVÄSTÄ pinnasta poispäin kalusteen puolelta.
+        t_one = wall.thickness if wall.thickness < _TL_BODY_MIN_T else _TL_ONE_SIDED_T
+        side = 1.0 if f_dom >= f_sec else -1.0
+        center = f_dom + side * t_one / 2.0
+        shift_vec = center * normal
+        return wall.model_copy(update={
+            "axis": [
+                [round(p0[0] + shift_vec[0], 2), round(p0[1] + shift_vec[1], 2)],
+                [round(p1[0] + shift_vec[0], 2), round(p1[1] + shift_vec[1], 2)],
+            ],
+            "thickness": round(t_one, 1),
+        })
 
     updates: dict = {}
     if abs(center_offset) >= 0.2:
@@ -946,16 +1011,7 @@ class Pipeline:
         model = detector.detect(cloud)
         model.slabs = detect_slabs(cloud)
 
-        # Lattian todelliset ulkokontuurit (KAIKKI erilliset lattia-alueet, ei
-        # vain suurin — paksun seinän takainen huone on oma polygoninsa) →
-        # perimetriseinien lähde.
         floor_slab = next((s for s in model.slabs if s.slab_type == "floor"), None)
-        floor_contours: list = []
-        if floor_slab is not None:
-            from scan2bim.core.segmentation.slab_detector import detect_floor_contours
-            floor_contours = detect_floor_contours(cloud, floor_slab.elevation)
-            if not floor_contours:
-                floor_contours = [floor_slab.boundary]
 
         # Pintalukitus tarvitsee mahd. tarkan pilven: 12mm-detektiovoxelin
         # sentroidi-bias siirtää yksipuolisen pinnan ~sisäänpäin. Hienompi
@@ -965,6 +1021,24 @@ class Pipeline:
         model.walls = filter_structural_walls(model.walls, model.slabs)
         model.walls = refine_thicknesses(model.walls, lock_cloud)
         model.walls = _recenter_wall_axes(model.walls, lock_cloud)
+
+        # Huonealan kontuurit (KAIKKI erilliset alueet, ei vain suurin — paksun
+        # seinän takainen huone on oma polygoninsa) → perimetriseinien lähde.
+        # Lasketaan VASTA seinien suodatuksen jälkeen: seinät toimivat alueen
+        # katkaisijoina, joten niiden pitää olla puhdas joukko.
+        floor_contours: list = []
+        if floor_slab is not None:
+            from scan2bim.core.segmentation.slab_detector import detect_floor_contours
+            # Katto mukaan: siinä ei ole kalusteita → huoneala jää kiinteäksi eikä
+            # kontuuri kierrä keilausvarjojen lahtia (rikkoi rajan itsensä leikkaavaksi).
+            ceil_slab = next((s for s in model.slabs if s.slab_type == "ceiling"), None)
+            floor_contours = detect_floor_contours(
+                cloud, floor_slab.elevation,
+                ceiling_elevation=ceil_slab.elevation if ceil_slab is not None else None,
+                walls=model.walls,
+            )
+            if not floor_contours:
+                floor_contours = [floor_slab.boundary]
 
         # Toinen deduplikointi: akselinkorjaus saattaa tuoda aiemmin eri paikassa olevia
         # seiniä samalle akselille (kuten wall_105/wall_108 jotka ovat saman seinän pinnat)
@@ -1056,7 +1130,12 @@ class Pipeline:
         # Yksipuoliset jätetään ennalleen (ei mitattavissa). Snap pitää nurkat.
         if thick_cloud is not None and len(np.asarray(thick_cloud.points)) > 0:
             _before = [(w.thickness, tuple(map(tuple, w.axis))) for w in model.walls]
-            model.walls = _thickness_lock_walls(model.walls, thick_cloud)
+            _ceil_z = next(
+                (s.elevation for s in model.slabs if s.slab_type == "ceiling"), None)
+            model.walls = _thickness_lock_walls(
+                model.walls, thick_cloud,
+                ceiling_xy=_ceiling_band_xy(lock_cloud, _ceil_z),
+            )
             _nch = sum(
                 1 for (t0, a0), w in zip(_before, model.walls)
                 if abs(w.thickness - t0) > 0.2 or tuple(map(tuple, w.axis)) != a0
