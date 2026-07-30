@@ -330,6 +330,20 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
 
 ## Tunnetut rajoitukset
 
+- **Kattavuuden katto on PYSTYMASKISSA, ei sen jälkeisessä ketjussa.** Mitattu
+  Rohbau site_07/scene_07000: maski 8031 px ≈ 36 m seinää → 60.3 m segmenttejä
+  (molemmat pinnat) → 14 seinää. Muunnos on tehokas; maski päästää läpi vain
+  47.7 % aidoista seinäpikseleistä. **Kolme korjausyritystä KUMOTTU mittauksella
+  — älä toista:** (1) `_VSLICE_MIN_PER` 2→1 ei vaikuta (p50 9→8);
+  (2) semanttinen `pred==wall`-maski tuo 263 k palkkipistettä 276 k seinäpisteen
+  rinnalle, koska malli **ei ennusta beam-luokkaa lainkaan** (romahtanut
+  ceiling/floor/wall/column/clutter-viisikkoon); (3) maskin morfologinen siivous
+  huonontaa kaikilla varianteilla (nykyinen 60.3 m → open3+close9 39.3 m →
+  open5 0 m) koska 200 mm seinä on vain ~7 px leveä ja opening syö sen.
+  **Ainoa mitattu polku ylös:** pystyjakso ≥1000 mm JA `pred==wall` yhdessä →
+  65.3 % seinäpikseleistä 2.6 % palkkikontaminaatiolla (vs 47.7 % / 2.0 %).
+  Vaatii labelit suodattimelta detektorille; `PointNetFilter.predict_classes`
+  on jo olemassa, mutta labelit on laskettava SUODATETULLE pilvelle.
 - **KATTAVUUS on nyt suurin puute, ei tarkkuus** (mitattu Rohbau3D-GT:llä,
   site_07/scene_07000): mallin seinäpintojen alla olevista pisteistä **96.2 %**
   on aidosti GT:n Wall/Drywall — jokainen detektoitu seinä 96–100 %. Mutta
