@@ -109,10 +109,28 @@ Tarkkuus mitataan erillisillä QA-skripteillä — **aja tuotantomallia (`model.
 | `data/_corner_qa.py` | Nurkkasijainti vs pilvi-sovitetut keskilinjat |
 | `data/_height_qa.py` | Lattia/katto/korkeus vs pilvi-sub-bin |
 | `data/_length_qa.py` | Seinän pituus (nurkkaväli) |
-| `data/_overlay_prod.py`, `data/_plan_qa.py`, `data/_vision_tol.py` | Vision-overlayt (malli vs pilvi) |
+| `data/_extent_qa.py` | **Ylivenytys**: onko seinän PÄÄ katteessa vai ilmassa (kattamaton keskiosa = oviaukko, laillinen; kattamaton häntä = venytetty evidenssin yli) |
+| `data/_val4.py`, `data/_ablation.py` | 4 datan tuotantoajo / ablaatio (monkeypatchaa muutos pois → näyttää ansaitseeko se paikkansa) |
+| `data/_overlay_prod.py`, `data/_plan_qa.py`, `data/_vision_tol.py`, `data/_cmp_view.py` | Vision-overlayt (malli vs pilvi) |
 | `data/_spatiallm_qa.py` | **Ground-truth-vertailu**: SpatialLM-scenet (PLY + .txt-annotaatio) → seinien lateraali-/kulmavirhe + aukkomäärät GT:tä vasten |
 
 **Käytä visionia aina tarkkuusvertailuissa.** Kuvat: `data/_*.png`.
+
+**VALIDOI MITTARI KONTROLLIAJOLLA.** Uusi mittari on ajettava myös VANHAA
+(huonompaa) mallia vasten. Jos se antaa molemmille samat luvut, se ei erottele
+eikä sillä saa perustella mitään. Näin kävi `_angle_qa.py`:lle: se luki mitä
+tahansa pisteitä ±45 mm kaistastaan (myös naapuriseinän ja kalusteen pintaa) →
+PCA antoi väärän pinnan suunnan, ja se näytti vanhan mallin yhtä hyvänä.
+Sijaintitarkkuus mitataan `_tol_heatmap.py`:n `pinta.mit`-sarakkeella
+raakapilveä vasten. **Älä myöskään päättele tarkkuutta overlay-kuvasta** —
+"wall_007 kierossa 1–2°, 350 mm pään virhe" oli kuvasta luettu eikä mittaus
+tukenut sitä kummassakaan mallissa.
+
+**Mitattu tarkkuus v0.8.9** (asunto, 48 M pistettä satunnaisotannalla 7
+keilauksesta — EI voxelointia, joka siirtäisi pintaa): jokainen detektoitu
+seinä ≤ 5.1 mm pinnastaan (v0.8.8: kolme yli 8 mm, pahin 34.2 mm), mediaani
+3.8 mm. Jäännös on perimetriseinä sotkunurkassa (58.8 mm) jossa kaistan kohina
+on 30.6 mm — se lippuuntuu itse conf 0.25 → QA:n TARKISTA-lista.
 **GT-testidata:** SpatialLM-Dataset (HuggingFace manycore-research) — yksittäiset
 scenet saa ulos 4.8GB-chunkeista `remotezip`illä (range-request, ei koko latausta);
 layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille sceneille.
