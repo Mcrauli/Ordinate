@@ -32,7 +32,11 @@ class PipelineConfig:
     save_intermediate: bool = False
     semantic_filter: bool = False          # Vaihe 2 legacy (geometric); käytä semantic_filter_mode
     semantic_filter_mode: Literal["off", "geometric", "pointnet", "pointnet-retail"] = "off"
-    # pointnet-retail: liiketila/tyomaa-malli — poistaa lattia-katto-hyllyrivit
+    # pointnet-retail: ALIAS "pointnet":lle. Erillinen liiketilamalli sulautettiin
+    # yhteen malliin cb50610:ssä (geocol_v2_ms, koulutettu synteettisellä liiketila-
+    # ja monikerrosdatalla; hyllynpoisto 15 % → 71 %, Rohbau-rakenne 0.879 → 0.947).
+    # models/s3dis_pointnet_retail.onnx on tarkoituksella sama tiedosto. Säilytetään
+    # yhteensopivuuden vuoksi; älä oleta sen suodattavan eri tavalla.
     # (95% vs oletusmallin 17%); asunnoissa oletusmalli on tarkempi.
     semantic_model_path: "Path | None" = None   # yliaja PointNet-mallitiedosto (esim. uuden mallin testaus)
     crs_epsg: int = 3067    # georef-leima IFC:hen (EPSG). Geometria pysyy skannin

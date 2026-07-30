@@ -353,7 +353,11 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
 - **Occluusio** (kalusteet nurkissa) rajaa nurkkasijainnin ~100 mm:iin kalustetulla
   datalla. Puhtaalla rungolla sama pipeline antaa ~mm.
 - **Liiketilojen hyllyt** (lattia-katto) läpäisevät geometrisen pystymaskin →
-  Vaihe 2 (semanttinen suodatin) tarvitaan.
+  semanttinen suodatin tarvitaan. **`pointnet-retail` on nykyään ALIAS
+  `pointnet`:lle** — erillinen liiketilamalli sulautettiin yhteen malliin
+  (cb50610, geocol_v2_ms: hyllynpoisto 15 % → 71 %, Rohbau-rakenne
+  0.879 → 0.947, monikerros korjattu). Molemmat `.onnx`-tiedostot ovat
+  tarkoituksella identtiset; älä oleta moodien suodattavan eri tavalla.
 
 ## Roadmap — Vaihe 2: semanttinen suodatin
 

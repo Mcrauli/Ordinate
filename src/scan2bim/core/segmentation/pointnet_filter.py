@@ -135,8 +135,21 @@ class PointNetFilter:
 
     # -----------------------------------------------------------------------
 
-    def _classify(self, pts_full: np.ndarray) -> np.ndarray:
-        """Palauttaa boolean-maskin: True = rakenteellinen piste."""
+    def predict_classes(self, pts_full: np.ndarray) -> np.ndarray | None:
+        """Per-piste S3DIS-luokka (0=ceiling,1=floor,2=wall,3=beam,4=column,
+        5=window,6=door,7..12=kalusteet). None jos mallia ei ole.
+
+        Malli erottaa seinän ja palkin toisistaan; `filter` heittää sen tiedon
+        pois ja palauttaa vain keep/remove. Ulos annettuna sitä voi käyttää
+        siellä missä geometria joutuisi päättelemään saman uudestaan."""
+        if self._session is None or len(pts_full) < 1000:
+            return None
+        return self._classify(pts_full, return_pred=True)
+
+    def _classify(self, pts_full: np.ndarray, return_pred: bool = False) -> np.ndarray:
+        """Palauttaa boolean-maskin: True = rakenteellinen piste.
+
+        return_pred=True → palauttaa sen sijaan per-piste luokkaindeksin."""
         # Deterministinen näytteistys: sama syöte → sama malli joka ajolla.
         # Globaali np.random heilutti seinien pintalukitusta ±6mm ajojen välillä.
         rng = np.random.RandomState(0)
@@ -275,6 +288,10 @@ class PointNetFilter:
         # Pisteet ilman yhtään ääntä (reunat, ei lohkossa) → pidä
         no_vote = votes.sum(axis=1) == 0
         pred = votes.argmax(axis=1)
+        if return_pred:
+            pred = pred.copy()
+            pred[no_vote] = -1
+            return pred[inv]
         structural = np.isin(pred, list(_KEEP_CLASSES))
         structural[no_vote] = True
 
