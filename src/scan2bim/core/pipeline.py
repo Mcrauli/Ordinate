@@ -696,6 +696,7 @@ class Pipeline:
         self.config = config or PipelineConfig()
         self._progress = progress or (lambda msg: log.info(msg))
         self._scanner_origins: list = []   # täytetään kerroskohtaisesti (E57)
+        self._sem_labels = None            # PointNetin luokat (SemanticLabels|None)
 
     def run(self, input_path: Path | list[Path], output_dir: Path) -> StructuralModel:
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -983,7 +984,9 @@ class Pipeline:
             from scan2bim.core.segmentation.pointnet_filter import PointNetFilter  # noqa: PLC0415
             filt = PointNetFilter(model_path=self.config.semantic_model_path,
                                   variant="retail" if mode == "pointnet-retail" else "default")
-            out = filt.filter(cloud)
+            # Labelit talteen samalla inferenssillä: detektorin pystymaski voi
+            # käyttää niitä eikä joudu päättelemään seinä/palkki-eroa uudestaan.
+            out, self._sem_labels = filt.filter_with_labels(cloud)
             label = ("PointNet-liiketila" if mode == "pointnet-retail" else "PointNet")                 if filt.is_available() else "geometrinen (PointNet-fallback)"
         else:
             from scan2bim.core.segmentation.semantic_filter import SemanticFilter  # noqa: PLC0415
@@ -1012,6 +1015,10 @@ class Pipeline:
         cloud = _crop_to_building_envelope(cloud)
 
         detector = DetectorRegistry.get(self.config.detector)()
+        # Semanttiset labelit detektorille jos suodatin tuotti ne. Muut
+        # detektorit eivät tunne kenttää → ei vaikutusta niihin.
+        if self._sem_labels is not None and hasattr(detector, "semantic_labels"):
+            detector.semantic_labels = self._sem_labels
         model = detector.detect(cloud)
         model.slabs = detect_slabs(cloud)
 

@@ -108,3 +108,41 @@ def test_tall_space_wall_found_beam_rejected():
                  if abs((w.axis[0][1] + w.axis[1][1]) / 2 - 6000) < 400
                  and abs(w.axis[1][1] - w.axis[0][1]) < abs(w.axis[1][0] - w.axis[0][0])]
     assert not beam_like, f"palkista tuli seina: {[w.axis for w in beam_like]}"
+
+
+def test_semantic_labels_relax_vertical_run_in_tall_space():
+    """Korkeassa tilassa geometrinen sääntö vaatii 1500 mm yhtajaksoisen
+    pystyjakson. Kun PointNetin luokka on tiedossa, palkkien torjunta ei ole
+    enaa pelkan jatkuvuuden varassa → riittaa 1000 mm SEINAluokan pisteista.
+    Mitattu Rohbau3D-GT:lla: kattavuus 0.260 -> 0.648, tarkkuus 0.962 -> 0.965."""
+    import numpy as np
+    import open3d as o3d
+
+    from scan2bim.core.segmentation.pointnet_filter import S3DIS_WALL, SemanticLabels
+    from scan2bim.core.segmentation.wall_contour import WallDetectorContour
+
+    rng = np.random.RandomState(11)
+
+    def slab(z, n=140000):
+        return np.column_stack([rng.uniform(0, 12000, n), rng.uniform(0, 12000, n),
+                                z + rng.normal(0, 3.0, n)])
+
+    def wall(x, z0, z1, n=170000):
+        return np.column_stack([x + rng.normal(0, 3.0, n), rng.uniform(0, 12000, n),
+                                rng.uniform(z0, z1, n)])
+
+    # kaista alkaa lattia+350 → 1600 mm seinasta jaa kaistaan 1250 mm:
+    # alle geometrisen 1500 mm, yli semanttisen 1000 mm
+    walls_pts = np.vstack([wall(0.0, 0, 1600), wall(12000.0, 0, 1600)])
+    pts = np.vstack([slab(0.0), slab(10000.0), walls_pts])
+    pc = o3d.geometry.PointCloud()
+    pc.points = o3d.utility.Vector3dVector(pts)
+
+    det = WallDetectorContour()
+    assert not det.detect(pc).walls, "geometrinen saanto ei saisi loytaa 1200 mm seinaa"
+
+    pred = np.zeros(len(pts), dtype=np.int64)
+    pred[len(pts) - len(walls_pts):] = S3DIS_WALL
+    det2 = WallDetectorContour()
+    det2.semantic_labels = SemanticLabels.build(pts, pred)
+    assert det2.detect(pc).walls, "semanttisilla labeleilla seinan olisi pitanyt loytya"

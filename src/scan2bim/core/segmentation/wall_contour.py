@@ -61,6 +61,13 @@ _VSLICE_MIN_PER = 2         # min pistettä pikselissä per viipale → viipale 
 # läpäisy jaksolla ≥1500 mm: Wall/Drywall 47.7 %, Column 35.0 %, Beam 2.0 %, TGA 0.0 %.
 _VSLICE_RUN_MM  = 1500.0    # mm — riittävä yhtäjaksoinen pystyjakso korkeassa tilassa
 _VSLICE_TALL_MM = 4000.0    # mm — tätä korkeammassa tilassa osuussääntö ei päde
+# Kun semanttiset labelit ovat käytettävissä, geometria saa olla vähemmän
+# varovainen: palkkien torjunta ei ole enää pelkän pystyjatkuvuuden varassa.
+# Mitattu Rohbau3D-GT:llä (seinäpikselit / palkkikontaminaatio):
+#   jakso ≥1500 mm koko pilvestä      47.7 % / 2.0 %   (nykyinen)
+#   jakso ≥1000 mm koko pilvestä      65.6 % / 6.0 %
+#   jakso ≥1000 mm VAIN seinäluokasta 65.3 % / 2.6 %   ← tämä
+_VSLICE_RUN_SEM_MM = 1000.0  # mm — löysempi jakso kun luokka on tiedossa
 
 _MAX_WORK_POINTS = 1_200_000  # raskas detektori → ajetaan harvennetulle pilvelle
 
@@ -399,6 +406,7 @@ class WallDetectorContour(ElementDetector):
         self.min_wall_length = min_wall_length
         self.min_thickness = min_thickness
         self.max_thickness = max_thickness
+        self.semantic_labels = None   # SemanticLabels|None, pipeline asettaa
 
     def detect(self, cloud: o3d.geometry.PointCloud) -> StructuralModel:
         # Raskas rasterointi → aja harvennetulle pilvelle (muisti/nopeus).
@@ -552,10 +560,43 @@ class WallDetectorContour(ElementDetector):
         passed = vcount >= need
         if tall:
             passed |= best >= run_need
+            sem = self._semantic_run(clear, edges, rows, cols, xr, yr)
+            if sem is not None:
+                passed |= sem
         binary = passed.astype(np.uint8) * 255
         kernel = np.ones((self.close_kernel, self.close_kernel), np.uint8)
         binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)
         return binary, x_min, y_min
+
+    def _semantic_run(self, clear, edges, rows, cols, xr, yr):
+        """Pystyjakso laskettuna VAIN seinäluokan pisteistä, löysemmällä
+        kynnyksellä. None jos labeleita ei ole."""
+        labels = self.semantic_labels
+        if labels is None:
+            return None
+        try:
+            from scan2bim.core.segmentation.pointnet_filter import S3DIS_WALL
+            lab = labels.lookup(clear)
+        except Exception:
+            return None
+        wall = clear[lab == S3DIS_WALL]
+        if len(wall) < 200:
+            return None
+        need = max(2, int(round(_VSLICE_RUN_SEM_MM / _VSLICE_STEP)))
+        xy, z = wall[:, :2], wall[:, 2]
+        cur = np.zeros((rows, cols), dtype=np.int32)
+        best = np.zeros((rows, cols), dtype=np.int32)
+        for k in range(len(edges) - 1):
+            m = (z >= edges[k]) & (z < edges[k + 1])
+            if int(m.sum()) < 10:
+                cur[:] = 0
+                continue
+            grid, _, _ = np.histogram2d(
+                xy[m, 0], xy[m, 1], bins=[cols, rows], range=[xr, yr])
+            occ = grid.T >= _VSLICE_MIN_PER
+            cur = np.where(occ, cur + 1, 0)
+            np.maximum(best, cur, out=best)
+        return best >= need
 
     def _binary_mask(self, xy: np.ndarray):
         x_min, y_min = float(xy[:, 0].min()), float(xy[:, 1].min())

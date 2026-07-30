@@ -68,6 +68,43 @@ def _find_model_path(variant: str = "default") -> Path | None:
     return None
 
 
+S3DIS_WALL = 2       # luokkaindeksi: 0=ceiling 1=floor 2=wall 3=beam 4=column …
+
+
+class SemanticLabels:
+    """Semanttiset luokat 30 mm ruudukkoon avainnettuna.
+
+    Taulukkomuotoiset labelit eivät kestä uudelleenharvennusta (detektori
+    voxeloi ison pilven omalla koollaan) — ruudukkoavain kestää."""
+
+    __slots__ = ("_origin", "_voxel", "_keys", "_labels")
+
+    def __init__(self, origin, voxel, keys, labels) -> None:
+        self._origin = origin
+        self._voxel = voxel
+        self._keys = keys
+        self._labels = labels
+
+    @classmethod
+    def build(cls, pts: np.ndarray, pred: np.ndarray) -> "SemanticLabels":
+        origin = pts.min(axis=0)
+        vox = np.floor((pts - origin) / _WORK_VOXEL).astype(np.int64)
+        key = (vox[:, 0] * 100_003 + vox[:, 1]) * 100_003 + vox[:, 2]
+        uniq, first = np.unique(key, return_index=True)
+        return cls(origin, _WORK_VOXEL, uniq, pred[first].astype(np.int8))
+
+    def lookup(self, pts: np.ndarray) -> np.ndarray:
+        """Per-piste luokka; -1 kun voxelia ei ole nähty."""
+        vox = np.floor((np.asarray(pts) - self._origin) / self._voxel).astype(np.int64)
+        key = (vox[:, 0] * 100_003 + vox[:, 1]) * 100_003 + vox[:, 2]
+        pos = np.searchsorted(self._keys, key)
+        pos = np.clip(pos, 0, len(self._keys) - 1)
+        hit = self._keys[pos] == key
+        out = np.full(len(key), -1, dtype=np.int8)
+        out[hit] = self._labels[pos[hit]]
+        return out
+
+
 class PointNetFilter:
     """S3DIS PointNet ONNX -kalustesuodatin. Fallback geometriseen jos malli puuttuu."""
 
@@ -134,6 +171,26 @@ class PointNetFilter:
         return cloud.select_by_index(np.where(keep)[0])
 
     # -----------------------------------------------------------------------
+
+    def filter_with_labels(self, cloud: o3d.geometry.PointCloud):
+        """Suodatettu pilvi + semanttiset labelit SAMALLA inferenssillä.
+
+        Palauttaa (cloud, SemanticLabels|None). Labelit avainnetaan 30 mm
+        ruudukkoon, jotta ne kohdistuvat vaikka detektori harventaisi pilven
+        uudelleen omalla voxelillaan."""
+        if self._session is None:
+            return self.filter(cloud), None
+        pts_full = np.asarray(cloud.points)
+        if len(pts_full) < 1000:
+            return cloud, None
+
+        pred = self._classify(pts_full, return_pred=True)
+        keep = np.isin(pred, list(_KEEP_CLASSES)) | (pred < 0)
+        keep |= _slab_bands(pts_full)
+        if keep.sum() < 200:
+            return cloud, SemanticLabels.build(pts_full, pred)
+        return (cloud.select_by_index(np.where(keep)[0]),
+                SemanticLabels.build(pts_full, pred))
 
     def predict_classes(self, pts_full: np.ndarray) -> np.ndarray | None:
         """Per-piste S3DIS-luokka (0=ceiling,1=floor,2=wall,3=beam,4=column,
