@@ -5,6 +5,18 @@ Toisin kuin normals/Hough (joka löytää erilliset seinäpinnat ja parittaa ne)
 tämä menetelmä lähtee seinämassan ulkoreunasta → tuottaa jatkuvia, yhtenäisiä
 seiniä jotka muodostavat suljettuja huoneita.
 
+Algoritmin lähde ja lisenssi
+----------------------------
+Vaiheet 1–7 on portattu Cloud2BIM-projektista
+(``reference/Cloud2BIM/aux_functions.py::identify_walls``).
+
+    Cloud2BIM — MIT License, Copyright (c) 2025 Václav Nežerka
+    https://github.com/vnezerka/Cloud2BIM
+
+MIT edellyttää copyright-ilmoituksen säilyttämistä johdannaisissa; koko
+lisenssiteksti on ``THIRD-PARTY-NOTICES.md``-tiedostossa ja se toimitetaan
+sovelluksen mukana.
+
 Algoritmi (portattu reference/Cloud2BIM/aux_functions.py::identify_walls):
   1. Vaaka-z-kaista 0.85–1.2 storey-korkeudesta → 2D-pisteet
   2. 2D-tiheyshistogrammi → binäärimaski (tiheyskynnys)

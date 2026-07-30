@@ -43,6 +43,12 @@ for _mf in ('s3dis_pointnet.onnx', 's3dis_pointnet_retail.onnx'):
     if os.path.exists(_model_file):
         _model_data.append((_model_file, 'models'))
 
+# Kolmannen osapuolen lisenssit on TOIMITETTAVA sovelluksen mukana: MIT
+# (Cloud2BIM, ks. wall_contour.py) vaatii copyright-ilmoituksen säilyttämisen ja
+# LGPL (IfcOpenShell, Qt) lisenssitekstin. Ks. THIRD-PARTY-NOTICES.md.
+_notice_file = os.path.join(ROOT, 'THIRD-PARTY-NOTICES.md')
+_notice_data = [(_notice_file, '.')] if os.path.exists(_notice_file) else []
+
 block_cipher = None
 
 _icon_path = os.path.join(ROOT, 'assets', 'scan2bim.ico')
@@ -52,7 +58,7 @@ a = Analysis(
     [os.path.join(ROOT, 'src/scan2bim/gui/__main__.py')],
     pathex=[os.path.join(ROOT, 'src')],
     binaries=_open3d_bins + _pye57_bins + _ort_bins,
-    datas=_ifc_data + _open3d_data + _laspy_data + _ort_data + _model_data,
+    datas=_ifc_data + _open3d_data + _laspy_data + _ort_data + _model_data + _notice_data,
     hiddenimports=[
         'scan2bim',
         'open3d',

@@ -34,10 +34,23 @@ python scripts/export_s3dis_model.py --train --data <labeled_npy_dir>
 Malli on tarkoituksella varovainen — poistaa vain varmat kalusteet, ei koske
 rakenteisiin. Toimii geometrisen pystymaskin LISÄNÄ, ei tilalle.
 
-## Parannus
+## Lisenssi — LUE ENNEN KOULUTUSTA
 
-Parempi kaluste-recall vaatii oikeat S3DIS-esiharjoitetut painot:
-```
-# Lataa best_model.pth: github.com/yanx27/Pointnet_Pointnet2_pytorch
-python scripts/export_s3dis_model.py --weights best_model.pth
-```
+Tiedostonimi on **harhaanjohtava**: painoissa **ei ole S3DIS-dataa**, vain
+S3DIS:n luokkataksonomia (13 luokkaa). Koulutusaineistot ja niiden ehdot:
+
+| Aineisto | Lisenssi | Seuraus |
+|---|---|---|
+| 3DSES (Zenodo 13323342) | **CC BY-SA 4.0** | kaupallinen käyttö ok, **attribuutio pakollinen**, ShareAlike tulkinnanvarainen mallipainoille |
+| Rohbau3D (doi:10.60776/ZWJFI4) | MIT | vapaa |
+| synteettiset scenet | oma | vapaa |
+
+Jos ShareAlike halutaan pois, harjoita ilman 3DSES:ää — Rohbau (MIT) +
+synteettinen riittävät. Ks. `THIRD-PARTY-NOTICES.md` kohta B.
+
+> **ÄLÄ lataa S3DIS-esiharjoitettuja painoja kaupalliseen versioon.**
+> S3DIS (Stanford 2D-3D-S) vaatii erillisen käyttöehtosopimuksen eikä salli
+> vapaata kaupallista jakelua. Aiempi versio tästä tiedostosta ehdotti
+> `yanx27/Pointnet_Pointnet2_pytorch`-painojen käyttöä kaluste-recallin
+> parantamiseksi — se saastuttaisi tuotteen juridisesti. Käytä sen sijaan
+> lisää Rohbau-sceneja tai synteettistä dataa.
