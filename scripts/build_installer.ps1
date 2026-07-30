@@ -20,15 +20,15 @@ $licensesFile = Join-Path $dist "LICENSES.md"
 
 if (-not (Test-Path $sourceExe)) { throw "PyInstaller did not produce $sourceExe" }
 
-if (-not (Test-Path $licensesFile)) {
-    @(
-        "# scan2bim - third-party licenses",
-        "",
-        "open3d (MIT), ifcopenshell (LGPL-3.0), ezdxf (MIT), PySide6 (LGPL-3.0),",
-        "scipy/numpy (BSD), opencv-python (Apache-2.0), laspy (BSD), pye57 (MIT).",
-        "",
-        "Source and full license texts: https://github.com/Mcrauli/scan2bim"
-    ) -join "`n" | Set-Content -Encoding UTF8 -Path $licensesFile
+# Lisenssit tulevat repon THIRD-PARTY-NOTICES.md:sta. Aiemmin tama generoi
+# tyngan joka (a) ei maininnut Cloud2BIM:ia vaikka wall_contour.py on portattu
+# siita (MIT vaatii copyright-ilmoituksen) ja (b) ohjasi "full license texts"
+# YKSITYISEEN repoon johon asiakas ei paase. Kumpikin oli lisenssirikkomus.
+$noticesSrc = Join-Path $root "THIRD-PARTY-NOTICES.md"
+if (Test-Path $noticesSrc) {
+    Copy-Item -Path $noticesSrc -Destination $licensesFile -Force
+} elseif (-not (Test-Path $licensesFile)) {
+    throw "THIRD-PARTY-NOTICES.md puuttuu — lisenssitiedostoa ei voi toimittaa."
 }
 
 $iscc = $env:ISCC

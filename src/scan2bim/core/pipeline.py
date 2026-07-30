@@ -972,6 +972,12 @@ class Pipeline:
 
     def _semantic_filter(self, cloud):
         """Vaihe 2: poista kalusteet/krääsä ennen detektiota."""
+        # Nollaa AINA ensin: labelit ovat kerros- ja pilvikohtaisia. Ilman tätä
+        # edellisen kerroksen labelit jäisivät voimaan kun suodatin ei aja
+        # (mode="off" tai geometrinen haara) ja detektori lukisi väärän kerroksen
+        # luokkia oman ruudukkoavaimensa läpi.
+        self._sem_labels = None
+
         mode = self.config.semantic_filter_mode
         # Taaksepäinyhteensopivuus: vanha semantic_filter=True → "geometric"
         if mode == "off" and self.config.semantic_filter:

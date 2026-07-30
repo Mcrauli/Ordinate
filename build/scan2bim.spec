@@ -37,11 +37,14 @@ _ort_data = collect_data_files('onnxruntime')
 _ort_bins = collect_dynamic_libs('onnxruntime')
 
 # ── PointNet ONNX-malli (bundlataan exe:hen jos löytyy) ───────────────────
+# Vain YKSI mallitiedosto: retail-variantti on alias samalle mallille
+# (cb50610 sulautti ne). Molempien bundlaaminen lisäsi 3.4 MB turhaa
+# jokaiseen latauksen ja itsepäivitykseen; PointNetFilter putoaa
+# oletusmalliin kun retail-tiedostoa ei ole.
 _model_data = []
-for _mf in ('s3dis_pointnet.onnx', 's3dis_pointnet_retail.onnx'):
-    _model_file = os.path.join(ROOT, 'models', _mf)
-    if os.path.exists(_model_file):
-        _model_data.append((_model_file, 'models'))
+_model_file = os.path.join(ROOT, 'models', 's3dis_pointnet.onnx')
+if os.path.exists(_model_file):
+    _model_data.append((_model_file, 'models'))
 
 # Kolmannen osapuolen lisenssit on TOIMITETTAVA sovelluksen mukana: MIT
 # (Cloud2BIM, ks. wall_contour.py) vaatii copyright-ilmoituksen säilyttämisen ja

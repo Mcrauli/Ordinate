@@ -262,12 +262,14 @@ def test_diagnostics_report_written(tmp_path):
 
 
 def test_retail_filter_variant_loads():
-    """pointnet-retail-variantti lataa oman mallinsa ja poistaa hyllyt;
-    puuttuessa fallback oletusmalliin."""
+    """pointnet-retail on ALIAS: erillinen liiketilamalli sulautettiin yhteen
+    malliin (cb50610), joten omaa tiedostoa EI ole eika sita bundlata exe:hen
+    (saasti 3.4 MB per lataus). Variantin on silti latauduttava fallbackilla."""
     from scan2bim.core.segmentation.pointnet_filter import PointNetFilter, _find_model_path
-    assert _find_model_path("retail") is not None, "retail-mallia ei loydy"
+    assert _find_model_path("retail") is None, "retail-mallitiedosto on palannut"
     f = PointNetFilter(variant="retail")
-    assert f.is_available()
+    assert f.is_available(), "retail-variantti ei pudonnut oletusmalliin"
+    assert PointNetFilter(variant="default").is_available()
 
 
 def test_corner_extensions_butt_joints():
