@@ -107,6 +107,62 @@ exe:hen (`build/scan2bim.spec` bundlaa vain `models/`, riippuvuudet ja koodin).
 
 ---
 
+## F. Toteutussuunnitelmat kohtiin A ja B
+
+Kumpikin on **tuntien työ**, ei pikakorjaus. Kirjattu tähän jotta ne voi ajaa
+suoraan eikä suunnittelua tarvitse tehdä uudestaan.
+
+### F1. LGPL → one-dir ilman että itsepäivitys hajoaa
+
+Ongelma: LGPL §4(d)(1) vaatii että käyttäjä voi **vaihtaa kirjaston**. One-file
+purkaa kaiken temp-hakemistoon → ei täyty. One-dir täyttää. Mutta `updater.py`
+vaihtaa yhden exen paikallaan, ja se on rakennettu one-filelle.
+
+Ratkaisu käyttää **samaa Windows-kikkaa tiedosto kerrallaan**: käytössä olevaa
+tiedostoa ei voi poistaa mutta sen voi *nimetä uudelleen* — tämä pätee myös
+ladattuihin DLL:iin, ei vain exeen. Asennus on per-user, joten UAC:ia ei tarvita.
+
+1. `build/scan2bim.spec`: lisää `COLLECT` → `dist/scan2bim/`
+2. `scripts/build_exe.ps1`: paketoi hakemisto `scan2bim-<v>.zip` + `.sha256`
+3. `build/installer.iss`: `Source: "..\dist\scan2bim\*"; Flags: recursesubdirs`
+4. `updater.py`: hyväksy `.zip`-asset, pura temppiin, **vaihda tiedosto
+   kerrallaan** (olemassa oleva → `.old`, uusi tilalle), siivoa `.old`-tiedostot
+   käynnistyksessä kuten nytkin (`cleanup_old_exe` yleistetään hakemistoon)
+
+**Siirtymä vanhoista asennuksista on se riskikohta.** Vanha `_select_asset` etsii
+raakaa exeä; jos uudessa julkaisussa sellaista ei ole, vanha asiakas ei näe
+päivitystä lainkaan (ei kaadu, mutta jää jumiin hiljaisesti). Siksi:
+**julkaise siirtymäversio jossa on SEKÄ raaka exe ETTÄ zip**, ja tee siitä
+versiosta viimeinen one-file — sen exe sisältää jo zip-tietoisen updaterin,
+joten seuraava päivitys siirtää käyttäjän one-diriin.
+
+**Ennen julkaisua on testattava oikeasti:** build → asennus → päivitys vanhasta
+versiosta uuteen. Tätä ei voi todentaa muuten kuin ajamalla.
+
+Vaihtoehto joka poistaa vain Qt:n velvoitteen: kaupallinen Qt-lisenssi.
+**IfcOpenShell jää silti LGPL:ksi** eikä sille ole kaupallista vaihtoehtoa, joten
+one-dir tarvitaan joka tapauksessa.
+
+### F2. 3DSES pois painoista
+
+Nykyinen tuotantomalli on koulutettu `scripts/train_3dses_rohbau.py`:llä
+("3DSES Gold + Rohbau"), eli CC BY-SA -dataa on mukana.
+
+1. Ympäristö: `py -3.12 -m venv .venv_train` + `pip install torch` (~2.5 GB)
+2. Data: Rohbau3D (MIT) — `scripts/rohbau_download.py`. Nykyinen skripti vaatii
+   `--gold`-argumentin **pakollisena**; tee Rohbau-only-polku tai käytä
+   `export_s3dis_model.py --train` (puhtaasti synteettinen).
+3. Koulutus + **koko gauntlet vihreänä ennen korvaamista** (AGENTS.md: asunto +
+   talo35 + rohbau keep-ratet). Varmuuskopiot `models/_backup/`.
+4. Vertailukohta on nykyinen malli: Rohbau-rakenne 0.947, hyllynpoisto ~71 %,
+   TGA-poisto ~90 %. Uusi malli saa korvata vain jos se yltää näihin.
+
+**Riski:** AGENTS.md:n dokumentoitu "seesaw" — pelkkä Rohbau-koulutus *tuhosi
+asuntosuodatuksen* kerran. Synteettistä liiketila- ja asuntodataa on siis
+pidettävä mukana.
+
+---
+
 ## E. Markkinointikäyttö — mitä kuvista saa näyttää
 
 | Aineisto | Saako käyttää markkinoinnissa |
