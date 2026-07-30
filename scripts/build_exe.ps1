@@ -1,6 +1,10 @@
 # Local Windows PyInstaller build for scan2bim.
 # Usage:  .\scripts\build_exe.ps1
-# Output: dist/scan2bim-<version>.exe (+ .sha256) and dist/scan2bim.exe
+# Output: dist/scan2bim/ (one-dir) + dist/scan2bim-<version>.zip (+ .sha256)
+#
+# ONE-DIR eika one-file: LGPL (IfcOpenShell, Qt) vaatii etta kayttaja voi
+# vaihtaa kirjaston. Itsepaivitys lataa zipin ja vaihtaa hakemiston
+# tiedosto kerrallaan (updater.replace_app_dir) - yha hiljainen, ei UAC:ia.
 #
 # Uses the project .venv (python -m PyInstaller). Run from the repo root.
 
@@ -15,8 +19,9 @@ if (-not $env:SCAN2BIM_VERSION) {
 }
 Write-Host "Building scan2bim.exe version $($env:SCAN2BIM_VERSION)..."
 
-$source = Join-Path $root "dist\scan2bim.exe"
-$target = Join-Path $root "dist\scan2bim-$($env:SCAN2BIM_VERSION).exe"
+$appDir = Join-Path $root "dist\scan2bim"
+$source = Join-Path $appDir "scan2bim.exe"
+$target = Join-Path $root "dist\scan2bim-$($env:SCAN2BIM_VERSION).zip"
 $preBuildMtime = if (Test-Path $source) { (Get-Item $source).LastWriteTime } else { [datetime]::MinValue }
 
 & $py -m pip install -e "$root[gui,build]" --quiet
@@ -30,7 +35,9 @@ if ((Get-Item $source).LastWriteTime -le $preBuildMtime) {
     throw "PyInstaller output not refreshed - build did not actually run."
 }
 
-Copy-Item -Path $source -Destination $target -Force
+# Zip koko hakemisto: itsepaivityksen payload.
+if (Test-Path $target) { Remove-Item $target -Force }
+Compress-Archive -Path (Join-Path $appDir "*") -DestinationPath $target -CompressionLevel Optimal
 $hash = Get-FileHash -Algorithm SHA256 -Path $target
 Write-Host "Built  : $target"
 Write-Host "SHA256 : $($hash.Hash)"

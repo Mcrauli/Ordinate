@@ -15,10 +15,10 @@ if (-not $version) { throw "SCAN2BIM_VERSION not set after build_exe.ps1" }
 
 $root = (Resolve-Path "$PSScriptRoot\..").Path
 $dist = Join-Path $root "dist"
-$sourceExe = Join-Path $dist "scan2bim.exe"
+$sourceDir = Join-Path $dist "scan2bim"
 $licensesFile = Join-Path $dist "LICENSES.md"
 
-if (-not (Test-Path $sourceExe)) { throw "PyInstaller did not produce $sourceExe" }
+if (-not (Test-Path $sourceDir)) { throw "PyInstaller did not produce $sourceDir" }
 
 # Lisenssit tulevat repon THIRD-PARTY-NOTICES.md:sta. Aiemmin tama generoi
 # tyngan joka (a) ei maininnut Cloud2BIM:ia vaikka wall_contour.py on portattu
@@ -57,7 +57,7 @@ $isccArgs = @(
     "/Qp",
     "/DAppVersion=$version",
     "/DAppNumericVersion=$numericVersion",
-    "/DSourceExe=$sourceExe",
+    "/DSourceDir=$sourceDir",
     "/DLicensesFile=$licensesFile",
     "/DOutputDir=$dist"
 )

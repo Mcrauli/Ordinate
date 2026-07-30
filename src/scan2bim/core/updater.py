@@ -67,29 +67,48 @@ def _normalise_version(raw: str) -> Version | None:
 
 
 def _select_asset(release: dict) -> tuple[str, int] | None:
-    """Pick the raw onefile exe asset, skipping .sha256 sidecars.
+    """Pick the update payload, skipping .sha256 sidecars.
 
-    Prefers the raw exe (``scan2bim.exe``) over the Setup installer so the
-    auto-update path swaps the exe in place via :func:`replace_exe` — silent,
-    no UAC, exactly like dwg2ifc. The ``*Setup*.exe`` asset exists only for
-    fresh manual downloads.
+    Order: **zip** (one-dir paketti) → raaka exe → Setup.
+
+    Zip on ensisijainen koska sovellus on one-dir (LGPL vaatii vaihdettavat
+    kirjastot, ks. build/scan2bim.spec). Raaka exe säilyy tuettuna, jotta
+    yhdellä siirtymäjulkaisulla voi olla molemmat assetit eivätkä vanhat
+    one-file-asennukset jää päivityksettä.
     """
-    exe_assets: list[tuple[str, int]] = []
+    zips: list[tuple[str, int]] = []
+    exes: list[tuple[str, int, bool]] = []
     for asset in release.get("assets", []):
-        name = asset.get("name", "")
-        if not name.lower().endswith(".exe"):
+        name = (asset.get("name") or "").lower()
+        if name.endswith(".sha256"):
             continue
-        if name.lower().endswith(".sha256"):
-            continue
-        exe_assets.append(
-            (asset.get("browser_download_url"), int(asset.get("size", 0)))
-        )
-    if not exe_assets:
+        url = asset.get("browser_download_url")
+        size = int(asset.get("size", 0))
+        if name.endswith(".zip"):
+            zips.append((url, size))
+        elif name.endswith(".exe"):
+            # "setup" tunnistetaan asset­NIMESTÄ, ei URL:sta: latausosoite ei
+            # välttämättä sisällä nimeä lainkaan, jolloin hiljainen päivitys
+            # valitsisi asentajan ja käyttäjä saisi UAC-ikkunan.
+            exes.append((url, size, "setup" in name))
+    if zips:
+        return zips[0]
+    if not exes:
         return None
-    for url, size in exe_assets:
-        if "setup" not in url.lower():
+    for url, size, is_setup in exes:
+        if not is_setup:
             return url, size
-    return exe_assets[0]
+    return exes[0][0], exes[0][1]
+
+
+def asset_is_zip(url_or_name: str) -> bool:
+    """True jos asset on one-dir-zip (→ :func:`replace_app_dir`)."""
+    return str(url_or_name).lower().endswith(".zip")
+
+
+def app_dir() -> Path:
+    """Asennushakemisto (one-dir): exen hakemisto."""
+    return Path(sys.executable).parent
 
 
 def _open_releases(repo: str, *, timeout: float) -> list[dict]:
@@ -263,18 +282,88 @@ def _old_path_for(exe_path: Path) -> Path:
 
 
 def cleanup_old_exe(exe_path: Path | None = None) -> None:
-    """Delete a leftover ``.old`` exe from a previous self-update."""
+    """Poista edellisen päivityksen ``.old``-jäämät.
+
+    One-dirissä niitä on useita (jokainen käytössä ollut .dll/.pyd), joten
+    koko asennushakemisto käydään läpi. Epäonnistuva poisto ohitetaan:
+    tiedosto voi olla yhä lukittu, ja seuraava käynnistys yrittää uudelleen."""
     if exe_path is None:
         if not is_running_bundled():
             return
         exe_path = Path(sys.executable)
     old_path = _old_path_for(exe_path)
-    if not old_path.exists():
+    if old_path.exists():
+        try:
+            old_path.unlink()
+        except OSError:
+            pass
+    root = exe_path.parent
+    if not root.is_dir():
         return
-    try:
-        old_path.unlink()
-    except OSError:
-        pass
+    for stale in root.rglob("*.old"):
+        try:
+            stale.unlink()
+        except OSError:
+            pass
+
+
+def replace_app_dir(new_dir: Path, *, current_dir: Path | None = None) -> None:
+    """Vaihda one-dir-asennus paikallaan. Ei uudelleenkäynnistystä.
+
+    Käyttää samaa Windows-kikkaa kuin :func:`replace_exe`, mutta TIEDOSTO
+    KERRALLAAN: käytössä olevaa tiedostoa ei voi poistaa, mutta sen voi nimetä
+    uudelleen — tämä pätee myös ladattuihin DLL:iin, ei vain exeen. Siksi
+    hakemiston voi päivittää ilman että sovellus suljetaan ensin, ja ilman
+    UAC:ia kun asennus on per-user.
+
+    Vanhat tiedostot jäävät ``.old``-nimisiksi ja :func:`cleanup_old_exe`
+    siivoaa ne seuraavalla käynnistyksellä.
+    """
+    if current_dir is None:
+        if not is_running_bundled():
+            raise RuntimeError(
+                "replace_app_dir requires a frozen exe; running from source "
+                "has nothing meaningful to swap."
+            )
+        current_dir = app_dir()
+    if not new_dir.is_dir():
+        raise FileNotFoundError(f"new app dir not found: {new_dir}")
+    if not current_dir.is_dir():
+        raise FileNotFoundError(f"current app dir not found: {current_dir}")
+
+    for src in sorted(new_dir.rglob("*")):
+        if src.is_dir():
+            continue
+        rel = src.relative_to(new_dir)
+        dst = current_dir / rel
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        if dst.exists():
+            old = dst.with_name(dst.name + ".old")
+            if old.exists():
+                try:
+                    old.unlink()
+                except OSError:
+                    pass
+            dst.rename(old)
+        shutil.move(str(src), str(dst))
+
+
+def extract_zip(zip_path: Path, dest: Path) -> Path:
+    """Pura päivityszip ja palauta sovellushakemisto sen sisältä.
+
+    Zipissä voi olla juurihakemisto (``scan2bim/``) tai tiedostot suoraan
+    juuressa; molemmat kelpaavat."""
+    import zipfile
+
+    dest.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(zip_path) as zf:
+        zf.extractall(dest)
+    if (dest / "scan2bim.exe").exists():
+        return dest
+    for child in sorted(dest.iterdir()):
+        if child.is_dir() and (child / "scan2bim.exe").exists():
+            return child
+    return dest
 
 
 def replace_exe(

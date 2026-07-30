@@ -107,19 +107,22 @@ a = Analysis(
 
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
+# ONE-DIR, ei one-file. Syy on juridinen: IfcOpenShell ja Qt (PySide6) ovat
+# LGPL-3.0, ja LGPL §4(d)(1) edellyttää että käyttäjä voi VAIHTAA kirjaston
+# omaan versioonsa. One-file purkaa kaiken väliaikaishakemistoon → ei täyty.
+# One-dirissä .dll/.pyd ovat omina tiedostoinaan asennushakemistossa → täyttyy.
+# IfcOpenShellille ei ole kaupallista lisenssiä, joten tätä ei voi ostaa pois.
+# Itsepäivitys toimii silti hiljaisena: ks. updater.replace_app_dir.
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
     [],
+    exclude_binaries=True,
     name='scan2bim',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=False,
-    runtime_tmpdir=None,
     console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
@@ -128,4 +131,15 @@ exe = EXE(
     entitlements_file=None,
     version=os.path.join(SPECPATH, 'version_info.py'),
     icon=_icon,
+)
+
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
+    strip=False,
+    upx=False,
+    upx_exclude=[],
+    name='scan2bim',
 )

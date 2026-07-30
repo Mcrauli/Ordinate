@@ -7,8 +7,8 @@
 #ifndef AppVersion
   #define AppVersion "0.0.0"
 #endif
-#ifndef SourceExe
-  #define SourceExe "..\dist\scan2bim.exe"
+#ifndef SourceDir
+  #define SourceDir "..\dist\scan2bim"
 #endif
 #ifndef LicensesFile
   #define LicensesFile "..\dist\LICENSES.md"
@@ -65,7 +65,9 @@ Name: "finnish"; MessagesFile: "compiler:Languages\Finnish.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 
 [Files]
-Source: "{#SourceExe}"; DestDir: "{app}"; DestName: "scan2bim.exe"; Flags: ignoreversion
+; ONE-DIR: koko hakemisto, jotta LGPL-kirjastot (IfcOpenShell, Qt) ovat
+; kayttajan vaihdettavissa omina tiedostoinaan.
+Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#LicensesFile}"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "..\README.md"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 
