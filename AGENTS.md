@@ -330,6 +330,21 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
 
 ## Tunnetut rajoitukset
 
+- **KATTAVUUS on nyt suurin puute, ei tarkkuus** (mitattu Rohbau3D-GT:llä,
+  site_07/scene_07000): mallin seinäpintojen alla olevista pisteistä **96.2 %**
+  on aidosti GT:n Wall/Drywall — jokainen detektoitu seinä 96–100 %. Mutta
+  GT-seinäpisteistä vain **26 %** on jonkin mallin seinän kaistassa: kolme
+  neljäsosaa aidoista seinistä jää mallintamatta. Kaikki 5 ongelmaseinää olivat
+  **perimetriseiniä**: kaksi 100 % Beam (palkista tehty seinä), kolme tyhjää/None.
+  Rohbaussa löytyi 0 ovea vaikka GT:ssä on 37 828 oviaukkopistettä.
+- **Rohbau3D:n asemat eivät ole keskenään hyvin rekisteröityjä** (mediaani
+  lähimpään naapuriin 222–493 mm asemien välillä). 5 aseman yhdistäminen SOTKEE
+  pinnat: yksi scene → 14 seinää, viisi yhdistettynä → 0. Aja Rohbau
+  **scene kerrallaan** tai `icp_refine=True`. Testidata ei ole gitissä
+  (`data/_rohbau/`, lataa open-data.unibw.de doi:10.60776/ZWJFI4, MIT).
+- **PointNet-suodatin yleistyy paljaaseen betonirunkoon** (mitattu Rohbau-GT:llä):
+  Wall 99.8 %, Drywall 99.1 %, Ceiling 99.8 %, Column 99.9 %, Floor 97.2 %,
+  Beam 67.5 %, **TGA 10.2 %** (talotekniikka pois, oikein). Kokonais-keep 0.839.
 - **Pipeline on viritetty yksikerroksiselle tilalle** (yksi lattia + yksi katto).
   Monikorkuinen tila (esim. 3DSES-koulu, 7 m porras) rikkoo globaalin korkeuden →
   seinät väärään korkeuteen. Per-huone-korkeus on roadmapilla.

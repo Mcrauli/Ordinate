@@ -34,3 +34,7 @@ dist73/
 .venv_train/
 models/_new/
 models/_backup_3dses/
+
+# Rohbau3D-testidata (2 GB, ladataan open-data.unibw.de doi:10.60776/ZWJFI4)
+data/_rohbau/
+data/_3dses/

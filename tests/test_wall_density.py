@@ -65,3 +65,46 @@ def test_density_wall_schema_valid():
 def test_registry_has_density():
     assert "density" in DetectorRegistry.names()
     assert DetectorRegistry.get("density") is WallDetectorDensity
+
+
+def test_tall_space_wall_found_beam_rejected():
+    """Palkitettu runko: katto 10 m, seina ulottuu vain 3 m. Osuussaanto vaatisi
+    0.55 x 10 m = 5.5 m jatkuvuutta → 0 seinaa (mitattu Rohbau3D site_07:lla,
+    aidon seinapikselin jatkuvuus mediaani 1.35 m). Korkeassa tilassa riittaa
+    absoluuttinen 1500 mm yhtajaksoinen jakso; palkki (1.2 m syva, korkealla) ei
+    saa lapaista."""
+    import numpy as np
+    import open3d as o3d
+
+    from scan2bim.core.segmentation.wall_contour import WallDetectorContour
+
+    rng = np.random.RandomState(7)
+
+    def slab(x0, x1, y0, y1, z, n=140000):
+        return np.column_stack([rng.uniform(x0, x1, n), rng.uniform(y0, y1, n),
+                                z + rng.normal(0, 3.0, n)])
+
+    def wall(x, y0, y1, z0, z1, n=160000):
+        return np.column_stack([x + rng.normal(0, 3.0, n), rng.uniform(y0, y1, n),
+                                rng.uniform(z0, z1, n)])
+
+    parts = [
+        slab(0, 12000, 0, 12000, 0.0),          # lattia
+        slab(0, 12000, 0, 12000, 10000.0),      # katto 10 m
+        wall(0.0, 0, 12000, 0, 3000),           # seina vain 3 m korkea
+        wall(12000.0, 0, 12000, 0, 3000),
+        # palkki: korkealla, syvyys 1.2 m, ei ulotu lattiaan
+        np.column_stack([rng.uniform(0, 12000, 200000),
+                         6000 + rng.normal(0, 3.0, 200000),
+                         rng.uniform(8500, 9700, 200000)]),
+    ]
+    pc = o3d.geometry.PointCloud()
+    pc.points = o3d.utility.Vector3dVector(np.vstack(parts))
+
+    walls = WallDetectorContour().detect(pc).walls
+    assert walls, "korkeassa tilassa ei loytynyt yhtaan seinaa"
+    # palkki on y=6000 kohdalla ja kulkee x-suunnassa: sielta ei saa tulla seinaa
+    beam_like = [w for w in walls
+                 if abs((w.axis[0][1] + w.axis[1][1]) / 2 - 6000) < 400
+                 and abs(w.axis[1][1] - w.axis[0][1]) < abs(w.axis[1][0] - w.axis[0][0])]
+    assert not beam_like, f"palkista tuli seina: {[w.axis for w in beam_like]}"

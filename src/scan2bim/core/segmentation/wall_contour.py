@@ -53,6 +53,14 @@ _VSLICE_BOTTOM  = 350.0     # mm — aloita näin korkealta lattiasta (lattiakr�
 _VSLICE_TOP     = 250.0     # mm — lopeta näin matalalta katosta (valaisimet/IV-putket pois)
 _VSLICE_FRAC    = 0.55      # osuus viipaleista joissa pikselin oltava täynnä → seinä
 _VSLICE_MIN_PER = 2         # min pistettä pikselissä per viipale → viipale "täynnä"
+# KORKEA TILA: osuussääntö olettaa että seinä ulottuu lattiasta kattoon. Palkitetussa
+# rungossa se ei ulotu — seinä päättyy palkin alapintaan metrejä katon alle, ja
+# 0.55 × 10.3 m = 5.4 m jatkuvuutta on enemmän kuin korkein seinä. Mitattu Rohbau3D
+# site_07:llä (GT-labelit): aidon seinäpikselin jatkuvuus mediaani 1.35 m → 0 seinää.
+# Siksi korkeassa tilassa riittää ABSOLUUTTINEN yhtäjaksoinen pystyjakso. Mitattu
+# läpäisy jaksolla ≥1500 mm: Wall/Drywall 47.7 %, Column 35.0 %, Beam 2.0 %, TGA 0.0 %.
+_VSLICE_RUN_MM  = 1500.0    # mm — riittävä yhtäjaksoinen pystyjakso korkeassa tilassa
+_VSLICE_TALL_MM = 4000.0    # mm — tätä korkeammassa tilassa osuussääntö ei päde
 
 _MAX_WORK_POINTS = 1_200_000  # raskas detektori → ajetaan harvennetulle pilvelle
 
@@ -517,17 +525,34 @@ class WallDetectorContour(ElementDetector):
         z1 = ceil_z - _VSLICE_TOP
         edges = np.arange(z0, z1 + _VSLICE_STEP, _VSLICE_STEP)
         n_sl = len(edges) - 1
+        # Korkeassa tilassa osuussääntö ei päde (ks. _VSLICE_TALL_MM) → seurataan
+        # myös pisintä YHTÄJAKSOISTA pystyjaksoa. Matalassa tilassa tätä ei lasketa
+        # lainkaan, joten asuintilojen tulos pysyy bitilleen ennallaan.
+        tall = (ceil_z - floor_z) > _VSLICE_TALL_MM
+        run_need = max(2, int(round(_VSLICE_RUN_MM / _VSLICE_STEP)))
+        cur = np.zeros((rows, cols), dtype=np.int32) if tall else None
+        best = np.zeros((rows, cols), dtype=np.int32) if tall else None
+
         vcount = np.zeros((rows, cols), dtype=np.int32)
         for k in range(n_sl):
             m = (z >= edges[k]) & (z < edges[k + 1])
             if int(m.sum()) < 10:
+                if tall:
+                    cur[:] = 0
                 continue
             grid, _, _ = np.histogram2d(
                 xy[m, 0], xy[m, 1], bins=[cols, rows], range=[xr, yr])
-            vcount += (grid.T >= _VSLICE_MIN_PER).astype(np.int32)
+            occ = grid.T >= _VSLICE_MIN_PER
+            vcount += occ.astype(np.int32)
+            if tall:
+                cur = np.where(occ, cur + 1, 0)
+                np.maximum(best, cur, out=best)
 
         need = max(2, int(round(_VSLICE_FRAC * n_sl)))
-        binary = (vcount >= need).astype(np.uint8) * 255
+        passed = vcount >= need
+        if tall:
+            passed |= best >= run_need
+        binary = passed.astype(np.uint8) * 255
         kernel = np.ones((self.close_kernel, self.close_kernel), np.uint8)
         binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)
         return binary, x_min, y_min
