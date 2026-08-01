@@ -104,9 +104,13 @@ def wall_surface_accuracy(model: StructuralModel, cloud) -> list[dict]:
     Erottaa mallin virheen pilven kohinasta: pistetason poikkeama (yllä oleva
     taulukko) sisältää skannerin kohinan (tyyp. 2–20 mm RMS) — pinnan MEDIAANI
     keskiarvoistaa sen pois ja kertoo todellisen mallinnustarkkuuden."""
-    pts = np.asarray(cloud.points)
-    if len(pts) == 0:
+    pts_all = np.asarray(cloud.points)
+    if len(pts_all) == 0:
         return []
+    index = None
+    if len(pts_all) >= 300_000 and len(model.walls) >= 3:
+        from scan2bim.core.geometry.xy_index import XYIndex  # noqa: PLC0415
+        index = XYIndex(pts_all)
     out: list[dict] = []
     for w in model.walls:
         if len(w.axis) < 2:
@@ -118,6 +122,13 @@ def wall_surface_accuracy(model: StructuralModel, cloud) -> list[dict]:
             continue
         u = (p1 - p0) / L
         n = np.array([-u[1], u[0]])
+        pts = pts_all
+        if index is not None:
+            from scan2bim.core.geometry.xy_index import subset  # noqa: PLC0415
+            pts, _ = subset(pts_all, index, p0, u, n,
+                            w.thickness / 2.0 + _SF_BAND_EXTRA, 100.0, L - 100.0)
+            if len(pts) < 200:
+                continue
         rel = pts[:, :2] - p0
         t = rel @ u
         perp = rel @ n

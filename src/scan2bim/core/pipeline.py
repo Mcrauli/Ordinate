@@ -1012,6 +1012,7 @@ class Pipeline:
             model.save(floor_dir / "model.json")
 
             if self.config.export_ifc:
+                self._progress("  Kirjoitetaan IFC…")
                 self._write_ifc(model, floor_dir / "model.ifc")
                 if self.config.export_qa:
                     try:
@@ -1332,6 +1333,8 @@ class Pipeline:
         if room_poly and len(room_poly) >= 3:
             model.slabs = [s.model_copy(update={"boundary": room_poly}) for s in model.slabs]
 
+        self._progress(f"  Seinien viimeistely valmis ({len(model.walls)} seinää) — "
+                       "tilat, aukot, pilarit, palkit…")
         from scan2bim.core.semantics.room_detector import detect_rooms
         model.spaces = detect_rooms(model.walls, floor_z, ceiling_z,
                                     boundaries=floor_contours)
