@@ -1116,6 +1116,15 @@ class Pipeline:
             )
             if not floor_contours:
                 floor_contours = [floor_slab.boundary]
+            _areas = sorted(
+                (abs(float(np.dot(np.asarray(b, float)[:, 0],
+                                  np.roll(np.asarray(b, float)[:, 1], -1))
+                          - np.dot(np.asarray(b, float)[:, 1],
+                                   np.roll(np.asarray(b, float)[:, 0], -1)))) / 2e6
+                 for b in floor_contours if len(b) >= 3), reverse=True)
+            self._progress(
+                f"  Lattiakontuureja: {len(floor_contours)} "
+                f"(alat {', '.join(f'{a:.0f}' for a in _areas[:5])} m²)")
 
         # Toinen deduplikointi: akselinkorjaus saattaa tuoda aiemmin eri paikassa olevia
         # seiniä samalle akselille (kuten wall_105/wall_108 jotka ovat saman seinän pinnat)
@@ -1284,7 +1293,8 @@ class Pipeline:
             model.slabs = [s.model_copy(update={"boundary": room_poly}) for s in model.slabs]
 
         from scan2bim.core.semantics.room_detector import detect_rooms
-        model.spaces = detect_rooms(model.walls, floor_z, ceiling_z)
+        model.spaces = detect_rooms(model.walls, floor_z, ceiling_z,
+                                    boundaries=floor_contours)
 
         from scan2bim.core.segmentation.opening_detector import detect_openings, reclassify_interior_windows
         model.openings = detect_openings(model.walls, cloud, floor_z, scanner_origins=self._scanner_origins)

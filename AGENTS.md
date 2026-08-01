@@ -332,6 +332,23 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   versioittain ennen export_onnx:ää (se ylikirjoittaa .pth:n!). Aktiivinen malli
   varmuuskopioidaan ennen korvaamista, ja korvaus vain jos KOKO gauntlet
   (asunto + talo35 + rohbau keep-ratet) on vihreä.
+- **Iso tila EI ole kasvo jota suodattaa — sitä ei ole olemassa.** Seinärengas ei
+  sulkeudu isossa tilassa (mitattu: 72×48 m myymälä → 3 kasvoa, 150×100 m → 0 tilaa;
+  perimetri pirstoutuu, itäseinä 5 palana, suurin rako 5.3 m). `_COLIN_GAP_MM`:n
+  (450 mm) nosto on VÄÄRÄ korjaus — se yhdistäisi aitoja oviaukkoja. Ratkaisu:
+  lattiakontuuri (`detect_floor_contours`) syötetään `detect_rooms`:iin renkaana.
+  **Kaksi ansaa jotka piti mitata ennen kuin se toimi:**
+  (1) Kontuuri kulkee seinän ULKOpinnan tasalla (mitattu 260 mm keskilinjojen
+  ulkopuolella) → sellaisenaan seinäviivat jäävät KELLUMAAN renkaan sisään, eivät
+  solmitu siihen, iso kasvo saa reiät ja putoaa ulkokehänä. Reunat on kohdistettava
+  vastaavien seinien keskilinjoille ensin (`_snap_ring_to_walls`). Testi joka käytti
+  rengasta seinien PÄÄLLÄ meni läpi eikä paljastanut tätä — käytä oikeaa offsettia.
+  (2) Kontuuri saa vain TÄYDENTÄÄ, ei leikata: sen sijaintiprior on heikko, ja
+  seinien rajaamiin tiloihin päästettynä se pudotti asunnon huonealan
+  55.73 → 53.62 m² (−3.8 %). Tilat lasketaan ensin pelkistä seinistä; kontuurin
+  kasvoista otetaan vain kattamattomat (≤10 % päällekkäisyys) ja niille on
+  KORKEAMPI rima (≥6 m², ≥1.2 m leveä) — muuten väärin sijoittuneen
+  perimetriseinän viereen syntyy 0.86 × 2.54 m "huone" (mitattu apt2).
 - **ASUNTOKOOSTA JOHDETTU VAKIO ON MITTAKAAVA-ANSA.** `room_detector._MAX_AREA`
   oli 90 m² ("tätä suurempi = koko asunnon ulkokehä") → 3456 m² myyntialue ei
   voinut koskaan tulla tilaksi. Oikea tunniste sille mitä sääntö yritti torjua on
@@ -402,12 +419,7 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   8.2 M pistettä, GT tunnettu). Hyvin: kaikki 9 GT-seinää löytyi, jokainen 24
   seinästä ≤0.4 mm pinnastaan (`_tol_heatmap`), sisäseinien paksuus täsmälleen
   oikein (120/200 mm). Auki:
-  1. **Myyntialue (3456 m²) ei tule tilaksi.** polygonize tuottaa vain 3 kasvoa —
-     perimetrirengas on pirstoutunut (itäseinä 5 palana kahdella rinnakkaislinjalla,
-     suurin rako 5.3 m). Sama maskikatto kuin Rohbaussa. `_COLIN_GAP_MM`:n (450 mm)
-     nosto olisi VÄÄRÄ korjaus — se yhdistäisi aitoja oviaukkoja. Todennäköinen oikea
-     polku: tilat lattiakontuurista (`detect_floor_contours`) kun seinärengas ei sulkeudu.
-  2. **Lattia-katto-hyllykkö tuottaa 44.8 m valeseinän** — semanttinen suodatin
+  1. **Lattia-katto-hyllykkö tuottaa 44.8 m valeseinän** — semanttinen suodatin
      poisti vain 6 % pisteistä eikä tunnistanut hyllykköä. Geometrisesti hyllykön
      etupinta ON seinä; ero on vain semanttinen.
   3. **Pilareita 24/34**: puuttuvat ovat täsmälleen ne joiden vieressä (320 mm)

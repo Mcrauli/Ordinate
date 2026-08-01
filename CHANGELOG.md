@@ -16,12 +16,22 @@ sovellus päivittää itsensä sieltä.
   **68.5 → 2.5 mm**; synteettinen myymälä 72 m ja 21 m ulkoseinä **57.4 ja
   62.1 → 0.0 mm**, jolloin kaikki 24 seinää ovat ≤0.4 mm. Asunto, apt2 ja
   autotalli tuottavat bitilleen saman mallin kuin ennen.
-- **Iso tila on tila.** `room_detector` hylkäsi kaiken yli 90 m² ("koko asunnon
-  ulkokehä") — asuntokoosta johdettu absoluuttinen raja, jonka takia 3456 m²
-  myyntialue ei voinut koskaan tulla tilaksi. Ulkokehä tunnistetaan nyt siitä
-  mikä se oikeasti on: polygonize palauttaa sen reiällisenä. Samalla korjaantui
-  että `Space.boundary` rakennettiin `.exterior`-renkaasta → ala kirjautui 80 m²
-  kun kasvon oikea ala oli 71 m².
+- **Iso tila on tila.** Kaksi eri estettä:
+  1. `room_detector` hylkäsi kaiken yli 90 m² ("koko asunnon ulkokehä") —
+     asuntokoosta johdettu absoluuttinen raja. Ulkokehä tunnistetaan nyt siitä
+     mikä se oikeasti on: polygonize palauttaa sen reiällisenä. Samalla
+     korjaantui että `Space.boundary` rakennettiin `.exterior`-renkaasta → ala
+     kirjautui 80 m² kun kasvon oikea ala oli 71 m².
+  2. Seinärengas ei ylipäätään sulkeudu isossa tilassa: perimetri pirstoutuu
+     (itäseinä 5 palana, suurin rako 5.3 m) → myyntialuetta ei ole olemassa
+     kasvona jota suodattaa. Lattiakontuuri syötetään nyt `detect_rooms`:iin
+     renkaana, reunat kohdistettuna vastaavien seinien keskilinjoille. Kontuuri
+     saa vain TÄYDENTÄÄ: tilat lasketaan ensin pelkistä seinistä ja kontuurin
+     kasvoista otetaan vain kattamattomat, korkeammalla rimalla (≥6 m²,
+     ≥1.2 m). **Mitattu:** myymälä 3 tilaa / 302 m² → **5 tilaa / 3453 m²**
+     (hallin ala 3456 m²), ja ovien luokitus 2 ovea + 3 ikkunaa → **5 ovea**
+     (`reclassify_interior_windows` tarvitsee huoneen aukon molemmin puolin).
+     Asunto, apt2, makuuhuone ja autotalli tuottavat bitilleen saman mallin.
 - **Maskista luettua paksuutta ei oteta alle 4 × pikselikoon.** Yksipuolisen
   pinnan viivan kontuuri kiertää sen molemmilta puolilta ja reunat luettiin
   kahdeksi pinnaksi → 66–92 mm "paksuus" vaikka pintoja on yksi. Oikea arvo

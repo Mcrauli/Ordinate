@@ -92,3 +92,111 @@ def test_building_outline_still_dropped_when_it_encloses_rooms():
         x, y = b[:, 0], b[:, 1]
         areas.append(abs(float(np.dot(x, np.roll(y, -1)) - np.dot(y, np.roll(x, -1)))) / 2)
     assert all(a < 20_000_000 for a in areas), f"ulkokeha jai tilaksi: {areas}"
+
+
+def test_hall_closed_by_floor_contour_when_wall_ring_is_broken():
+    """Perimetri pirstoutuu isossa tilassa (mitattu 72x48 m myymalalla: itaseina
+    5 palana, suurin rako 5.3 m) -> polygonize ei tuota myyntialuetta lainkaan.
+    Lattiakontuuri on rakenteeltaan suljettu -> se sulkee graafin."""
+    from scan2bim.core.semantics.room_detector import detect_rooms
+    from scan2bim.schemas.model import ElementSource, Wall
+
+    def w(i, a, b):
+        return Wall(id=f"w{i}", confidence=1.0, classification="wall",
+                    source=ElementSource(method="contour"), axis=[list(a), list(b)],
+                    height=7000.0, thickness=250.0, z_min=0.0)
+
+    sx, sy = 72000.0, 48000.0
+    # etela ehjana, muut palasina joiden valissa metrien rakoja
+    walls = [
+        w(0, (0, 0), (sx, 0)),
+        w(1, (sx, 0), (sx, 12000)), w(2, (sx, 30000), (sx, sy)),
+        w(3, (sx, sy), (40000, sy)), w(4, (20000, sy), (0, sy)),
+        w(5, (0, sy), (0, 35000)), w(6, (0, 14000), (0, 0)),
+    ]
+    assert detect_rooms(walls, 0.0, 7000.0) == [], "testi ei toista virhetta"
+
+    # Kontuuri kulkee seinan ULKOpinnan tasalla (mitattu myymalalla 260 mm
+    # keskilinjojen ulkopuolella). Ilman kohdistusta seinaviivat jaavat
+    # kellumaan renkaan sisaan, iso kasvo saa reiat ja putoaa ulkokehana.
+    o = 260.0
+    ring = [(-o, -o), (sx + o, -o), (sx + o, sy + o), (-o, sy + o)]
+    spaces = detect_rooms(walls, 0.0, 7000.0, boundaries=[ring])
+    assert len(spaces) == 1, f"halli ei sulkeutunut ({len(spaces)})"
+    b = np.array(spaces[0].boundary, float)
+    x, y = b[:, 0], b[:, 1]
+    area = abs(float(np.dot(x, np.roll(y, -1)) - np.dot(y, np.roll(x, -1)))) / 2
+    assert abs(area - sx * sy) / (sx * sy) < 0.02, f"ala {area/1e6:.0f} m2"
+
+
+def test_floor_contour_does_not_override_wall_line():
+    """Kontuuri kulkee ~puoli paksuutta seinan ulkopuolella. Tilan rajan on
+    pysyttava seinan keskilinjassa - kapea kaista niiden valissa putoaa."""
+    from scan2bim.core.semantics.room_detector import detect_rooms
+    from scan2bim.schemas.model import ElementSource, Wall
+
+    def w(i, a, b):
+        return Wall(id=f"w{i}", confidence=1.0, classification="wall",
+                    source=ElementSource(method="contour"), axis=[list(a), list(b)],
+                    height=2700.0, thickness=250.0, z_min=0.0)
+
+    sx, sy = 8000.0, 6000.0
+    walls = [w(0, (0, 0), (sx, 0)), w(1, (sx, 0), (sx, sy)),
+             w(2, (sx, sy), (0, sy)), w(3, (0, sy), (0, 0))]
+    ring = [(-125, -125), (sx + 125, -125), (sx + 125, sy + 125), (-125, sy + 125)]
+    spaces = detect_rooms(walls, 0.0, 2700.0, boundaries=[ring])
+    assert len(spaces) == 1, f"kontuuri toi ylimaaraisia tiloja ({len(spaces)})"
+    b = np.array(spaces[0].boundary, float)
+    x, y = b[:, 0], b[:, 1]
+    area = abs(float(np.dot(x, np.roll(y, -1)) - np.dot(y, np.roll(x, -1)))) / 2
+    assert abs(area - sx * sy) < 1e6, f"raja ei ole seinan keskilinjassa: {area/1e6:.2f} m2"
+
+
+def test_contour_never_shrinks_a_wall_bounded_room():
+    """Kontuurin sijaintiprior on heikko (25 mm ruudukko + dilaatio). Se saa VAIN
+    taydentaa, ei leikata: seinien rajaamat tilat on jaatava tasmalleen ennalleen.
+    Ilman tata rajausta asunnon huoneala putosi 55.73 -> 53.62 m2."""
+    from scan2bim.core.semantics.room_detector import detect_rooms
+    from scan2bim.schemas.model import ElementSource, Wall
+
+    def w(i, a, b):
+        return Wall(id=f"w{i}", confidence=1.0, classification="wall",
+                    source=ElementSource(method="contour"), axis=[list(a), list(b)],
+                    height=2700.0, thickness=120.0, z_min=0.0)
+
+    sx, sy = 9000.0, 7000.0
+    walls = [w(0, (0, 0), (sx, 0)), w(1, (sx, 0), (sx, sy)),
+             w(2, (sx, sy), (0, sy)), w(3, (0, sy), (0, 0)),
+             w(4, (4000, 0), (4000, sy))]
+    base = detect_rooms(walls, 0.0, 2700.0)
+    assert len(base) == 2
+
+    # kontuuri vinossa/kutistuneena sisaan: EI saa vaikuttaa
+    ring = [(300, 250), (sx - 200, 250), (sx - 200, sy - 300), (300, sy - 300)]
+    with_ring = detect_rooms(walls, 0.0, 2700.0, boundaries=[ring])
+    assert [s.boundary for s in with_ring] == [s.boundary for s in base], \
+        "kontuuri muutti seinien rajaamaa tilaa"
+
+
+def test_contour_only_space_must_be_substantial():
+    """Kontuurin varassa oleva tila on sellainen jota MIKAAN seina ei sulje ->
+    sita ei ole voitu varmistaa seinaevidenssilla. Mitattu apt2: ilman korkeampaa
+    rimaa syntyi 0.86 x 2.54 m "huone" vaarin sijoittuneen perimetriseinan ja
+    aidon seinan valiin."""
+    from scan2bim.core.semantics.room_detector import detect_rooms
+    from scan2bim.schemas.model import ElementSource, Wall
+
+    def w(i, a, b):
+        return Wall(id=f"w{i}", confidence=1.0, classification="wall",
+                    source=ElementSource(method="contour"), axis=[list(a), list(b)],
+                    height=2700.0, thickness=120.0, z_min=0.0)
+
+    # L-kirjaimen muotoinen seinajoukko: sulkee ison huoneen, jattaa reunaan
+    # 860 mm kapean kaistan jonka vain kontuuri sulkee.
+    walls = [w(0, (0, 0), (9000, 0)), w(1, (9000, 0), (9000, 7000)),
+             w(2, (9000, 7000), (0, 7000)), w(3, (0, 7000), (0, 0))]
+    ring = [(-860, -100), (9100, -100), (9100, 7100), (-860, 7100)]
+    spaces = detect_rooms(walls, 0.0, 2700.0, boundaries=[ring])
+    for s in spaces:
+        b = np.array(s.boundary, float)
+        assert b[:, 0].min() > -500, f"kapea reunakaista tuli tilaksi: {s.boundary}"
