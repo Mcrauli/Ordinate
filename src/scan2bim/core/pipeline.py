@@ -59,19 +59,37 @@ def _auto_voxel(cloud, target: int = _AUTO_TARGET_POINTS) -> float:
     return round(min(max(v, _AUTO_VOXEL_MIN), _AUTO_VOXEL_MAX), 1)
 
 
+def _xy_index(pts: np.ndarray, walls) -> "XYIndex | None":
+    """Indeksi kannattaa vain kun työtä on: pieni pilvi tai yksi seinä ei hyödy."""
+    if len(pts) < 300_000 or len(walls) < 3:
+        return None
+    from scan2bim.core.geometry.xy_index import XYIndex  # noqa: PLC0415
+    return XYIndex(pts)
+
+
+def _xy_subset(pts, index, p0, along, normal, radius, s_lo=-np.inf, s_hi=np.inf):
+    if index is None:
+        return pts, None
+    from scan2bim.core.geometry.xy_index import subset  # noqa: PLC0415
+    return subset(pts, index, p0, along, normal, radius, s_lo, s_hi)
+
+
 def _recenter_wall_axes(walls, cloud, band: float | None = None, keep_thickness: bool = False) -> list:
     """Pintalukittu tarkennus: mallin lähin pinta osuu skannattuun pistepintaan (bias→0)."""
     pts = np.asarray(cloud.points)
-    return [_surface_lock_wall(w, pts, band=band, keep_thickness=keep_thickness) for w in walls]
+    idx = _xy_index(pts, walls)
+    return [_surface_lock_wall(w, pts, band=band, keep_thickness=keep_thickness, index=idx)
+            for w in walls]
 
 
 def _trim_wall_endpoints(walls, cloud) -> list:
     """Trimmaa seinien päätepisteet vastaamaan todellista pistepilvidataa."""
     pts = np.asarray(cloud.points)
-    return [_trim_endpoints(w, pts) for w in walls]
+    idx = _xy_index(pts, walls)
+    return [_trim_endpoints(w, pts, index=idx) for w in walls]
 
 
-def _trim_endpoints(wall, pts: np.ndarray):
+def _trim_endpoints(wall, pts: np.ndarray, index=None):
     if len(wall.axis) < 2:
         return wall
     p0 = np.array(wall.axis[0], dtype=float)
@@ -88,6 +106,13 @@ def _trim_endpoints(wall, pts: np.ndarray):
     face_tol = 30.0
     z_lo = wall.z_min - 50.0
     z_hi = wall.z_min + wall.height + 50.0
+
+    # Akselin suuntaan EI rajausta: percentiilit lasketaan kaikista pinnalle
+    # osuvista pisteistä, myös janan päiden ulkopuolelta (juuri siitä pidennys
+    # tulee) — rajaus muuttaisi tulosta.
+    pts, _ = _xy_subset(pts, index, p0, along, normal, half_t + face_tol)
+    if len(pts) < 20:
+        return wall
 
     dist = np.abs(pts[:, :2] @ normal - axis_D)
     along_proj = (pts[:, :2] - p0) @ along
@@ -159,7 +184,8 @@ def _fix_wall_center(wall, pts: np.ndarray):
     return _surface_lock_wall(wall, pts)
 
 
-def _surface_lock_wall(wall, pts: np.ndarray, band: float | None = None, keep_thickness: bool = False):
+def _surface_lock_wall(wall, pts: np.ndarray, band: float | None = None,
+                       keep_thickness: bool = False, index=None):
     sl_band = band if band is not None else _SL_BAND
     if len(wall.axis) < 2:
         return wall
@@ -175,6 +201,9 @@ def _surface_lock_wall(wall, pts: np.ndarray, band: float | None = None, keep_th
 
     z_lo = wall.z_min + 200.0
     z_hi = wall.z_min + wall.height - 200.0
+    pts, _ = _xy_subset(pts, index, p0, along, normal, sl_band, 100.0, length - 100.0)
+    if len(pts) < _SL_MIN_PTS:
+        return wall
     along_proj = (pts[:, :2] - p0) @ along
     dist = pts[:, :2] @ normal - axis_D
 
@@ -326,8 +355,9 @@ def _thickness_lock_walls(walls, cloud, iters: int = 3, ceiling_xy=None) -> list
         return walls
     ceil_xy = None if ceiling_xy is None or len(ceiling_xy) == 0 else np.asarray(ceiling_xy)
     inside = pts[:, :2].mean(axis=0)
+    idx = _xy_index(pts, walls)
     for _ in range(iters):
-        walls = [_thickness_lock_wall(w, pts, ceil_xy, inside) for w in walls]
+        walls = [_thickness_lock_wall(w, pts, ceil_xy, inside, index=idx) for w in walls]
     return walls
 
 
@@ -442,7 +472,7 @@ def _unsupported_thickness_lock(wall, hist, centers, pks, normal, p0, p1, inward
 
 
 def _thickness_lock_wall(wall, pts: np.ndarray, ceiling_xy: np.ndarray | None = None,
-                         inward: np.ndarray | None = None):
+                         inward: np.ndarray | None = None, index=None):
     if len(wall.axis) < 2:
         return wall
     p0 = np.array(wall.axis[0], dtype=float)
@@ -457,6 +487,10 @@ def _thickness_lock_wall(wall, pts: np.ndarray, ceiling_xy: np.ndarray | None = 
 
     z_lo = wall.z_min + 200.0
     z_hi = wall.z_min + wall.height - 200.0
+    pts, _ = _xy_subset(pts, index, p0, along, normal, _TL_SEARCH,
+                        -_TL_ALONG_MARGIN, length + _TL_ALONG_MARGIN)
+    if len(pts) < _TL_MIN_PTS:
+        return wall
     along_proj = (pts[:, :2] - p0) @ along
     dist = pts[:, :2] @ normal - axis_D
 
@@ -615,9 +649,10 @@ def _align_faces_to_surface_median(walls, cloud) -> list:
     _FACE_MAD_MAX = 20.0   # mm — pisteiden mediaanihajonta pinnan ympärillä; yli = ei pintaa
     _FACE_ONE_SIDED_FRAC = 0.10   # vastapinnan osuus dominantista → alle tämän = yksipuolinen
     _FACE_SINGLE_PLANE = 0.80     # dominantin puolen pisteistä ±30 mm mediaanista
-    pts = np.asarray(cloud.points)
-    if len(pts) == 0:
+    pts_all = np.asarray(cloud.points)
+    if len(pts_all) == 0:
         return walls
+    index = _xy_index(pts_all, walls)
     out = []
     for w in walls:
         if len(w.axis) < 2:
@@ -631,6 +666,11 @@ def _align_faces_to_surface_median(walls, cloud) -> list:
             continue
         u = (p1 - p0) / L
         n = np.array([-u[1], u[0]])
+        pts, _ = _xy_subset(pts_all, index, p0, u, n,
+                            w.thickness / 2.0 + 80.0, 100.0, L - 100.0)
+        if len(pts) < 200:
+            out.append(w)
+            continue
         rel = pts[:, :2] - p0
         t = rel @ u
         perp = rel @ n

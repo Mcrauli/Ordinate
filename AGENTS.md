@@ -373,6 +373,21 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   siemeneksi tulee `_DEFAULT_THICKNESS`; oikea arvo mitataan raakapisteistä.
   **Yksipuolisen seinän paksuus jää silti arvaukseksi** (fysikaalinen raja) —
   vain PINTA on oikein.
+- **Geometriaketju skannaa koko pilven per seinä → `XYIndex`.** Profiloitu (ei
+  arvattu, `python -m cProfile`): 72×48 m myymälä, 8.2 M pistettä, 165 seinää →
+  `_trim_endpoints` 41 s, `_surface_lock_wall` 38 s, `_refine` 19 s,
+  `_fine_rotate` 15 s, `_skew_rotate` 13 s, `_segments_coplanar` 12 s,
+  `_gap_has_lintel` 10 s. Indeksi (`core/geometry/xy_index.py`) rakennetaan
+  KERRAN per pilvi ja palauttaa **ylijoukon** kaistan pisteistä; kutsuja soveltaa
+  saman ehdon → valikoituva joukko ja sen JÄRJESTYS ovat identtiset (percentiilit
+  ja mediaanit eivät muutu). Mitattu: ketju 244 → 59 s, koko ajo 11.6 → 8.5 min,
+  malli bitilleen sama neljällä datalla. **`_trim_endpoints` ei saa rajata akselin
+  suunnassa** — se laskee percentiilit kaikista pinnalle osuvista pisteistä myös
+  janan ULKOpuolelta (siitä pidennys tulee), ja pirstoutuneessa perimetrissä
+  kaukanakin oleva kollineaarinen pätkä on relevantti.
+- **Semanttinen suodatin on ONNX-sidonnainen, ei numpy-sidonnainen** (profiili:
+  356 s säikeiden odotusta + 54 s inferenssiä). Sitä ei nopeuteta indeksoinnilla
+  eikä muutenkaan muuttamatta mallin tulosta — älä yritä.
 - **Diagnostiikkaraportti** (`qa/diagnostics.py`): joka ajosta `diagnostics.txt`
   output-hakemistoon (versio, ympäristö, vaihelokit, virhe) — pilottiasiakas ei
   voi jakaa skanneja, tämän voi. Ei koordinaatteja.

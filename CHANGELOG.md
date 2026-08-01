@@ -44,6 +44,13 @@ sovellus päivittää itsensä sieltä.
   8.2 M pistettä = 11.6 min ja 8.7 GB; 150×100 m / 32 M pistettä = 65.3 min ja
   **16.4 GB**. Ei kaadu, mutta 16 GB kannettava ei riitä isoon kohteeseen.
   Avoimet puutteet isossa liiketilassa: ks. AGENTS.md "Tunnetut rajoitukset".
+- **Geometriaketju 4× nopeampi** (`core/geometry/xy_index.py`). Profilointi
+  osoitti että jokainen seinäkohtainen vaihe laski projektiot KOKO pistetaulukolle
+  (`_trim_endpoints` 41 s, `_surface_lock_wall` 38 s, `_refine` 19 s …). Indeksi
+  rakennetaan kerran per pilvi ja palauttaa ylijoukon kaistan pisteistä; kutsuja
+  soveltaa saman ehdon, joten valikoituva joukko ja sen järjestys ovat identtiset.
+  **Mitattu:** ketju 244 → 59 s, koko liiketila-ajo 11.6 → 8.5 min, ja malli
+  bitilleen sama asunnolla, apt2:lla, makuuhuoneella ja autotallilla.
 - `point_features.geometric` lohkotettu (naapurihaun transientti rajattu);
   tulos on testillä varmistetusti identtinen.
 

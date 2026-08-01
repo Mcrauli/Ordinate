@@ -403,10 +403,14 @@ def _pt_seg_dist(p: np.ndarray, a: np.ndarray, b: np.ndarray) -> float:
 def refine_thicknesses(walls: list[Wall], cloud) -> list[Wall]:
     """Päivittää jokaisen seinän paksuuden pistepilvestä mitattuna."""
     pts = np.asarray(cloud.points)
-    return [_refine(wall, pts) for wall in walls]
+    index = None
+    if len(pts) >= 300_000 and len(walls) >= 3:
+        from scan2bim.core.geometry.xy_index import XYIndex  # noqa: PLC0415
+        index = XYIndex(pts)
+    return [_refine(wall, pts, index) for wall in walls]
 
 
-def _refine(wall: Wall, pts: np.ndarray) -> Wall:
+def _refine(wall: Wall, pts: np.ndarray, index=None) -> Wall:
     if len(wall.axis) < 2:
         return wall
 
@@ -422,11 +426,18 @@ def _refine(wall: Wall, pts: np.ndarray) -> Wall:
 
     mid = 0.5 * (p0 + p1)
 
+    margin = 200.0
+    if index is not None:
+        from scan2bim.core.geometry.xy_index import subset  # noqa: PLC0415
+        pts, _ = subset(pts, index, mid, along, normal, _MAX_SEARCH_DIST,
+                        -(length / 2.0 + margin), length / 2.0 + margin)
+        if len(pts) < _MIN_PEAK_PTS * 2:
+            return wall
+
     xy = pts[:, :2]
     proj_along = (xy - mid) @ along
     proj_normal = (xy - mid) @ normal
 
-    margin = 200.0
     z_lo = wall.z_min + 150.0
     z_hi = wall.z_min + wall.height - 150.0
     mask = (np.abs(proj_along) <= length / 2.0 + margin) & \
