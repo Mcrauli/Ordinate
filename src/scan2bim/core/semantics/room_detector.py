@@ -16,7 +16,12 @@ from scan2bim.schemas.model import ElementSource, Space
 _EXTEND = 120.0        # mm — jatka seinänpäitä jotta nurkat solmittuvat varmasti
 _MIN_AREA = 1_800_000.0   # mm² (~1.8 m²) — pienin huone (komero/wc); alle = perimetrin
                           # ja sisäseinän väliin jäävä kuollut kaista (valehuone), ei tila
-_MAX_AREA = 90_000_000.0  # mm² (~90 m²) — tätä suurempi = koko asunnon ulkokehä, ohitetaan
+# Ulkokehä-kasvo (koko rakennuksen ääriviiva) hylätään sillä että se SISÄLTÄÄ toisen
+# kasvon, ei absoluuttisella pinta-alalla. Absoluuttinen 90 m² -katto oli asuntokoosta
+# johdettu ja teki ison tilan tunnistuksen mahdottomaksi: mitattu synteettisellä
+# 72×48 m myymälällä 3456 m² myyntialue putosi katosta → 0 tilaa siellä missä
+# arkkitehti tarvitsee niitä eniten. polygonize antaa minimikasvot, joten sisäkkäisyys
+# esiintyy vain kun kehän sisällä on erillinen (kytkemätön) rengas = juuri ulkokehä.
 # Sliver-suodatus: kahden lähes yhdensuuntaisen seinän väliin (ohut rako) syntyy
 # usein pitkä ja kapea valehuone, jonka pinta-ala silti ylittää _MIN_AREA. Hylätään
 # liian kapeat tai liian pitkänomaiset polygonit ennen kuin ne muuttuvat huoneiksi.
@@ -60,7 +65,14 @@ def detect_rooms(walls: list, floor_z: float, ceiling_z: float) -> list[Space]:
     spaces: list[Space] = []
     for poly in polys:
         area = float(poly.area)
-        if area < _MIN_AREA or area > _MAX_AREA:
+        if area < _MIN_AREA:
+            continue
+        # Ulkokehä-kasvo: polygonize palauttaa sen REIÄLLISENÄ (erilliset
+        # sisärenkaat = huoneet). Reikä on siis suora tunniste — eikä
+        # `.exterior`-rajaus saisi koskaan kirjata sitä tilaksi, koska boundary
+        # jättäisi reiät huomiotta ja ala laskettaisiin kahteen kertaan
+        # (mitattu: 80 m² kirjattu kun kasvon oikea ala on 71 m²).
+        if len(poly.interiors) > 0:
             continue
         # Sliver-hylkäys: mittaa minimi-suorakaiteen sivut (pituus × leveys).
         try:

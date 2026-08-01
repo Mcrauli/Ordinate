@@ -160,3 +160,82 @@ def test_clean_surface_confidence_unchanged():
     cloud = _cloud_one_face(0.0)
     out = _align_faces_to_surface_median([w], cloud)[0]
     assert out.confidence == 1.0
+
+
+def test_unsupported_thin_thickness_becomes_one_sided():
+    """Synteettinen 72x48 m myymala: yksipuolisen pinnan maskiviivan kontuuri
+    kiertaa viivan MOLEMMILTA puolilta, ja _merge_axis_lines luki reunat kahdeksi
+    pinnaksi -> 92 mm "seina" johon raakapisteissa on vain YKSI pinta. Vanha +-60 mm
+    ikkuna ei ylla valepaksuuden yli, joten seina jai korjaamatta 57-62 mm
+    pieleen (mitattu _tol_heatmap:lla). Nyt: paksuus yksipuolisen oletukseksi ja
+    NAKYVA pinta mitatulle tasolle."""
+    th_fake = 92.0
+    # Ainoa pinta x=0. Akseli 46 mm siita -> mallipinnat x=0-46+-46 = -92 ja 0?
+    # ei: akseli x=-46, pinnat x=-92 ja x=0 -> osuisi. Siirretaan kuten oikeassa
+    # ajossa: akseli 103 mm pinnan takana, jolloin lahin mallipinta on 57 mm
+    # pielessa eika mahdu +-60 mm ikkunaan yhdessakaan iteraatiossa.
+    w = _wall(x_axis=-115.0, th=th_fake)
+    n = 20000
+    y = _RNG.uniform(0, 4000, n)
+    z = _RNG.uniform(300, 2400, n)
+    face_pts = np.column_stack([_RNG.normal(0, 2.0, n), y, z])
+    # Sisatilan massa selvasti pinnan +x-puolella mutta hakukaistan (+-200 mm)
+    # ULKOPUOLELLA -> ei toista huippua, mutta massakeskipiste kertoo suunnan.
+    room = np.column_stack([
+        _RNG.uniform(1000, 5000, n), _RNG.uniform(0, 4000, n), _RNG.uniform(0, 2700, n),
+    ])
+    pc = o3d.geometry.PointCloud()
+    pc.points = o3d.utility.Vector3dVector(np.vstack([face_pts, room]))
+    out = _thickness_lock_walls([w], pc)[0]
+    assert out.thickness == 200.0, f"valepaksuus jai voimaan: {out.thickness}"
+    face = min(out.axis[0][0] - out.thickness / 2.0,
+               out.axis[0][0] + out.thickness / 2.0, key=abs)
+    assert abs(face) < 1.0, f"nakyva pinta {face:.1f} mm pielessa"
+    assert out.axis[0][0] < 0.0, "runko kasvoi huoneeseen pain, ei ulos"
+
+
+def test_supported_thin_wall_keeps_its_thickness():
+    """Aito 66 mm valiseina jonka MOLEMMAT pinnat nakyvat: paksuutta ei saa
+    korvata yksipuolisen oletuksella."""
+    th_true = 66.0
+    w = _wall(x_axis=th_true / 2.0 + 4.0, th=th_true)
+    n = 12000
+    y = _RNG.uniform(0, 4000, 2 * n)
+    z = _RNG.uniform(300, 2400, 2 * n)
+    x = np.concatenate([_RNG.normal(0, 2.0, n), th_true + _RNG.normal(0, 2.0, n)])
+    pc = o3d.geometry.PointCloud()
+    pc.points = o3d.utility.Vector3dVector(np.column_stack([x, y, z]))
+    out = _thickness_lock_walls([w], pc)[0]
+    assert abs(out.thickness - th_true) < 2.0, f"aito ohut seina paisui {out.thickness}"
+
+
+def test_one_sided_wall_corrected_beyond_25mm_cap():
+    """Synteettinen myymala: 72 m ulkoseina jai 57.4 mm pinnastaan koska
+    _align_faces_to_surface_median MITTASI virheen oikein mutta 25 mm cap esti
+    korjauksen. Cap oletti etta akseli on jo ~oikein - se pitaa kaksipuoliselle
+    (pinnat kiinnittavat sen), ei yksipuoliselle."""
+    from scan2bim.core.pipeline import _align_faces_to_surface_median
+
+    th = 92.0
+    w = _wall(x_axis=-57.0, th=th)          # ainoa pinta x=0, mallipinta x=-11
+    cloud = _cloud_one_face(0.0)
+    out = _align_faces_to_surface_median([w], cloud)[0]
+    face = min(out.axis[0][0] - th / 2.0, out.axis[0][0] + th / 2.0, key=abs)
+    assert abs(face) < 1.5, f"pinta jai {face:.1f} mm paahan"
+
+
+def test_two_sided_wall_keeps_the_25mm_cap():
+    """Kaksipuolisella seinalla iso siirto tarkoittaa VAARAA pintaa - cappia ei
+    saa loysata silla akselin kiinnittaa kaksi pintaa."""
+    from scan2bim.core.pipeline import _align_faces_to_surface_median
+
+    th = 200.0
+    w = _wall(x_axis=th / 2.0 + 60.0, th=th)   # akseli 60 mm pielessa
+    n = 15000
+    y = _RNG.uniform(0, 4000, 2 * n)
+    z = _RNG.uniform(300, 2400, 2 * n)
+    x = np.concatenate([_RNG.normal(0, 2.0, n), th + _RNG.normal(0, 2.0, n)])
+    pc = o3d.geometry.PointCloud()
+    pc.points = o3d.utility.Vector3dVector(np.column_stack([x, y, z]))
+    out = _align_faces_to_surface_median([w], pc)[0]
+    assert out.axis[0][0] == w.axis[0][0], "kaksipuolista siirrettiin cappia enemman"

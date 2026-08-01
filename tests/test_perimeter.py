@@ -47,3 +47,48 @@ def test_without_points_behaves_as_before():
     boundary = [[0.0, 0.0], [8000.0, 0.0], [8000.0, 6000.0], [0.0, 6000.0]]
     walls = add_perimeter_walls(boundary, [], 0.0, 2700.0)
     assert len(walls) == 4
+
+
+def test_large_hall_becomes_a_space():
+    """Iso myyntialue (72x48 m) on tila, ei roskaa. Absoluuttinen 90 m2 -katto oli
+    asuntokoosta johdettu ja pudotti 3456 m2 hallin kokonaan -> 0 tilaa juuri
+    siella missa arkkitehti niita eniten tarvitsee."""
+    from scan2bim.core.semantics.room_detector import detect_rooms
+    from scan2bim.schemas.model import ElementSource, Wall
+
+    def w(i, a, b):
+        return Wall(id=f"w{i}", confidence=1.0, classification="wall",
+                    source=ElementSource(method="contour"), axis=[list(a), list(b)],
+                    height=7000.0, thickness=250.0, z_min=0.0)
+
+    sx, sy = 72000.0, 48000.0
+    walls = [w(0, (0, 0), (sx, 0)), w(1, (sx, 0), (sx, sy)),
+             w(2, (sx, sy), (0, sy)), w(3, (0, sy), (0, 0))]
+    spaces = detect_rooms(walls, 0.0, 7000.0)
+    assert len(spaces) == 1, f"iso halli ei tullut tilaksi ({len(spaces)})"
+
+
+def test_building_outline_still_dropped_when_it_encloses_rooms():
+    """Ulkokeha jonka sisalla on ERILLINEN (kytkematon) huonerengas: polygonize
+    palauttaa molemmat, ja ulkokeha on pudotettava jotta ala ei laskettaisi
+    kahteen kertaan."""
+    from scan2bim.core.semantics.room_detector import detect_rooms
+    from scan2bim.schemas.model import ElementSource, Wall
+
+    def w(i, a, b):
+        return Wall(id=f"w{i}", confidence=1.0, classification="wall",
+                    source=ElementSource(method="contour"), axis=[list(a), list(b)],
+                    height=2700.0, thickness=120.0, z_min=0.0)
+
+    outer = [((0, 0), (10000, 0)), ((10000, 0), (10000, 8000)),
+             ((10000, 8000), (0, 8000)), ((0, 8000), (0, 0))]
+    inner = [((3000, 3000), (6000, 3000)), ((6000, 3000), (6000, 6000)),
+             ((6000, 6000), (3000, 6000)), ((3000, 6000), (3000, 3000))]
+    walls = [w(i, a, b) for i, (a, b) in enumerate(outer + inner)]
+    spaces = detect_rooms(walls, 0.0, 2700.0)
+    areas = []
+    for s in spaces:
+        b = np.array(s.boundary, float)
+        x, y = b[:, 0], b[:, 1]
+        areas.append(abs(float(np.dot(x, np.roll(y, -1)) - np.dot(y, np.roll(x, -1)))) / 2)
+    assert all(a < 20_000_000 for a in areas), f"ulkokeha jai tilaksi: {areas}"

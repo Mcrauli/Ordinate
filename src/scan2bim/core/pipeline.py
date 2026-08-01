@@ -299,6 +299,8 @@ _TL_BODY_MARGIN = 45.0   # mm — pintakohinan marginaali rungon sisään
 _TL_BODY_FRAC = 0.60     # kattoa yli tämän osuuden rungosta → pari ei kelpaa
 _TL_BODY_ZBAND = 60.0    # mm — ±kaista kattotason ympärillä
 _TL_ONE_SIDED_T = 200.0  # mm — hylätyn valeparin jälkeen: yksipuolisen oletuspaksuus
+_TL_UNSUPPORTED_REACH = 120.0  # mm — kuinka kauas valepaksuuden ulkopuolelta ainoa
+                               # pinta saa löytyä ennen kuin akseli siirretään sille
                          # mallipintaa (±th/2), muuten se on naapuri/kaluste → ei lukita
 
 
@@ -323,8 +325,9 @@ def _thickness_lock_walls(walls, cloud, iters: int = 3, ceiling_xy=None) -> list
     if len(pts) == 0:
         return walls
     ceil_xy = None if ceiling_xy is None or len(ceiling_xy) == 0 else np.asarray(ceiling_xy)
+    inside = pts[:, :2].mean(axis=0)
     for _ in range(iters):
-        walls = [_thickness_lock_wall(w, pts, ceil_xy) for w in walls]
+        walls = [_thickness_lock_wall(w, pts, ceil_xy, inside) for w in walls]
     return walls
 
 
@@ -369,7 +372,7 @@ def _pair_body_has_ceiling(
     return float((hist > 3).mean()) > _TL_BODY_FRAC
 
 
-def _single_face_lock(wall, hist, centers, pks, normal, p0, p1):
+def _single_face_lock(wall, hist, centers, pks, normal, p0, p1, inward=None):
     """Yksipuolinen seinä: lukitse NÄKYVÄ pinta ali-bin-tarkkuudella.
 
     Kaksipuolinen mittaus ei ole mahdollinen (vain yksi pinta keilattu), mutta
@@ -387,7 +390,7 @@ def _single_face_lock(wall, hist, centers, pks, normal, p0, p1):
             if err <= _TL_FACE_WIN:
                 cands.append((err, float(hist[pk]), int(pk), face))
     if not cands:
-        return wall
+        return _unsupported_thickness_lock(wall, hist, centers, pks, normal, p0, p1, inward)
     # LÄHIN riittävän vahva piikki, ei vahvin: verho/karmi huoneen puolella voi
     # olla vahvempi piikki 40–60mm päässä — pintalukituksen on osuttava seinään.
     h_max = max(c[1] for c in cands)
@@ -404,7 +407,42 @@ def _single_face_lock(wall, hist, centers, pks, normal, p0, p1):
     ]})
 
 
-def _thickness_lock_wall(wall, pts: np.ndarray, ceiling_xy: np.ndarray | None = None):
+def _unsupported_thickness_lock(wall, hist, centers, pks, normal, p0, p1, inward):
+    """Paksuus jota YKSIKÄÄN pinta ei tue → yksipuolinen seinä, runko ulospäin.
+
+    Kontuurimaskissa yksipuolinen pinta on 1 px viiva, jonka 5×5-closing paisuttaa
+    ~3 px kaistaksi; `_merge_axis_lines` lukee kaistan kaksi reunaa kahdeksi
+    pinnaksi ja tuottaa 66–92 mm "paksuuden". Raakapisteissä pintoja on vain YKSI,
+    joten `_thickness_lock_wall` ei löydä toista huippua eikä yllä oleva ±60 mm
+    ikkuna yletä valepaksuuden yli → seinä jäi ennen KORJAAMATTA sinne minne
+    detektori sen laittoi. Mitattu synteettisellä 72×48 m myymälällä: 72 m
+    ulkoseinä 57.4 mm ja 21 m ulkoseinä 62.1 mm pinnastaan (`_tol_heatmap`),
+    kaikki muut ≤4.5 mm.
+
+    Korjaus: aseta paksuudeksi yksipuolisen oletus ja siirrä akseli niin että
+    NÄKYVÄ pinta osuu mitattuun huippuun. Runko kasvaa poispäin pilven
+    massakeskipisteestä (= ulospäin rakennuksesta). Mittaamaton puoli on arvaus
+    joka tapauksessa; näkyvä pinta on tämän jälkeen oikeassa paikassa."""
+    if inward is None or wall.thickness >= _TL_ONE_SIDED_T:
+        return wall
+    dom = int(max(pks, key=lambda p: hist[p]))
+    f = _parabolic_peak(hist, centers, dom)
+    if abs(f) > wall.thickness / 2.0 + _TL_UNSUPPORTED_REACH:
+        return wall
+    side = -1.0 if float(np.dot(inward - p0, normal)) >= 0.0 else 1.0
+    center = f + side * _TL_ONE_SIDED_T / 2.0
+    shift_vec = center * normal
+    return wall.model_copy(update={
+        "axis": [
+            [round(p0[0] + shift_vec[0], 2), round(p0[1] + shift_vec[1], 2)],
+            [round(p1[0] + shift_vec[0], 2), round(p1[1] + shift_vec[1], 2)],
+        ],
+        "thickness": _TL_ONE_SIDED_T,
+    })
+
+
+def _thickness_lock_wall(wall, pts: np.ndarray, ceiling_xy: np.ndarray | None = None,
+                         inward: np.ndarray | None = None):
     if len(wall.axis) < 2:
         return wall
     p0 = np.array(wall.axis[0], dtype=float)
@@ -436,7 +474,7 @@ def _thickness_lock_wall(wall, pts: np.ndarray, ceiling_xy: np.ndarray | None = 
     centers = 0.5 * (edges[:-1] + edges[1:])
     pks, _ = find_peaks(hist, height=hist.max() * _TL_PEAK_FRAC, distance=int(20.0 / _TL_BIN))
     if len(pks) == 0:
-        return _single_face_lock(wall, hist, centers, pks, normal, p0, p1)
+        return _single_face_lock(wall, hist, centers, pks, normal, p0, p1, inward)
 
     # Seinän kaksi pintaa = kaksi vahvinta huippua (sama valinta kuin QA-mittari
     # _element_qa.py, jotta malli ja mittari ovat samaa mieltä). Ali-bin tarkkuus
@@ -463,7 +501,7 @@ def _thickness_lock_wall(wall, pts: np.ndarray, ceiling_xy: np.ndarray | None = 
             second = max(cands, key=lambda p: hist[p])
 
     if second is None:
-        return _single_face_lock(wall, hist, centers, pks, normal, p0, p1)
+        return _single_face_lock(wall, hist, centers, pks, normal, p0, p1, inward)
 
     f_dom = _parabolic_peak(hist, centers, dom)
     f_sec = _parabolic_peak(hist, centers, second)
@@ -575,6 +613,8 @@ def _align_faces_to_surface_median(walls, cloud) -> list:
     kallellaan tai kohina vinoa — pystyprisman paras sovitus koko korkeudelle
     on mediaani, ja QA mittaa sitä. Siirtää akselia vain sivusuunnassa."""
     _FACE_MAD_MAX = 20.0   # mm — pisteiden mediaanihajonta pinnan ympärillä; yli = ei pintaa
+    _FACE_ONE_SIDED_FRAC = 0.10   # vastapinnan osuus dominantista → alle tämän = yksipuolinen
+    _FACE_SINGLE_PLANE = 0.80     # dominantin puolen pisteistä ±30 mm mediaanista
     pts = np.asarray(cloud.points)
     if len(pts) == 0:
         return walls
@@ -622,6 +662,20 @@ def _align_faces_to_surface_median(walls, cloud) -> list:
         # (25mm ruutu + dilaatio ~75mm biasta) → salli isompi korjaus puhtaalle
         # pinnalle, muuten seinä jää kymmeniä mm pieleen eikä mikään flägää sitä.
         max_shift = 90.0 if w.source.method == "floorplan" else 25.0
+        # YKSIPUOLINEN + YKSI SELVÄ PINTA: 25 mm katto oletti että akseli on jo
+        # ~oikein, mikä pitää kaksipuoliselle seinälle (pinnat kiinnittävät sen).
+        # Yksipuolisella mikään ei kiinnitä: mitattu synteettisellä 72×48 m
+        # myymälällä 72 m ja 21 m ulkoseinä 57.4 ja 62.1 mm pinnastaan — tämä
+        # vaihe MITTASI virheen oikein ja jätti sen korjaamatta cappiin.
+        # Väärän pinnan riski tulee kilpailevista pinnoista kaistassa; kun
+        # toisella puolella ei ole pintaa ja dominantti puoli on yksi tiivis
+        # taso, kilpailijaa ei ole → korjaus saa yltää kaistan reunaan asti.
+        n_dom, n_oth = int(side.sum()), int((~side).sum())
+        if n_dom < n_oth:
+            n_dom, n_oth = n_oth, n_dom
+        if (n_oth < _FACE_ONE_SIDED_FRAC * n_dom
+                and float(np.mean(np.abs(dom - med) < 30.0)) >= _FACE_SINGLE_PLANE):
+            max_shift = w.thickness / 2.0 + 80.0
         if abs(shift) < 0.2 or abs(shift) > max_shift:
             out.append(w)
             continue
@@ -895,11 +949,17 @@ class Pipeline:
             # convert-polun refine_cloud). Katto 45 M: ison skannin 5mm-pilvi on
             # 100M+ (SLAM-kohina > 5mm) → satunnaisohennus rajaa muistin eikä
             # siirrä pintamediaania (toisin kuin karkeampi voxel).
+            self._progress(
+                f"  Ladataan 5mm-pilvi pintalukitukseen ({len(thick_cloud.points):,} "
+                "keskikaistalla)…")
             refine_cloud = _lfs(
                 paths, z_lo, z_hi, voxel_size=5.0, progress_cb=None,
                 icp_refine=self.config.icp_refine, max_points=45_000_000,
             )
 
+            self._progress(
+                f"  Semanttinen suodatin ({len(cloud.points):,} pistettä, "
+                f"5mm-pilvi {len(refine_cloud.points):,})…")
             cloud = self._semantic_filter(cloud)
 
             self._progress(f"  Seinädetektio ({self.config.detector})…")

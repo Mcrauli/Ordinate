@@ -4,6 +4,39 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 [`Mcrauli/scan2bim-web`](https://github.com/Mcrauli/scan2bim-web/releases):iin;
 sovellus päivittää itsensä sieltä.
 
+## v0.9.0 (1.8.2026) — liiketila- ja mittakaavavalidointi; yksipuoliset seinät paikalleen
+- **Yksipuolinen seinä ei enää jää kymmeniä millejä pinnastaan.** Viimeinen
+  pintalinjaus (`_align_faces_to_surface_median`) MITTASI virheen oikein mutta
+  jätti sen korjaamatta 25 mm cappiin. Cap olettaa akselin olevan jo ~oikein —
+  se pätee kaksipuoliselle seinälle, jonka kaksi pintaa kiinnittävät akselin,
+  mutta yksipuolisella mitään kiinnitystä ei ole. Cap nousee kaistan reunaan asti
+  vain kun vastapinnalla on <10 % dominantin pisteistä JA dominantti puoli on yksi
+  tiivis taso (≥80 % ±30 mm mediaanista); kaksipuolisella se pysyy 25 mm:ssä.
+  **Mitattu (`_tol_heatmap` raakapilveä vasten):** makuuhuone 4.7 m seinä
+  **68.5 → 2.5 mm**; synteettinen myymälä 72 m ja 21 m ulkoseinä **57.4 ja
+  62.1 → 0.0 mm**, jolloin kaikki 24 seinää ovat ≤0.4 mm. Asunto, apt2 ja
+  autotalli tuottavat bitilleen saman mallin kuin ennen.
+- **Iso tila on tila.** `room_detector` hylkäsi kaiken yli 90 m² ("koko asunnon
+  ulkokehä") — asuntokoosta johdettu absoluuttinen raja, jonka takia 3456 m²
+  myyntialue ei voinut koskaan tulla tilaksi. Ulkokehä tunnistetaan nyt siitä
+  mikä se oikeasti on: polygonize palauttaa sen reiällisenä. Samalla korjaantui
+  että `Space.boundary` rakennettiin `.exterior`-renkaasta → ala kirjautui 80 m²
+  kun kasvon oikea ala oli 71 m².
+- **Maskista luettua paksuutta ei oteta alle 4 × pikselikoon.** Yksipuolisen
+  pinnan viivan kontuuri kiertää sen molemmilta puolilta ja reunat luettiin
+  kahdeksi pinnaksi → 66–92 mm "paksuus" vaikka pintoja on yksi. Oikea arvo
+  mitataan joka tapauksessa raakapisteistä.
+- **Liiketilavalidointi**: `data/_synth_retail.py` generoi parametrisen big-box-
+  myymälän tunnetulla pohjalla (pilarikenttä, palkisto, lasijulkisivu, taustatilat,
+  gondolit ja lattia-katto-hyllyköt) → `data/_retail_qa.py` vertaa mallia siihen.
+  Oma data ⇒ käytettävissä myös markkinointiin ilman lisenssiehtoja.
+- **Mittakaava mitattu ensimmäistä kertaa** (`data/_scale_run.py`): 72×48 m /
+  8.2 M pistettä = 11.6 min ja 8.7 GB; 150×100 m / 32 M pistettä = 65.3 min ja
+  **16.4 GB**. Ei kaadu, mutta 16 GB kannettava ei riitä isoon kohteeseen.
+  Avoimet puutteet isossa liiketilassa: ks. AGENTS.md "Tunnetut rajoitukset".
+- `point_features.geometric` lohkotettu (naapurihaun transientti rajattu);
+  tulos on testillä varmistetusti identtinen.
+
 ## v0.8.9 (30.7.2026) — huoneala ja perimetri kuntoon, valeseinät pois
 - **Lattiakontuuri ei enää leikkaa itseään.** Kalusteiden keilausvarjot syövät
   ohueen lattiaviipaleeseen lahdet, ja suhteellinen `approxPolyDP`-epsilon

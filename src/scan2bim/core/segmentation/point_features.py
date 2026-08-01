@@ -26,6 +26,7 @@ import numpy as np
 _MM_PER_M = 1000.0
 
 _GEO_K = 16              # kNN neighbourhood; scale-free, so mm vs m is moot here
+_GEO_CHUNK = 500_000     # query points per batch; caps the neighbour-gather transient
 _CELL_MM = 100.0         # XY cell for the column grid (0.10 m in training)
 _Z_BIN_MM = 200.0        # vertical bin height (0.20 m in training)
 _HEIGHT_REF_MM = 3000.0  # height normalisation reference (3 m in training)
@@ -39,11 +40,17 @@ def height(xyz_mm: np.ndarray) -> np.ndarray:
     return np.clip((z - floor_z) / _HEIGHT_REF_MM, 0.0, 1.5).astype(np.float32)
 
 
-def geometric(xyz_mm: np.ndarray, k: int = _GEO_K) -> np.ndarray:
+def geometric(xyz_mm: np.ndarray, k: int = _GEO_K, chunk: int = _GEO_CHUNK) -> np.ndarray:
     """(N,3) [verticality, planarity, sphericity] from local covariance eigenvalues.
 
     Ratios of eigenvalues and a normal direction — scale invariant, so the mm
     input needs no conversion.
+
+    Chunked over the query points. The neighbour gather is the whole pipeline's
+    memory peak: at k=16 it holds N*k*3 float64 twice (~6 GB at 8 M points), which
+    is what a large retail scan hits before anything else. The tree is still built
+    once over ALL points, so every neighbourhood — and therefore every output
+    value — is bit-identical to the unchunked form; only the transient shrinks.
     """
     from scipy.spatial import cKDTree  # noqa: PLC0415
 
@@ -51,19 +58,23 @@ def geometric(xyz_mm: np.ndarray, k: int = _GEO_K) -> np.ndarray:
     n = len(xyz)
     if n < k + 1:
         return np.zeros((n, 3), np.float32)
-    _, idx = cKDTree(xyz).query(xyz, k=k, workers=-1)
-    nb = xyz[idx]
-    nb = nb - nb.mean(axis=1, keepdims=True)
-    cov = np.einsum("nki,nkj->nij", nb, nb) / k
-    ev, evec = np.linalg.eigh(cov)              # ascending: l3, l2, l1
-    l3, l2, l1 = ev[:, 0], ev[:, 1], ev[:, 2]
-    l1 = np.maximum(l1, 1e-12)
-    out = np.column_stack([
-        1.0 - np.abs(evec[:, :, 0][:, 2]),      # verticality from smallest-eigenvalue vector
-        (l2 - l3) / l1,                         # planarity
-        l3 / l1,                                # sphericity
-    ]).astype(np.float32)
-    return np.clip(out, 0.0, 1.0)
+    tree = cKDTree(xyz)
+    out = np.empty((n, 3), np.float32)
+    for lo in range(0, n, chunk):
+        hi = min(lo + chunk, n)
+        _, idx = tree.query(xyz[lo:hi], k=k, workers=-1)
+        nb = xyz[idx]
+        nb -= nb.mean(axis=1, keepdims=True)
+        cov = np.einsum("nki,nkj->nij", nb, nb) / k
+        ev, evec = np.linalg.eigh(cov)          # ascending: l3, l2, l1
+        l3, l2, l1 = ev[:, 0], ev[:, 1], ev[:, 2]
+        l1 = np.maximum(l1, 1e-12)
+        out[lo:hi] = np.clip(np.column_stack([
+            1.0 - np.abs(evec[:, :, 0][:, 2]),  # verticality from smallest-eigenvalue vector
+            (l2 - l3) / l1,                     # planarity
+            l3 / l1,                            # sphericity
+        ]), 0.0, 1.0)
+    return out
 
 
 def column(xyz_mm: np.ndarray) -> np.ndarray:

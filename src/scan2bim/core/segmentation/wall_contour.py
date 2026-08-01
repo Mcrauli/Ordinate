@@ -83,6 +83,13 @@ _VSLICE_RUN_SEM_MM = 1000.0  # mm — löysempi jakso kun luokka on tiedossa
 
 _MAX_WORK_POINTS = 1_200_000  # raskas detektori → ajetaan harvennetulle pilvelle
 
+# Maskista luettu paksuus on luotettava vasta kun se ylittää selvästi pikselikoon.
+_TRUSTED_SPREAD_PX = 4.0
+
+
+def _trusted_spread(pixel_size: float) -> float:
+    return _TRUSTED_SPREAD_PX * pixel_size
+
 
 # ---------------------------------------------------------------------------
 # Geometriapikkufunktiot (portattu Cloud2BIM)
@@ -266,7 +273,7 @@ def _dominant_angle(axes) -> float:
     return math.atan2(sy, sx) / 4.0
 
 
-def _regularize_orthogonal(axes, max_thick, min_len):
+def _regularize_orthogonal(axes, max_thick, min_len, min_spread=0.0):
     """Snäppää seinät ortogonaalirunkoon ja sulauta saman seinän rinnakkaispinnat."""
     if not axes:
         return axes
@@ -291,7 +298,7 @@ def _regularize_orthogonal(axes, max_thick, min_len):
         local.append([ls, le, t, horizontal])
 
     # sulauta rinnakkais-päällekkäiset (sama seinä, kaksi pintaa / katkokset)
-    merged = _merge_axis_lines(local, max_thick)
+    merged = _merge_axis_lines(local, max_thick, min_spread)
 
     # sulje nurkat paikallisrungossa: jatka päätepisteet kohtisuoraan naapuriin
     merged = _close_corners_local(merged, max_thick)
@@ -351,8 +358,16 @@ def _close_corners_local(lines, max_thick):
     return lines
 
 
-def _merge_axis_lines(local, max_thick):
-    """Yhdistä samansuuntaiset (H/H tai V/V) lähekkäiset päällekkäiset akselit yhdeksi."""
+def _merge_axis_lines(local, max_thick, min_spread=0.0):
+    """Yhdistä samansuuntaiset (H/H tai V/V) lähekkäiset päällekkäiset akselit yhdeksi.
+
+    min_spread: kahden rinnakkaislinjan etäisyys jota pienempää EI oteta
+    paksuudeksi. Maski ei voi erottaa omaa pikselikokoaan hienompaa rakennetta:
+    yksipuolisen seinän pinta on 1–2 px viiva, jonka kontuuri kiertää molemmilta
+    puolilta → kahden reunan "spread" 66–92 mm vaikka pintoja on yksi.
+    Aidon 66 mm väliseinän kaksi pintaa taas sulautuvat maskissa YHDEKSI viivaksi,
+    joten kumpikaan tapaus ei anna luotettavaa paksuutta tästä lähteestä →
+    siemen on `_DEFAULT_THICKNESS` ja oikea arvo mitataan raakapisteistä."""
     used = [False] * len(local)
     result = []
     for i in range(len(local)):
@@ -385,7 +400,13 @@ def _merge_axis_lines(local, max_thick):
         new_pos = float(np.mean(positions))
         # paksuus: jos kaksi erillistä pintaa → niiden etäisyys, muuten siemen
         spread = max(positions) - min(positions)
-        thick = spread if (len(positions) >= 2 and 50.0 <= spread <= max_thick) else float(np.mean(thicks))
+        lo_spread = max(50.0, min_spread)
+        if len(positions) >= 2 and lo_spread <= spread <= max_thick:
+            thick = spread
+        elif len(positions) >= 2 and spread > 50.0:
+            thick = _DEFAULT_THICKNESS   # maskin resoluution alle → mittaamaton
+        else:
+            thick = float(np.mean(thicks))
         if hi:
             result.append([[lo, new_pos], [hi_, new_pos], thick, True])
         else:
@@ -496,6 +517,8 @@ class WallDetectorContour(ElementDetector):
             if res is None:
                 continue
             (a_s, a_e), thick = res
+            if thick < _trusted_spread(self.pixel_size):
+                thick = _DEFAULT_THICKNESS
             thick = min(max(thick, self.min_thickness), self.max_thickness)
             if _dist(a_s, a_e) >= self.min_wall_length:
                 axes.append((a_s, a_e, thick))
@@ -508,7 +531,8 @@ class WallDetectorContour(ElementDetector):
         # Ortogonaalinen regularisointi + rinnakkaisduplikaattien sulautus:
         # huoneisto on ~vinossa maailmankoordinaatistossa → snäppää seinät yhteiseen
         # ortogonaaliseen runkoon ja yhdistä saman seinän kaksi pintaa yhdeksi akseliksi.
-        axes = _regularize_orthogonal(axes, self.max_thickness, self.min_wall_length)
+        axes = _regularize_orthogonal(axes, self.max_thickness, self.min_wall_length,
+                                      _trusted_spread(self.pixel_size))
 
         walls: list[Wall] = []
         for a_s, a_e, thick in axes:

@@ -113,6 +113,10 @@ Tarkkuus mitataan erillisillä QA-skripteillä — **aja tuotantomallia (`model.
 | `data/_val4.py`, `data/_ablation.py` | 4 datan tuotantoajo / ablaatio (monkeypatchaa muutos pois → näyttää ansaitseeko se paikkansa) |
 | `data/_overlay_prod.py`, `data/_plan_qa.py`, `data/_vision_tol.py`, `data/_cmp_view.py` | Vision-overlayt (malli vs pilvi) |
 | `data/_spatiallm_qa.py` | **Ground-truth-vertailu**: SpatialLM-scenet (PLY + .txt-annotaatio) → seinien lateraali-/kulmavirhe + aukkomäärät GT:tä vasten |
+| `data/_synth_retail.py` | **Liiketila + mittakaava**: generoi parametrisen big-box-myymälän (pilarikenttä, palkisto, lasijulkisivu, taustatilat, gondolit JA lattia-katto-hyllyköt) tunnetulla pohjalla → `.gt.json`. Oma data ⇒ lisenssivapaa myös markkinointiin |
+| `data/_retail_qa.py` | Malli vs. em. GT: kattavuus, lateraali-/paksuusvirhe, **montako seinää syntyi hyllykön etupinnalle** |
+| `data/_scale_run.py` | Tuotantoajo jossa **aika ja huippumuisti vaiheittain** (`psutil`-näytteistys + progress-merkit) |
+| `data/_room_probe.py`, `data/_frag_probe.py`, `data/_tl_probe.py` | Miksi tila hylättiin / onko perimetri pirstoutunut / miten paksuus syntyi |
 
 **Käytä visionia aina tarkkuusvertailuissa.** Kuvat: `data/_*.png`.
 
@@ -131,6 +135,10 @@ keilauksesta — EI voxelointia, joka siirtäisi pintaa): jokainen detektoitu
 seinä ≤ 5.1 mm pinnastaan (v0.8.8: kolme yli 8 mm, pahin 34.2 mm), mediaani
 3.8 mm. Jäännös on perimetriseinä sotkunurkassa (58.8 mm) jossa kaistan kohina
 on 30.6 mm — se lippuuntuu itse conf 0.25 → QA:n TARKISTA-lista.
+**Mitattu tarkkuus liiketilassa** (synteettinen 72×48×7 m myymälä, 8.2 M pistettä,
+GT tunnettu): kaikki 9 GT-seinää löytyi, **jokainen 24 seinästä ≤0.4 mm** pinnastaan
+(`_tol_heatmap`, `pinta.snap`). Ennen korjausta kaksi ulkoseinää 57.4 ja 62.1 mm.
+Avoimet puutteet: ks. "Tunnetut rajoitukset → LIIKETILA".
 **GT-testidata:** SpatialLM-Dataset (HuggingFace manycore-research) — yksittäiset
 scenet saa ulos 4.8GB-chunkeista `remotezip`illä (range-request, ei koko latausta);
 layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille sceneille.
@@ -324,6 +332,30 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   versioittain ennen export_onnx:ää (se ylikirjoittaa .pth:n!). Aktiivinen malli
   varmuuskopioidaan ennen korvaamista, ja korvaus vain jos KOKO gauntlet
   (asunto + talo35 + rohbau keep-ratet) on vihreä.
+- **ASUNTOKOOSTA JOHDETTU VAKIO ON MITTAKAAVA-ANSA.** `room_detector._MAX_AREA`
+  oli 90 m² ("tätä suurempi = koko asunnon ulkokehä") → 3456 m² myyntialue ei
+  voinut koskaan tulla tilaksi. Oikea tunniste sille mitä sääntö yritti torjua on
+  `len(poly.interiors) > 0`: polygonize palauttaa ulkokehän REIÄLLISENÄ. Samalla
+  paljastui että `Space.boundary` rakennettiin `.exterior`-renkaasta → ala
+  kirjautui 80 m² kun kasvon oikea ala oli 71 m². **Kun jokin raja on absoluuttinen
+  mm²/mm-luku, kysy mistä rakennuskoosta se on peräisin.**
+- **Yksipuolisen seinän akselia ei kiinnitä mikään** — `_align_faces_to_surface_median`
+  MITTASI virheen oikein ja jätti korjaamatta 25 mm cappiin (cap olettaa akselin
+  olevan jo ~oikein, mikä pätee vain kaksipuoliselle jonka kaksi pintaa kiinnittävät
+  sen). Mitattu synteettisellä 72×48 m myymälällä: 72 m ja 21 m ulkoseinä 57.4 ja
+  62.1 mm pinnastaan, ja **putken oma QA väitti 22/24 seinää ≤1.5 mm** — vain
+  `_tol_heatmap` paljasti sen. Cap nousee kaistan reunaan vain kun vastapinnalla on
+  <10 % dominantin pisteistä JA dominantti puoli on yksi tiivis taso (≥80 % ±30 mm
+  mediaanista). Kaksipuolisella cap pysyy 25 mm:ssä (iso siirto = väärä pinta).
+  Korjauksen jälkeen kaikki 24 seinää ≤0.4 mm.
+- **Maski ei voi mitata omaa pikselikokoaan hienompaa paksuutta**: yksipuolisen
+  pinnan viivan kontuuri kiertää sen MOLEMMILTA puolilta ja `_merge_axis_lines`
+  lukee reunat kahdeksi pinnaksi → 66–92 mm "paksuus" vaikka pintoja on yksi.
+  Aidon 66 mm väliseinän kaksi pintaa taas sulautuvat maskissa yhdeksi viivaksi.
+  Kumpikaan ei siis anna paksuutta → alle 4 × pikselikoon jäävä spread hylätään ja
+  siemeneksi tulee `_DEFAULT_THICKNESS`; oikea arvo mitataan raakapisteistä.
+  **Yksipuolisen seinän paksuus jää silti arvaukseksi** (fysikaalinen raja) —
+  vain PINTA on oikein.
 - **Diagnostiikkaraportti** (`qa/diagnostics.py`): joka ajosta `diagnostics.txt`
   output-hakemistoon (versio, ympäristö, vaihelokit, virhe) — pilottiasiakas ei
   voi jakaa skanneja, tämän voi. Ei koordinaatteja.
@@ -366,6 +398,23 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   keilattu. Fyysinen raja, ei bugi.
 - **Occluusio** (kalusteet nurkissa) rajaa nurkkasijainnin ~100 mm:iin kalustetulla
   datalla. Puhtaalla rungolla sama pipeline antaa ~mm.
+- **LIIKETILA, mitattu synteettisellä 72×48×7 m myymälällä** (`data/_synth_retail.py`,
+  8.2 M pistettä, GT tunnettu). Hyvin: kaikki 9 GT-seinää löytyi, jokainen 24
+  seinästä ≤0.4 mm pinnastaan (`_tol_heatmap`), sisäseinien paksuus täsmälleen
+  oikein (120/200 mm). Auki:
+  1. **Myyntialue (3456 m²) ei tule tilaksi.** polygonize tuottaa vain 3 kasvoa —
+     perimetrirengas on pirstoutunut (itäseinä 5 palana kahdella rinnakkaislinjalla,
+     suurin rako 5.3 m). Sama maskikatto kuin Rohbaussa. `_COLIN_GAP_MM`:n (450 mm)
+     nosto olisi VÄÄRÄ korjaus — se yhdistäisi aitoja oviaukkoja. Todennäköinen oikea
+     polku: tilat lattiakontuurista (`detect_floor_contours`) kun seinärengas ei sulkeudu.
+  2. **Lattia-katto-hyllykkö tuottaa 44.8 m valeseinän** — semanttinen suodatin
+     poisti vain 6 % pisteistä eikä tunnistanut hyllykköä. Geometrisesti hyllykön
+     etupinta ON seinä; ero on vain semanttinen.
+  3. **Pilareita 24/34**: puuttuvat ovat täsmälleen ne joiden vieressä (320 mm)
+     seisoo gondoli → `column_detector`:n vyötärökorkeuden (1–1.8 m) irrallisuustesti
+     kaatuu. Liiketilassa hylly pilarin vieressä on normaalia, ei poikkeus.
+  4. Yksipuolisten ulkoseinien paksuus 66–92 mm (todellinen 250) — pinta on oikein,
+     paksuutta ei voi mitata.
 - **Liiketilojen hyllyt** (lattia-katto) läpäisevät geometrisen pystymaskin →
   semanttinen suodatin tarvitaan. **`pointnet-retail` on nykyään ALIAS
   `pointnet`:lle** — erillinen liiketilamalli sulautettiin yhteen malliin
