@@ -5,6 +5,29 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 sovellus päivittää itsensä sieltä.
 
 ## Julkaisematon
+- **Pilarit 24/34 → 34/34 liiketilassa, ilman yhtään väärää positiivista.**
+  Puuttuvat kaatuivat kaikki täsmälleen yhteen porttiin: `_waist_isolated` laski
+  montako 24 kulmasektorista on täynnä vyötärökorkeudella (raja 4). Mittari oli
+  väärä, ei kynnys — myymälässä gondoli seisoo pilarin molemmin puolin, jolloin
+  **aito pilari peittää 16 sektoria eli yhtä monta kuin hylättävä tavaran
+  ympäröimä kaappi**. Portti korvattu kahdella mitatulla ehdolla:
+  1. suurin yhtenäinen **vapaa kaari** ≥45° (aito 60°/360°, kaappi 30°), ja
+  2. **irtiolo seinästä** ≥250 mm — pelkkä kaari päästi läpi seinän mutkat,
+     joilla huonepuoli on auki 180° (mitattu asunnosta: kolme valetta väleillä
+     −123/−40/+104 mm, myymälän aidot pilarit ≥5420 mm).
+  Todennettu viidellä datalla, sekä kattavuus että tarkkuus paranivat:
+  | data | ennen | jälkeen |
+  |---|---|---|
+  | myymälä 72×48 m (GT 34) | 24/34, 0 väärää | **34/34, 0 väärää** |
+  | kauppakeskus 150×100 m (GT 174) | 94/174, **3 väärää** | **174/174, 0 väärää** |
+  | asunto / apt2 / makuuhuone / autotalli | — | **bitilleen sama `model.json`** |
+  | 3DSES | 0 pilaria | 0 pilaria |
+  | Rohbau site_07 | 0 pilaria | 0 pilaria |
+  Detektorin aika 6.98 s vs 6.96 s (ero nolla); hallin muu tulos ennallaan
+  (37 seinää, 2 tilaa, 4 aukkoa, 13.1 GB). Kaksi uutta testiä: gondolien
+  välinen pilari LÖYDETTÄVÄ, seinän paksunnos EI ole pilari; kumpikin kaatuu
+  ilman vastaavaa porttia.
+
 - **Semanttisen suodattimen muistihuippu alas — se määrää koko tuotteen katon.**
   Mitattu 150×100 m hallilla (32 M pistettä): ajo huippusi 15.9 GB:hen ja
   jokainen muu vaihe jäi ≤5.8 GB, eli yksi vaihe ratkaisi katon; sama vaihe oli

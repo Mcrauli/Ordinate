@@ -106,3 +106,46 @@ def test_full_height_cabinet_in_clutter_not_column():
     walls = [_wall("w0", 0, 0, 6000, 0), _wall("w1", 0, 4000, 6000, 4000)]
     cols = detect_columns(_cloud(parts), walls, floor_z=0.0, ceiling_z=3000.0)
     assert len(cols) == 0, f"massaan kiinni oleva kaappi tulkittiin {len(cols)} pilariksi"
+
+
+def test_column_between_aisle_shelves_is_found():
+    """Myymalapilari gondolien VALISSA: hyllya molemmin puolin vyotarokorkeudella,
+    kaytava auki kahteen suuntaan.
+
+    Tama kaatui aiemmin irrallisuusportissa, joka luki sektorien MAARAA: pilari
+    gondolien valissa peittaa 16 sektoria 24:sta eli yhta monta kuin tavaran
+    ymparoima kaappi (ks. test_full_height_cabinet_in_clutter_not_column).
+    Erottava tekija on VAPAA KAARI — kaytava 60 astetta, kaapin ympari 30.
+    Mitattu synteettisella myymalalla: portti hylkasi 10 aitoa pilaria 34:sta."""
+    parts = [
+        _box(3000, 2500, 8000, 6000, 0, 50, 20000),           # lattia
+        _box(3000, 2500, 400, 400, 50, 2950, 9000),           # AITO pilari
+        # gondolit: hyllyrivin PINNAT (ei umpinainen massa) pilarin molemmin
+        # puolin, etupinta 500 mm keskiosta = 300 mm pilarin kyljesta, ja vain
+        # vyotarokorkeudelle asti — kuten synteettisen myymalan gondolit.
+        _box(3000, 2000, 3000, 100, 300, 1800, 9000),
+        _box(3000, 3000, 3000, 100, 300, 1800, 9000),
+    ]
+    walls = [_wall("w0", -1000, 0, 7000, 0), _wall("w1", -1000, 5000, 7000, 5000)]
+    cols = detect_columns(_cloud(parts), walls, floor_z=0.0, ceiling_z=3000.0)
+    assert len(cols) == 1, f"gondolien valinen pilari jai loytymatta ({len(cols)} kpl)"
+    assert abs(cols[0].location[0] - 3000) < 300
+    assert abs(cols[0].location[1] - 2500) < 300
+
+
+def test_wall_thickening_not_column():
+    """Seinan mutka/paksunnos jota seinadetektori ei nappatnut: pystytaytto ja
+    poikkileikkaus ovat pilarin nakoisia, ja huonepuoli on auki 180 astetta,
+    joten vapaa kaari ei sita hylkaa. Aito pilari on IRTI seinasta.
+
+    Kuvista varmistettu asunnosta apt2 (data/_col_view.py): kolme ehdokasta
+    istui seinalinjalla, valia seinapintaan -123, -40 ja +104 mm. Myymalan
+    aidoilla pilareilla sama vali on 5420 mm ja yli."""
+    parts = [
+        _box(3000, 2500, 6000, 4000, 0, 50, 15000),          # lattia
+        _box(3000, 300, 6000, 200, 0, 2950, 20000),          # seina y=300
+        _box(2000, 550, 400, 350, 0, 2950, 9000),            # paksunnos KIINNI seinassa
+    ]
+    walls = [_wall("w0", 0, 300, 6000, 300)]
+    cols = detect_columns(_cloud(parts), walls, floor_z=0.0, ceiling_z=3000.0)
+    assert len(cols) == 0, f"seinan paksunnos tulkittiin {len(cols)} pilariksi"

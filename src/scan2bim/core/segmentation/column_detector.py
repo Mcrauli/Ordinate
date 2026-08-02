@@ -45,21 +45,38 @@ _SLICE_MIN_BINS = 4        # vähintään näin monta kelvollista kaistaa (~1 m 
 _SLICE_CONSIST_FRAC = 0.6  # kelvollisista kaistoista tämä osuus lähellä mediaania
 _SLICE_LO, _SLICE_HI = 0.5, 1.7   # "lähellä" = poikkileikkaus tällä välillä × mediaani
 
-# Keskikorkeuden IRRALLISUUS = SEKTORIPEITTO: aidon pilarin ympäri kävelee (ilmaa
-# vyötärökorkeudella joka suunnassa). Renkaassa juuri footprintin ulkopuolella,
-# vain vyötärökaistan pisteillä (ei lattia/katto): montaako 24 kulmasektorista
-# osuu pisteitä. Aito vapaa pilari ~0-1; seinänpätkä/donitsi/kaappi 4-9.
-# Mitattu S170/S171 (pipeline-valepilarit): 4,9,6,7 (isot) — ≥4 hylätään.
+# Keskikorkeuden IRRALLISUUS = VAPAA KAARI: aidon pilarin OHI PÄÄSEE KÄVELEMÄÄN.
+# Renkaassa juuri footprintin ulkopuolella, vain vyötärökaistan pisteillä (ei
+# lattia/katto): kuinka leveä on suurin YHTENÄINEN vapaa kulmasektori.
+#
+# Tässä luettiin ennen sektorien MÄÄRÄÄ (raja 4). Se on väärä mittari, ja
+# liiketilassa se hylkäsi aidot pilarit: myymälässä gondoli seisoo pilarin
+# molemmin puolin, jolloin aito pilari peittää 12–16 sektoria — täsmälleen yhtä
+# monta kuin hylättävä tavaran ympäröimä kaappi (16). Määrä ei siis erottele
+# lainkaan. KAARI erottelee, koska tavara joka suunnassa ei jätä kulkuaukkoa:
+#   mitattu, myymälän 34 GT-pilaria : 60° (10 kpl, käytävä) tai 360° (24 kpl)
+#   mitattu, tavaran ympäröimä kaappi: 30°   (testin 3DSES-tapaus c1/c2)
+# Raja 45° erottaa molemmat yhden sektorin marginaalilla.
 _WAIST_LO, _WAIST_HI = 1000.0, 1800.0   # vyötärökaista lattiasta (mm)
 _SECTOR_N = 24             # kulmasektoreiden määrä
 _SECTOR_RING_IN = 150.0    # renkaan alku footprintin reunasta (mm) — yli neliön
                            # kulman (0.71×leveys) jottei pilarin omat kulmat laske
 _SECTOR_RING_OUT = 700.0   # renkaan loppu
-_MAX_SECTOR_COVER = 4      # yli tämän täynnä olevaa sektoria = kiinni massassa → hylky
-                           # (4 = raja jolla aito tukirakenne-ympäröity pilari vielä
-                           # säilyy; embedded valeet 6-9 hylätään)
+_MIN_FREE_ARC_DEG = 45.0   # alle tämän leveä suurin vapaa kaari = ympäröity → hylky
 _MIN_REAL_FOOTPRINT = 200.0  # alle tämän leveä = ohut donitsi/artefakti, ei aito pilari
                              # (mitattu S170: valepilarit 147/195 mm; aidot Rohbau ≥240)
+
+# Irtiolo SEINÄSTÄ. Moduulin määritelmä on "seinistä irralliset kasaumat", mutta
+# _WALL_MARGIN karsii vain PISTEITÄ: seinän mutka tai paksunnos, jota seinä-
+# detektori ei napannut, jää omaksi kasaumakseen ja täyttää kaikki muut ehdot.
+# Kuvista varmistettu (data/_col_view.py, asunto apt2): kaikki kolme ehdokasta
+# istuivat seinälinjalla — mutkassa, seinän päässä ja seinäsegmentin kohdalla.
+# Mitattu vapaa väli ehdokkaan reunasta seinäpintaan:
+#   asunnon valeet          : -123, -40, +104 mm  (kaksi seinän SISÄLLÄ)
+#   myymälän aidot pilarit  : 5420 mm ja yli
+# Aito vapaa pilari seisoo irti seinästä; seinään kiinni oleva on pilasteri ja
+# kuuluu seinään.
+_MIN_WALL_CLEARANCE = 250.0  # mm — ehdokkaan reunasta seinäpintaan
 
 
 def detect_columns(cloud, walls: list[Wall], floor_z: float, ceiling_z: float) -> list[Column]:
@@ -171,6 +188,11 @@ def detect_columns(cloud, walls: list[Wall], floor_z: float, ceiling_z: float) -
         if aspect > _MAX_ASPECT:
             continue
         cx = float(xy[:, 0].mean()); cy = float(xy[:, 1].mean())
+        # Irti seinästä? Tarkistetaan ennen kalliita testejä.
+        if walls:
+            clear = float(_dist_to_walls(np.array([[cx, cy]]), walls)[0]) - max(wx, wy) / 2.0
+            if clear < _MIN_WALL_CLEARANCE:
+                continue
         if not _surrounded(cx, cy):
             continue
         # Poikkileikkauksen vakaus: kasattu kaluste heiluu, aito pilari ei.
@@ -222,10 +244,12 @@ def _cross_section_stable(cl: np.ndarray, floor_z: float, ceiling_z: float) -> b
 
 
 def _waist_isolated(cx: float, cy: float, fp: float, waist_pts, waist_tree) -> bool:
-    """Aito pilari on irrallaan: vyötärökorkeudella ympärillä on ilmaa. Lasketaan
-    SEKTORIPEITTO — montaako 24 kulmasektorista renkaassa (footprintin ulkopuolella)
-    osuu pisteitä. Aito vapaa pilari ~0-1 sektoria; seinänpätkä/donitsi/kaappi 4-9
-    (kiinni massassa). Yli _MAX_SECTOR_COVER → hylätään."""
+    """Aito pilari on irrallaan: vyötärökorkeudella sen ohi pääsee kävelemään.
+
+    Renkaassa footprintin ulkopuolella katsotaan mikä on suurin YHTENÄINEN
+    vapaa kulmasektori. Vapaana seisova pilari 360°, käytävällä gondolien
+    välissä 60°, tavaran joka suunnasta ympäröimä kaappi 30° (kaikki mitattu).
+    Sektorien MÄÄRÄ ei erottele näitä — kaari erottelee."""
     if waist_tree is None or waist_pts is None:
         return True
     r_out = fp / 2.0 + _SECTOR_RING_OUT
@@ -239,7 +263,19 @@ def _waist_isolated(cx: float, cy: float, fp: float, waist_pts, waist_tree) -> b
         return True
     ang = np.arctan2(rel[band, 1], rel[band, 0]) % (2 * np.pi)
     sec = (ang / (2 * np.pi) * _SECTOR_N).astype(int) % _SECTOR_N
-    return len(np.unique(sec)) <= _MAX_SECTOR_COVER
+    occupied = np.zeros(_SECTOR_N, dtype=bool)
+    occupied[np.unique(sec)] = True
+    if not occupied.any():
+        return True
+    # pisin vapaa jakso ympyrällä: kierretään kehä kahdesti, katkaistaan _SECTOR_N:ään
+    best = run = 0
+    for i in range(2 * _SECTOR_N):
+        if occupied[i % _SECTOR_N]:
+            run = 0
+        else:
+            run += 1
+            best = max(best, min(run, _SECTOR_N))
+    return best * 360.0 / _SECTOR_N >= _MIN_FREE_ARC_DEG
 
 
 def _profile(xy: np.ndarray, cx: float, cy: float, wx: float, wy: float):

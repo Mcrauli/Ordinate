@@ -119,6 +119,8 @@ Tarkkuus mitataan erillisillä QA-skripteillä — **aja tuotantomallia (`model.
 | `data/_mem_probe.py` | Muistin **erittely askeleittain**: RSS askeleen jälkeen JA askelhuippu (0.2 s näytteistys). Transientti ei näy jälkikäteen luetusta RSS:stä — `column()` käy 2.9 GB:ssä viidessä sekunnissa. `--real` ajaa oikean `filter_with_labels`-kutsun |
 | `data/_filter_equiv.py` | **Suodattimen tulos tarkistussummina** (pidetyt pisteet, labeliavaimet+arvot, per-piste-luokat) → optimoinnin tuloksettomuus todistetaan `git checkout` -vertailulla, ei päättelemällä |
 | `data/_voxel_curve.py` | Montako pistettä jää milläkin voxelilla — paljastaa milloin voxelointi on **no-op** (pilven pisteväli > voxeli) |
+| `data/_col_probe.py` | **Mikä portti hylkää minkäkin GT-pilarin.** `cache` tallentaa `detect_columns`:n syötteet kerran (~9 min), `gates` tutkii portit sekunneissa — porttien säätö ei vaadi putkiajoa |
+| `data/_col_view.py` | **Pilariehdokas kuvina**: XY vyötäröltä, XY katon alta, pystyleikkaus. Erottaa hormin kaapista ja seinän paksunnoksen aidosta pilarista, kun mittaluvut eivät riitä |
 | `data/_room_probe.py`, `data/_frag_probe.py`, `data/_tl_probe.py` | Miksi tila hylättiin / onko perimetri pirstoutunut / miten paksuus syntyi |
 
 **Käytä visionia aina tarkkuusvertailuissa.** Kuvat: `data/_*.png`.
@@ -148,6 +150,22 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
 
 ## Kovalla työllä opitut asiat — ÄLÄ keksi uudelleen
 
+- **Pilarin irrallisuus: VAPAA KAARI + IRTI SEINÄSTÄ, ei sektorien määrä.**
+  `_waist_isolated` luki ennen montako 24 kulmasektorista on täynnä (raja 4).
+  Se ei erottele mitään olennaista: myymälässä gondoli seisoo pilarin molemmin
+  puolin, jolloin **aito pilari peittää 16 sektoria — täsmälleen yhtä monta kuin
+  hylättävä tavaran ympäröimä kaappi**. Mitattu erottelu on kaksiosainen:
+  1. **Suurin yhtenäinen VAPAA kaari** ≥45°: pilarin ohi on päästävä kävelemään.
+     Aito pilari 60° (käytävä) tai 360° (vapaa); kaappi tavaran keskellä 30°.
+  2. **Irtiolo seinästä** ≥250 mm ehdokkaan reunasta seinäpintaan. Pelkkä kaari
+     päästää läpi seinän mutkat ja paksunnokset: niillä huonepuoli on auki 180°.
+     Mitattu asunto apt2: kolme valetta väleillä −123, −40, +104 mm (kaksi siis
+     seinän SISÄLLÄ); myymälän aidot pilarit ≥5420 mm.
+  `_WALL_MARGIN` ei riitä tähän — se karsii vain PISTEITÄ, ja seinä jota
+  seinädetektori ei napannut jää omaksi kasaumakseen.
+  **Vision ratkaisi tämän**: mittaluvut eivät kertoneet olivatko asunnon
+  ehdokkaat hormeja vai valeita, `data/_col_view.py` kertoi sekunneissa
+  (kaikki kolme istuivat seinälinjalla, pystyleikkauksessa yhtenäinen seinä).
 - **Muistihuippu on suodattimessa, ja se määrää koko tuotteen katon.** Mitattu
   150×100 m hallilla (32 M pistettä): huippu 15.9 GB, ja jokainen muu vaihe
   jäi ≤5.8 GB. Suodatin on myös 51 % ajasta. Älä optimoi muuta ennen kuin
@@ -468,9 +486,7 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   1. **Lattia-katto-hyllykkö tuottaa 44.8 m valeseinän** — semanttinen suodatin
      poisti vain 6 % pisteistä eikä tunnistanut hyllykköä. Geometrisesti hyllykön
      etupinta ON seinä; ero on vain semanttinen.
-  3. **Pilareita 24/34**: puuttuvat ovat täsmälleen ne joiden vieressä (320 mm)
-     seisoo gondoli → `column_detector`:n vyötärökorkeuden (1–1.8 m) irrallisuustesti
-     kaatuu. Liiketilassa hylly pilarin vieressä on normaalia, ei poikkeus.
+  3. ~~Pilareita 24/34~~ **KORJATTU: 34/34** (ks. "Pilarin irrallisuus" alla).
   4. Yksipuolisten ulkoseinien paksuus 66–92 mm (todellinen 250) — pinta on oikein,
      paksuutta ei voi mitata.
 - **Liiketilojen hyllyt** (lattia-katto) läpäisevät geometrisen pystymaskin →
