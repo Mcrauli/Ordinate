@@ -49,6 +49,23 @@ _N_FEATURES_GEOCOL = 13
 # Työ-voxel äänestystä varten
 _WORK_VOXEL = 30.0       # mm
 _INFER_BATCH = 64        # lohkoa per ONNX-kutsu (nopeus; ei laatuvaikutusta)
+_KEY_CHUNK = 4_000_000   # pistettä per erä ruudukkoavainta laskettaessa
+
+
+def _voxel_keys(pts: np.ndarray, origin: np.ndarray) -> np.ndarray:
+    """Per-piste avain _WORK_VOXEL-ruudukkoon, erissä.
+
+    Koko pilvelle kerralla laskettuna lauseke varaa neljä pilven kokoista
+    float64-välivaihetta (vähennys, jako, floor, astype) — 31 M pisteellä ~3 GB
+    pelkkää transienttia. Erissä laskettuna tulos on BITILLEEN sama, koska
+    jokainen piste käy läpi täsmälleen saman lausekkeen; vain välivaiheen koko
+    on rajattu."""
+    out = np.empty(len(pts), dtype=np.int64)
+    for lo in range(0, len(pts), _KEY_CHUNK):
+        hi = min(lo + _KEY_CHUNK, len(pts))
+        v = np.floor((pts[lo:hi] - origin) / _WORK_VOXEL).astype(np.int64)
+        out[lo:hi] = (v[:, 0] * 100_003 + v[:, 1]) * 100_003 + v[:, 2]
+    return out
 
 
 def _find_model_path(variant: str = "default") -> Path | None:
@@ -88,8 +105,7 @@ class SemanticLabels:
     @classmethod
     def build(cls, pts: np.ndarray, pred: np.ndarray) -> "SemanticLabels":
         origin = pts.min(axis=0)
-        vox = np.floor((pts - origin) / _WORK_VOXEL).astype(np.int64)
-        key = (vox[:, 0] * 100_003 + vox[:, 1]) * 100_003 + vox[:, 2]
+        key = _voxel_keys(pts, origin)
         uniq, first = np.unique(key, return_index=True)
         return cls(origin, _WORK_VOXEL, uniq, pred[first].astype(np.int8))
 
@@ -184,13 +200,20 @@ class PointNetFilter:
         if len(pts_full) < 1000:
             return cloud, None
 
-        pred = self._classify(pts_full, return_pred=True)
-        keep = np.isin(pred, list(_KEEP_CLASSES)) | (pred < 0)
+        res = self._classify_voxels(pts_full)
+        if res is None:
+            return cloud, None
+        pred_vox, origin, uniq, inv = res
+        # Labelit SAMASTA ruudukosta jonka inferenssi jo laski. Aiemmin tässä
+        # kutsuttiin SemanticLabels.build(pts_full, pred), joka rakensi
+        # identtisen ruudukon toiseen kertaan koko pilvelle — turha täysi
+        # läpikäynti ison skannin muistihuipun päälle.
+        labels = SemanticLabels(origin, _WORK_VOXEL, uniq, pred_vox)
+        keep = (np.isin(pred_vox, list(_KEEP_CLASSES)) | (pred_vox < 0))[inv]
         keep |= _slab_bands(pts_full)
         if keep.sum() < 200:
-            return cloud, SemanticLabels.build(pts_full, pred)
-        return (cloud.select_by_index(np.where(keep)[0]),
-                SemanticLabels.build(pts_full, pred))
+            return cloud, labels
+        return cloud.select_by_index(np.where(keep)[0]), labels
 
     def predict_classes(self, pts_full: np.ndarray) -> np.ndarray | None:
         """Per-piste S3DIS-luokka (0=ceiling,1=floor,2=wall,3=beam,4=column,
@@ -207,6 +230,21 @@ class PointNetFilter:
         """Palauttaa boolean-maskin: True = rakenteellinen piste.
 
         return_pred=True → palauttaa sen sijaan per-piste luokkaindeksin."""
+        res = self._classify_voxels(pts_full)
+        if res is None:
+            return np.ones(len(pts_full), dtype=bool)
+        pred_vox, _origin, _uniq, inv = res
+        if return_pred:
+            return pred_vox[inv]
+        # Piste perii oman voxelinsa päätöksen. Äänettömät voxelit (pred -1,
+        # reunalohkot) pidetään.
+        return (np.isin(pred_vox, list(_KEEP_CLASSES)) | (pred_vox < 0))[inv]
+
+    def _classify_voxels(self, pts_full: np.ndarray):
+        """Per-VOXEL luokka + ruudukko: (pred_vox, origin, uniq, inv) tai None.
+
+        pred_vox on int8, -1 = ei yhtään ääntä. Sekä maski, per-piste-luokat
+        että SemanticLabels johdetaan tästä yhdestä läpikäynnistä."""
         # Deterministinen näytteistys: sama syöte → sama malli joka ajolla.
         # Globaali np.random heilutti seinien pintalukitusta ±6mm ajojen välillä.
         rng = np.random.RandomState(0)
@@ -217,12 +255,17 @@ class PointNetFilter:
         # Sama grid molempiin suuntiin = jokainen piste perii täsmälleen
         # oman voxelinsa päätöksen.
         origin = pts_full.min(axis=0)
-        vox = np.floor((pts_full - origin) / _WORK_VOXEL).astype(np.int64)
-        vkey = (vox[:, 0] * 100_003 + vox[:, 1]) * 100_003 + vox[:, 2]
-        _, first, inv = np.unique(vkey, return_index=True, return_inverse=True)
+        vkey = _voxel_keys(pts_full, origin)
+        # vuniq, EI uniq: alempana lohkoruudukko käyttää nimeä uniq omiin
+        # ruutu-id:ihinsä ja ylikirjoittaisi nämä voxeliavaimet.
+        vuniq, first, inv = np.unique(vkey, return_index=True, return_inverse=True)
+        # vkey on kuollut heti unique:n jälkeen mutta jäisi elämään funktion
+        # loppuun asti — 31 M pisteellä 0.25 GB koko inferenssisilmukan ajan.
+        del vkey
         wpts = pts_full[first]
+        del first          # sama: tarvitaan vain wpts:n poimintaan
         if len(wpts) < 64:
-            return np.ones(len(pts_full), dtype=bool)
+            return None
 
         # Skene-tason normalisointi (0–1 koko pilven yli)
         sc_min = wpts.min(axis=0)
@@ -266,6 +309,10 @@ class PointNetFilter:
         uniq, starts = np.unique(cid_sorted, return_index=True)
         ends = np.append(starts[1:], len(order))
         cell_slice = {int(c): (int(s), int(e)) for c, s, e in zip(uniq, starts, ends)}
+        # Vain order ja cell_slice tarvitaan silmukassa. Loput ovat kuolleita
+        # mutta jäisivät funktion loppuun asti — 31 M pisteellä 1.0 GB koko
+        # inferenssin ajan sen huipun päällä.
+        del cx, cy, cellid, cid_sorted, uniq, starts, ends
 
         def _block_idx(kx: int, ky: int) -> np.ndarray | None:
             parts = []
@@ -342,18 +389,11 @@ class PointNetFilter:
                     _flush()
         _flush()
 
-        # Pisteet ilman yhtään ääntä (reunat, ei lohkossa) → pidä
+        # Voxelit ilman yhtään ääntä (reunat, ei lohkossa) → -1
         no_vote = votes.sum(axis=1) == 0
-        pred = votes.argmax(axis=1)
-        if return_pred:
-            pred = pred.copy()
-            pred[no_vote] = -1
-            return pred[inv]
-        structural = np.isin(pred, list(_KEEP_CLASSES))
-        structural[no_vote] = True
-
-        # Siirrä maski täydelle pilvelle: piste perii oman voxelinsa päätöksen
-        return structural[inv]
+        pred_vox = votes.argmax(axis=1).astype(np.int8)
+        pred_vox[no_vote] = -1
+        return pred_vox, origin, vuniq, inv
 
 
 def _session_n_features(session) -> int:

@@ -971,13 +971,20 @@ class Pipeline:
             _zmn, _zmx = _zr
             band_lo = _zmn + 0.35 * (_zmx - _zmn)
             band_hi = _zmn + 0.65 * (_zmx - _zmn)
+            # Semanttinen suodatin ENSIN. thick_cloud ja refine_cloud eivät ole
+            # sen syötettä — aiemmin ne ladattiin ennen suodatinta ja istuivat
+            # (mitattu 0.8 GB) koko sen työjoukon päällä, joka on ison kohteen
+            # muistihuippu. Suodatus myös pienentää cloudia ennen niiden latausta.
+            self._progress(f"  Semanttinen suodatin ({len(cloud.points):,} pistettä)…")
+            cloud = self._semantic_filter(cloud)
+
+            self._progress("  Ladataan keskikaista paksuusmittaukseen (täysi resa)…")
+            from scan2bim.core.geometry.streaming import load_floor_slice as _lfs
             # TÄYSI resa (voxel=0): voxelointi kvantisoi huippujen paikat → bias
             # (0mm→0.75mm mediaani, 1mm→1.8mm, 1.5mm→2.65mm). Raakapisteet pakolliset
             # ali-mm paksuuteen. Vain keskikaista (~30% korkeudesta) → muisti ok.
-            self._progress("  Ladataan keskikaista paksuusmittaukseen (täysi resa)…")
-            from scan2bim.core.geometry.streaming import load_floor_slice as _lfs
-            # Täysi resa (voxel=0) paksuusmittaukseen, MUTTA kaista katolla 45 M
-            # pistettä — 159 M skannin 30 %-kaista on 76 M täysresa (huippu 7 GB).
+            # Kaista katolla 45 M pistettä — 159 M skannin 30 %-kaista on
+            # 76 M täysresa (huippu 7 GB).
             # Satunnaisohennus (ei voxelointi) säilyttää piikin paikan → ali-mm
             # paksuus pysyy, muisti rajattu isollakin skannilla.
             thick_cloud = _lfs(
@@ -998,9 +1005,7 @@ class Pipeline:
             )
 
             self._progress(
-                f"  Semanttinen suodatin ({len(cloud.points):,} pistettä, "
-                f"5mm-pilvi {len(refine_cloud.points):,})…")
-            cloud = self._semantic_filter(cloud)
+                f"  5mm-pilvi {len(refine_cloud.points):,} pistettä")
 
             self._progress(f"  Seinädetektio ({self.config.detector})…")
             model = self._detect(cloud, source, refine_cloud=refine_cloud, thick_cloud=thick_cloud)

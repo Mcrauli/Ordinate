@@ -33,6 +33,16 @@ _HEIGHT_REF_MM = 3000.0  # height normalisation reference (3 m in training)
 _STORY_MM = 3000.0       # storey reference for the column features (multi-height robust)
 
 
+def _as_f64(xyz_mm: np.ndarray) -> np.ndarray:
+    """(N,3) float64 C-jatkuvana, KOPIOIMATTA jos se jo on sitä.
+
+    Kutsuja antaa käytännössä aina valmiiksi float64-pilven, mutta
+    ``.astype(np.float64)`` kopioi ehdoitta — 31 M pisteellä 0.75 GB turhaa
+    varausta kummassakin piirrefunktiossa. ``np.asarray`` muuntaa vain kun
+    dtype eroaa, joten arvot ovat samat kuin ennen."""
+    return np.ascontiguousarray(np.asarray(xyz_mm[:, :3], dtype=np.float64))
+
+
 def height(xyz_mm: np.ndarray) -> np.ndarray:
     """(N,) height above floor, normalised by 3 m and clipped to training range."""
     z = xyz_mm[:, 2]
@@ -54,7 +64,7 @@ def geometric(xyz_mm: np.ndarray, k: int = _GEO_K, chunk: int = _GEO_CHUNK) -> n
     """
     from scipy.spatial import cKDTree  # noqa: PLC0415
 
-    xyz = np.ascontiguousarray(xyz_mm[:, :3].astype(np.float64))
+    xyz = _as_f64(xyz_mm)
     n = len(xyz)
     if n < k + 1:
         return np.zeros((n, 3), np.float32)
@@ -90,7 +100,7 @@ def column(xyz_mm: np.ndarray) -> np.ndarray:
     Must be computed over the whole scene: a 1 m block cannot tell whether the
     surface it contains continues to its floor and ceiling.
     """
-    xyz = np.ascontiguousarray(xyz_mm[:, :3].astype(np.float64))
+    xyz = _as_f64(xyz_mm)
     n = len(xyz)
     if n < 8:
         return np.zeros((n, 3), np.float32)
@@ -104,6 +114,7 @@ def column(xyz_mm: np.ndarray) -> np.ndarray:
 
     ny = int(gy.max()) + 1
     ucol, cinv = np.unique(gx * ny + gy, return_inverse=True)
+    del gx, gy      # sarakeavain on laskettu; nämä jäisivät muuten funktion loppuun
 
     # per-column local floor and ceiling (NOT global scene)
     col_floor = np.full(len(ucol), np.inf)
