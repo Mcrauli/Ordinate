@@ -115,7 +115,10 @@ Tarkkuus mitataan erillisillä QA-skripteillä — **aja tuotantomallia (`model.
 | `data/_spatiallm_qa.py` | **Ground-truth-vertailu**: SpatialLM-scenet (PLY + .txt-annotaatio) → seinien lateraali-/kulmavirhe + aukkomäärät GT:tä vasten |
 | `data/_synth_retail.py` | **Liiketila + mittakaava**: generoi parametrisen big-box-myymälän (pilarikenttä, palkisto, lasijulkisivu, taustatilat, gondolit JA lattia-katto-hyllyköt) tunnetulla pohjalla → `.gt.json`. Oma data ⇒ lisenssivapaa myös markkinointiin |
 | `data/_retail_qa.py` | Malli vs. em. GT: kattavuus, lateraali-/paksuusvirhe, **montako seinää syntyi hyllykön etupinnalle** |
-| `data/_scale_run.py` | Tuotantoajo jossa **aika ja huippumuisti vaiheittain** (`psutil`-näytteistys + progress-merkit) |
+| `data/_scale_run.py` | Tuotantoajo jossa **aika ja huippumuisti vaiheittain** (`psutil`-näytteistys + progress-merkit). Tulostaa myös **missä vaiheessa huippu syntyi** — pelkkä luku ei kerro mitä korjata. `--voxel` pakottaa detektiovoxelin |
+| `data/_mem_probe.py` | Muistin **erittely askeleittain**: RSS askeleen jälkeen JA askelhuippu (0.2 s näytteistys). Transientti ei näy jälkikäteen luetusta RSS:stä — `column()` käy 2.9 GB:ssä viidessä sekunnissa. `--real` ajaa oikean `filter_with_labels`-kutsun |
+| `data/_filter_equiv.py` | **Suodattimen tulos tarkistussummina** (pidetyt pisteet, labeliavaimet+arvot, per-piste-luokat) → optimoinnin tuloksettomuus todistetaan `git checkout` -vertailulla, ei päättelemällä |
+| `data/_voxel_curve.py` | Montako pistettä jää milläkin voxelilla — paljastaa milloin voxelointi on **no-op** (pilven pisteväli > voxeli) |
 | `data/_room_probe.py`, `data/_frag_probe.py`, `data/_tl_probe.py` | Miksi tila hylättiin / onko perimetri pirstoutunut / miten paksuus syntyi |
 
 **Käytä visionia aina tarkkuusvertailuissa.** Kuvat: `data/_*.png`.
@@ -144,6 +147,34 @@ scenet saa ulos 4.8GB-chunkeista `remotezip`illä (range-request, ei koko lataus
 layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille sceneille.
 
 ## Kovalla työllä opitut asiat — ÄLÄ keksi uudelleen
+
+- **Muistihuippu on suodattimessa, ja se määrää koko tuotteen katon.** Mitattu
+  150×100 m hallilla (32 M pistettä): huippu 15.9 GB, ja jokainen muu vaihe
+  jäi ≤5.8 GB. Suodatin on myös 51 % ajasta. Älä optimoi muuta ennen kuin
+  `_scale_run.py` sanoo huipun syntyneen muualla — **huipun ARVO ei kerro mitä
+  korjata, sen PAIKKA kertoo**.
+- **Muistin syö transientti, ei residentti.** Askeleen jälkeinen RSS ei näytä
+  sitä: `column()` jättää 0.37 GB mutta käy 2.9 GB:ssä, `geometric()` 2.2 GB:ssä.
+  Kaksi toistuvaa syytä: (1) `.astype(np.float64)` kopioi ehdoitta myös kun
+  syöte on jo float64 — käytä `np.asarray(x, dtype=...)`; (2) yhden rivin
+  lauseke `np.floor((pts - o) / v).astype(np.int64)` varaa NELJÄ pilven
+  kokoista välivaihetta — laske erissä.
+- **Kuollut lokaali elää funktion loppuun.** `del` ei ole kosmetiikkaa isossa
+  pilvessä: `vkey`, `first`, `cellid`, `cx`/`cy` istuivat 1.25 GB:n edestä koko
+  inferenssisilmukan ajan. Vapauta heti kun taulukko on kuollut.
+- **Voxelointi voi olla no-op eikä kukaan huomaa.** `_auto_voxel` tähtää 4 M
+  työpisteeseen mutta `_AUTO_VOXEL_MAX = 25 mm` katkaisee sen; jos pilven
+  pisteväli on 35 mm, 25 mm voxel ei poista mitään (mitattu `_voxel_curve.py`:
+  8→30 mm kaikki 0.99). Iso kohde ajaa 8× suuremmalla pilvellä kuin suunnittelu
+  lupaa. Cap on asunto-ajalta eikä sitä ole koskaan mitattu tilanteessa jossa
+  se sitoo. **Voxelinuppi ei kuitenkaan pelasta isoa kohdetta**: työjoukko
+  skaalaa PINTA-ALAN mukaan, ja 4 M:ään pääsisi vasta ~110 mm:llä.
+- **Optimoinnin tuloksettomuus todistetaan hasheilla, ei päättelemällä.**
+  `_filter_equiv.py` + `git checkout` -vertailu nappasi oman muutokseni bugin:
+  `_classify_voxels`-funktiossa oli jo muuttuja `uniq` (lohkoruudukon id:t),
+  joka ylikirjoitti voxeliavaimet — 8.2 M avainta → 14 308. Testit (109 kpl)
+  menivät läpi, pidetyt pisteet olivat oikein, vain labelit menivät hiljaa
+  rikki. **Nimien uudelleenkäyttö pitkässä funktiossa on todellinen riski.**
 
 - **Kalustesuodatus = monikerros-pystymaski** (`wall_contour.py::_vertical_mask`):
   pikseli on seinää vain jos täynnä ≥55 % vaakaviipaleista (lattia→katto). Seinä

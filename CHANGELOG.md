@@ -4,6 +4,29 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 [`Mcrauli/scan2bim-web`](https://github.com/Mcrauli/scan2bim-web/releases):iin;
 sovellus päivittää itsensä sieltä.
 
+## Julkaisematon
+- **Semanttisen suodattimen muistihuippu alas — se määrää koko tuotteen katon.**
+  Mitattu 150×100 m hallilla (32 M pistettä): ajo huippusi 15.9 GB:hen ja
+  jokainen muu vaihe jäi ≤5.8 GB, eli yksi vaihe ratkaisi katon; sama vaihe oli
+  51 % ajasta. Poistettu hukkaa, ei työtä: 30 mm ruudukkoavain lasketaan erissä
+  (yhden rivin lauseke varasi neljä pilven kokoista float64-välivaihetta),
+  kuolleet taulukot vapautetaan heti (`vkey`, `first`, lohkoruudukon apurit —
+  1.25 GB istui inferenssisilmukan yli), `SemanticLabels` johdetaan jo lasketusta
+  ruudukosta eikä laskemalla identtinen ruudukko toiseen kertaan koko pilvelle,
+  piirrefunktioista poistettu ehdoton `.astype(np.float64)`-kopio, ja
+  `thick_cloud`/`refine_cloud` ladataan vasta suodattimen jälkeen (ne eivät ole
+  sen syötettä). **Mitattu: 50.3 min / 15.9 GB → 42.5 min / 13.1 GB.**
+  Tulos ennallaan ja se on TARKISTETTU eikä päätelty: `data/_filter_equiv.py`
+  hashaa suodattimen koko tuloksen, ja 8.2 M liiketilaskannilla pidetyt pisteet,
+  labeliavaimet, labeliarvot ja per-piste-luokat täsmäävät vanhaan koodiin;
+  asunto, apt2, makuuhuone ja autotalli tuottavat bitilleen saman `model.json`:n;
+  hallin malli on sama (37 seinää, 97 pilaria, 2 tilaa, 4 aukkoa).
+  **Yhä auki:** 13.1 GB ei jätä varaa 16 GB:n koneella. Suodattimen työjoukko on
+  verrannollinen rakennuksen 30 mm voxelien määrään (hallissa 31 M), joten
+  hukanpoisto ei vie pidemmälle — riippuvuuden katkaisisi vain suodattimen
+  ajaminen XY-ruuduittain, mikä muuttaa tulosta ruutujen rajoilla ja vaatii oman
+  GT-validointinsa.
+
 ## v0.9.0 (1.8.2026) — liiketila- ja mittakaavavalidointi; yksipuoliset seinät paikalleen
 - **Yksipuolinen seinä ei enää jää kymmeniä millejä pinnastaan.** Viimeinen
   pintalinjaus (`_align_faces_to_surface_median`) MITTASI virheen oikein mutta
