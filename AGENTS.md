@@ -180,6 +180,28 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
 - **Kuollut lokaali elää funktion loppuun.** `del` ei ole kosmetiikkaa isossa
   pilvessä: `vkey`, `first`, `cellid`, `cx`/`cy` istuivat 1.25 GB:n edestä koko
   inferenssisilmukan ajan. Vapauta heti kun taulukko on kuollut.
+- **Suodattimen NOPEUS on inferenssissä ja se on umpikuja — kolme vipua mitattu
+  ja hylätty (3.8.2026, 58 M pisteen synteettinen myymälä = 17.7 M voxelia):**
+  aikajako `_classify_voxels`: **session.run 70 % (233 s / 224 kutsua)**,
+  geometric 17 %, bucket/unique 12 %, column <1 %. Inferenssi on
+  **muisti­kaistanleveys­sidottu**, ei säie­sidottu: intra_op 4/8/16 antavat kaikki
+  ~2.5 s (S171), ja tulos on säiemäärästä riippumatta BITILLEEN sama. (1) Lohko­-
+  limityksen vähennys (stride 500→1000) leikkaa 2.4×, MUTTA **keep-flip 4.9 %**
+  (~870 k pistettä vaihtaa keep/remove) ja luokka-flip 30 % → limitys-äänestys
+  tekee oikeaa laatutyötä, poisto rikkoo laadun. (2) **INT8 dynaaminen kvantisointi
+  teki inferenssistä 8× HITAAMMAN** (325→2672 s; ORT:n ConvInteger-polku on paljon
+  huonompi kuin optimoitu fp32-Conv), vaikka keep-flip oli vain 0.77 %. (3) Säie­-
+  konfiguraatio: ei vaikutusta. **Älä yritä näitä uudestaan.** Ainoa jäljellä oleva
+  nopeuspolku olisi arkkitehtuuriltaan kevyempi malli (uudelleenkoulutus + koko
+  gauntlet) — ei mikropysäytys.
+- **MUISTIN voi rajata BITILLEEN samalla tuloksella XY-kaistoittain**, MUTTA
+  `point_features.geometric` käyttää **kNN:ää (k=16), ei kiinteää sädettä** →
+  tiukkaa halo-takuuta ei ole. Pinnalla 16NN on ~150 mm sisällä, joten ~2 m halo
+  antaa efektiivisesti identtisen tuloksen (vain äärimmäisen harvat irtopisteet
+  eroaisivat — krääsää joka poistuu muutenkin). Kaistavirtaus säilyttää RNG-
+  järjestyksen vain jos lohkot käydään GLOBAALISSA järjestyksessä (per-lohko-siemen
+  muuttaisi otannan). Tämä on iso muutos kriittiseen `_classify_voxels`:iin →
+  validoi `_filter_equiv`-hashilla ennen käyttöä; älä oleta identtiseksi.
 - **Voxelointi voi olla no-op eikä kukaan huomaa.** `_auto_voxel` tähtää 4 M
   työpisteeseen mutta `_AUTO_VOXEL_MAX = 25 mm` katkaisee sen; jos pilven
   pisteväli on 35 mm, 25 mm voxel ei poista mitään (mitattu `_voxel_curve.py`:
