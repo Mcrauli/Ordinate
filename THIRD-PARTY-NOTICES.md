@@ -105,6 +105,22 @@ exe:hen (`build/scan2bim.spec` bundlaa vain `models/`, riippuvuudet ja koodin).
 | click | BSD-3-Clause |
 | packaging | Apache-2.0 / BSD-2-Clause |
 
+**Open3D:n transitiiviset riippuvuudet** (paketoituvat mukaan, koska Open3D
+vetää ne web-visualisoijaansa/TensorBoard-integraatioonsa; scan2bim ei käytä
+niitä, mutta ne ovat toistaiseksi bundlessa):
+
+| Osa | Lisenssi |
+|---|---|
+| Flask, Werkzeug, MarkupSafe, itsdangerous | BSD-3-Clause |
+| plotly | MIT |
+| importlib_metadata | Apache-2.0 |
+| typing_extensions | PSF-2.0 |
+
+> **Optimointimahdollisuus (ei tehty):** koska scan2bim ei käytä Open3D:n
+> web-visualisoijaa, nämä voi jättää pois `build/scan2bim.spec`:n
+> `excludes`-listalla → pienempi paketti ja vähemmän attribuutiovelvoitteita.
+> Vaatii build+testin (varmista ettei Open3D tuo niitä eageristi importissa).
+
 ---
 
 ## F. Toteutussuunnitelmat kohtiin A ja B
