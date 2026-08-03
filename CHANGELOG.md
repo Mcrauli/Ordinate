@@ -4,7 +4,15 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 [`Mcrauli/scan2bim-web`](https://github.com/Mcrauli/scan2bim-web/releases):iin;
 sovellus päivittää itsensä sieltä.
 
-## Julkaisematon
+## v0.9.1 (3.8.2026) — one-dir-siirtymärelease; pilarit 34/34; suodatin kevyemmäksi
+- **One-dir-paketointi käyttäjille (LGPL).** Sovellus toimitetaan nyt
+  hakemistona (zip) yhden exen sijaan, jotta LGPL-kirjastot (IfcOpenShell, Qt)
+  ovat vaihdettavissa. Itsepäivitys lataa zipin ja vaihtaa asennushakemiston
+  tiedosto kerrallaan — yhä hiljainen, ei UAC:ia. **Siirtymä:** tämä release
+  kantaa sekä zipin (uusi itsepäivitys) että Setup-asentajan; vanhat v0.8.x-
+  asennukset päivittyvät Setupin kautta (kertaluontoinen UAC-kysely), sen jälkeen
+  hiljainen zip-polku. Kolmannen osapuolen lisenssit toimitetaan mukana
+  (THIRD-PARTY-NOTICES.md).
 - **Pilarit 24/34 → 34/34 liiketilassa, ilman yhtään väärää positiivista.**
   Puuttuvat kaatuivat kaikki täsmälleen yhteen porttiin: `_waist_isolated` laski
   montako 24 kulmasektorista on täynnä vyötärökorkeudella (raja 4). Mittari oli
