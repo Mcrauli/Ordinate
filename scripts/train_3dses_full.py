@@ -159,8 +159,11 @@ def dses_blocks(zip_path, tiers, voxel, max_bps, rng, holdout_frac=0.15, geo=Fal
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--zip", required=True); ap.add_argument("--rohbau", required=True)
-    ap.add_argument("--rtrain", default="1,4,13"); ap.add_argument("--epochs", type=int, default=20)
+    ap.add_argument("--zip", default="")   # 3DSES valinnainen: ilman sita painot ovat
+                                           # CC BY-SA -vapaat (F2, lisenssipuhdas myyntiin)
+    ap.add_argument("--rohbau", required=True)
+    ap.add_argument("--rtrain", default="1,4,13"); ap.add_argument("--rval", default="7")
+    ap.add_argument("--epochs", type=int, default=20)
     ap.add_argument("--voxel", type=float, default=0.03); ap.add_argument("--max-bps", type=int, default=200)
     ap.add_argument("--rmax", type=int, default=30); ap.add_argument("--out", default="")
     ap.add_argument("--arch", default="pointnet", choices=["pointnet", "dgcnn", "hybrid", "hybridpro"])
@@ -188,14 +191,26 @@ def main():
         tf, tl, dvf, dvl = z["tf"], z["tl"], z["dvf"], z["dvl"]
         print(f"lohkot VÄLIMUISTISTA {a.cache}: train {len(tf)}, held-out {len(dvf)} ({time.time()-t0:.0f}s)", flush=True)
     else:
-        tiers = [("Bronze", LUT12), ("Silver", LUT12), ("Gold", LUT18)]
-        dtf, dtl, dvf, dvl = dses_blocks(a.zip, tiers, a.voxel, a.max_bps, rng, geo=a.geo, colf=a.colfeat, pairf=a.pairfeat)
+        # Rohbau (rakenne) on aina ankkuri; 3DSES (--zip) on valinnainen lisä.
         r_tr = []
         for s in a.rtrain.split(","): r_tr += sorted(glob.glob(str(Path(a.rohbau) / f"site_{int(s):02d}" / "scene_*")))
         r_tr = r_tr[:a.rmax]
         rf, rl = FX._blocks(r_tr, a.voxel, True, a.max_bps, rng, geo=a.geo, colf=a.colfeat, pairf=a.pairfeat)
         rf = np.delete(rf, 9, axis=2)   # poista intensiteetti → base6+rgb3+h1[+geo3][+col3]
-        parts_f, parts_l, n_ret, n_ms = [dtf, rf], [dtl, rl], 0, 0
+        if a.zip:
+            tiers = [("Bronze", LUT12), ("Silver", LUT12), ("Gold", LUT18)]
+            dtf, dtl, dvf, dvl = dses_blocks(a.zip, tiers, a.voxel, a.max_bps, rng, geo=a.geo, colf=a.colfeat, pairf=a.pairfeat)
+            parts_f, parts_l = [dtf, rf], [dtl, rl]
+            n_dses = len(dtf)
+        else:
+            # Ilman 3DSES:aa held-out tulee Rohbau-held-out-sitesta (EI koulutuksessa).
+            rv = []
+            for s in a.rval.split(","): rv += sorted(glob.glob(str(Path(a.rohbau) / f"site_{int(s):02d}" / "scene_*")))[:2]
+            dvf, dvl = FX._blocks(rv, a.voxel, True, a.max_bps, rng, geo=a.geo, colf=a.colfeat, pairf=a.pairfeat)
+            dvf = np.delete(dvf, 9, axis=2)
+            parts_f, parts_l = [rf], [rl]
+            n_dses = 0
+        n_ret, n_ms = 0, 0
         if a.synth_retail:
             sf, sl, svf, svl = synth_retail_blocks(a.synth_retail, a.voxel, a.max_bps, rng,
                                                    geo=a.geo, colf=a.colfeat, pairf=a.pairfeat, holdout_frac=0.0)
@@ -216,7 +231,7 @@ def main():
             if vf is not None:
                 parts_f.append(vf); parts_l.append(vl); n_vc = len(vf)
         tf = np.vstack(parts_f); tl = np.vstack(parts_l)
-        print(f"lohkot: 3DSES {len(dtf)} + Rohbau {len(rf)} + liiketila {n_ret} + monikerros {n_ms} "
+        print(f"lohkot: 3DSES {n_dses} + Rohbau {len(rf)} + liiketila {n_ret} + monikerros {n_ms} "
               f"+ vclutter {n_vc} = {len(tf)} train | held-out {len(dvf)} ({time.time()-t0:.0f}s)", flush=True)
         if a.cache:
             np.savez(a.cache, tf=tf, tl=tl, dvf=dvf, dvl=dvl)
