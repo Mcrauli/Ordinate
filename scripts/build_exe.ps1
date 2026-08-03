@@ -1,4 +1,4 @@
-# Local Windows PyInstaller build for scan2bim.
+﻿# Local Windows PyInstaller build for scan2bim.
 # Usage:  .\scripts\build_exe.ps1
 # Output: dist/scan2bim/ (one-dir) + dist/scan2bim-<version>.zip (+ .sha256)
 #
@@ -8,7 +8,11 @@
 #
 # Uses the project .venv (python -m PyInstaller). Run from the repo root.
 
-$ErrorActionPreference = "Stop"
+# Continue, ei Stop: PowerShell 5.1 kietoo natiivin exen (pip, pyinstaller)
+# stderrin ErrorRecordiin ja Stop katkaisisi vaikka exit code on 0 (pip tulostaa
+# upgrade-noticen stderriin). Aidot virheet napataan eksplisiittisilla
+# $LASTEXITCODE- ja Test-Path-tarkistuksilla alla.
+$ErrorActionPreference = "Continue"
 
 $root = (Resolve-Path "$PSScriptRoot\..").Path
 $py = Join-Path $root ".venv\Scripts\python.exe"

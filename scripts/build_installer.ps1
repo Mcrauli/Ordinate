@@ -1,4 +1,4 @@
-# Build scan2bim Inno Setup installer.
+﻿# Build scan2bim Inno Setup installer.
 #   1. scripts/build_exe.ps1 -> dist/scan2bim.exe (+ dist/scan2bim-<v>.exe)
 #   2. Ensure dist/LICENSES.md exists (fallback if missing).
 #   3. Locate ISCC.exe (Inno Setup 6).
