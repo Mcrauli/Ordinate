@@ -117,6 +117,31 @@ def synth_multistory_blocks(n_rooms, voxel, max_bps, rng, geo=False, colf=False,
     return np.vstack(F), np.vstack(Lb)
 
 
+def synth_furnished_blocks(n_rooms, voxel, max_bps, rng, geo=False, colf=False, pairf=False):
+    """Kalustetut huoneet (poydat/tuolit/kalusteet, label 7-12) koulutukseen.
+    Korvaa 3DSES:n kalustepoisto-opetussignaalin, jotta painot ovat lisenssi-
+    puhtaat mutta malli osaa yha poistaa asuntokalusteet (F2). Kaikki koulutukseen."""
+    F, Lb = [], []
+    for i in range(n_rooms):
+        xyz, lbl = E._gen_room(rng)
+        xyz = np.asarray(xyz, np.float32); lbl = np.asarray(lbl).ravel()
+        idx = FX._voxel_repr_idx(xyz, voxel); xyz, lbl = xyz[idx], lbl[idx]
+        fz = np.percentile(xyz[:, 2], 2); h = np.clip((xyz[:, 2] - fz) / 3.0, 0, 1.5)
+        cols = [np.zeros((len(xyz), 3), np.float32), h[:, None]]
+        if geo: cols.append(GEO.compute(xyz))
+        if colf: cols.append(COL.compute(xyz))
+        if pairf: cols.append(PAIR.compute(xyz))
+        extra = np.column_stack(cols).astype(np.float32)
+        bf, bl = E._pts_to_blocks(xyz, lbl, 1.0, 4096, 0.5, extra=extra)
+        if bf is None: continue
+        if len(bf) > max_bps:
+            p = rng.choice(len(bf), max_bps, replace=False); bf, bl = bf[p], bl[p]
+        F.append(bf); Lb.append(bl)
+        print(f"  kalustettu {i+1}/{n_rooms}: {len(bf)} lohkoa", flush=True)
+    if not F: return None, None
+    return np.vstack(F), np.vstack(Lb)
+
+
 def synth_vclutter_blocks(n_rooms, voxel, max_bps, rng, geo=False, colf=False, pairf=False):
     """Pysty-ohut-clutter-skenet (putket/tolpat/nurkkakasat label 12) koulutukseen.
     Kohdistaa 3dses_S171-valepilarit: suodatin luokitteli pystyputken window/door/
@@ -182,6 +207,8 @@ def main():
                     help="synteettisiä monikorkeita skenejä (palkit/pilarit/portaat välikorkeudella)")
     ap.add_argument("--synth-vclutter", type=int, default=0,
                     help="synteettisiä pysty-ohut-clutter-skenejä (putket/tolpat/nurkkakasat → clutter)")
+    ap.add_argument("--synth-furnished", type=int, default=0,
+                    help="synteettisiä kalustettuja huoneita (pöydät/tuolit/kalusteet → poista; korvaa 3DSES:n F2)")
     a = ap.parse_args()
     import torch
     device = "cuda" if torch.cuda.is_available() else "cpu"; print(f"device={device}", flush=True)
@@ -230,9 +257,15 @@ def main():
                                            geo=a.geo, colf=a.colfeat, pairf=a.pairfeat)
             if vf is not None:
                 parts_f.append(vf); parts_l.append(vl); n_vc = len(vf)
+        n_fu = 0
+        if a.synth_furnished:
+            ff, fl = synth_furnished_blocks(a.synth_furnished, a.voxel, a.max_bps, rng,
+                                            geo=a.geo, colf=a.colfeat, pairf=a.pairfeat)
+            if ff is not None:
+                parts_f.append(ff); parts_l.append(fl); n_fu = len(ff)
         tf = np.vstack(parts_f); tl = np.vstack(parts_l)
         print(f"lohkot: 3DSES {n_dses} + Rohbau {len(rf)} + liiketila {n_ret} + monikerros {n_ms} "
-              f"+ vclutter {n_vc} = {len(tf)} train | held-out {len(dvf)} ({time.time()-t0:.0f}s)", flush=True)
+              f"+ vclutter {n_vc} + kalustettu {n_fu} = {len(tf)} train | held-out {len(dvf)} ({time.time()-t0:.0f}s)", flush=True)
         if a.cache:
             np.savez(a.cache, tf=tf, tl=tl, dvf=dvf, dvl=dvl)
             print(f"välimuisti tallennettu: {a.cache}", flush=True)
