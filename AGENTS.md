@@ -525,9 +525,19 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
      irti aitosta akselista) isoilla ulkoseinillä → tuplaseinä.
   3. AUKI: lattia-katto-hylly AIVAN seinää vasten (30–50 mm irti) jää valeseinäksi
      — `remove_shelf_front_walls` alaraja on 300 mm, ei nappaa <300 mm skiniä.
-  4. AUKI: takahuoneen väliseinä jää joskus 32 m sales-floor-jatkeella (harva
-     risteysdata pitää sen 300 mm cap:ssa; juurisyy on liian pitkä RANSAC-fit).
-     2/9 takahuoneen seinää jäi kokonaan löytymättä.
+  4. ~~Takahuoneen väliseinät jäivät löytymättä~~ **KORJATTU (recall 6/9→9/9):
+     RANSAC-confidence oli koko-suhteinen (`inliers/(total×0.05)`) → isossa
+     myymälässä aito 12 m sisäseinä = murto-osa pilvestä → conf ~0.01 → filtteri
+     pudotti. Lisätty skaalariippumaton PEITTO (`_dense_segment`/`_axis_coverage`,
+     wall_ransac.py): `confidence=max(koko_conf, peitto)`, ja `filter_structural_walls`
+     säilyttää seinän jos peitto ≥0.5. Peitto mitataan tiheintä yhtäjaksoista
+     jännettä pitkin (ovet sillataan ≤1.6 m; jänne ≥2 m ettei pilaririvi kelpaa).
+     Retail AUTO: 9/9 seinää, hyllyt 0, 7 tilaa (vision). Asunto/talo käyttävät
+     CONTOUR-detektoria → muutos ei koske niitä (9/3, 9/2 ennallaan).
+  5. AUKI: rescatut backroom-pystyt yliulottuvat ~8 m myyntitilaan (RANSAC-taso
+     nappaa pilaripisteitä; `_trim_endpoints`-percentiili ei leikkaa harvaa
+     kontaminoitunutta häntää — sama juurisyy kuin vaakaseinien sales-floor-jatke).
+     Dense-axis-fit kokeiltu mutta toi RANSAC-kohinaa (pilarit 3–13) → hylätty.
 - **Liiketilojen hyllyt** (lattia-katto) läpäisevät geometrisen pystymaskin →
   semanttinen suodatin tarvitaan. **KYTKETTY (4.8.2026): `semantic_filter_mode="auto"`
   on nyt OLETUS.** `_looks_like_retail(cloud)` (pipeline.py) kytkee PointNet-

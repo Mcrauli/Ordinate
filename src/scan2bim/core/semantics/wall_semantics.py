@@ -12,6 +12,7 @@ _BIN_MM = 6.0               # histogrammin resoluutio mm
 
 _MIN_WALL_LENGTH = 600.0          # mm — lyhyemmät hylätään
 _FLOOR_MARGIN = 400.0             # mm — seinä saa alkaa max tämän verran lattian yläpuolelta
+_WELL_COVERED_CONF = 0.5          # peitto ≥ tämä = aito seinä, säilytä vaikka suht.conf jäisi
 _DEDUP_ANGLE_DEG = 15.0           # ° — alle tämän = sama suunta
 _DEDUP_DIST_MM = 260.0            # mm — alle tämän = sama seinä (kohtisuora etäisyys)
 _DEDUP_OVERLAP_FRAC = 0.40        # min pituuspeitto jotta katsotaan duplikaatiksi
@@ -35,11 +36,15 @@ def filter_structural_walls(walls: list[Wall], slabs: list[Slab]) -> list[Wall]:
     if floor_z is not None:
         walls = [w for w in walls if w.z_min <= floor_z + _FLOOR_MARGIN]
 
-    # Confidence-kynnys (toissijainen)
+    # Confidence-kynnys (toissijainen). Adaptiivinen suht.kynnys aliarvioi ISON
+    # skenen aidot sisäseinät (koko-suhteinen conf romahtaa), joten seinä säilyy
+    # myös jos se on tiheästi katettu pituudeltaan (conf = peitto ≥ 0.5, ks.
+    # wall_ransac._axis_coverage). OR-ehto vain LISÄÄ seiniä, ei pudota mitään.
     if walls:
         max_conf = max(w.confidence for w in walls)
         conf_threshold = max_conf * 0.30
-        walls = [w for w in walls if w.confidence >= conf_threshold]
+        walls = [w for w in walls
+                 if w.confidence >= conf_threshold or w.confidence >= _WELL_COVERED_CONF]
 
     # Minimipituus
     walls = [w for w in walls if _wall_length(w) >= _MIN_WALL_LENGTH]

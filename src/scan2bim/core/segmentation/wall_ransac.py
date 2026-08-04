@@ -100,8 +100,15 @@ class WallDetectorRANSAC(ElementDetector):
                     used[j] = True
                     break
 
-            axis, height = _plane_to_axis(pts_i)
-            confidence = min(1.0, len(pts_i) / max(total_pts * 0.05, 1))
+            axis, height, coverage = _plane_to_axis(pts_i)
+            # Koko-suhteinen conf aliarvioi ISON skenen sisäseinät: iso myymälä on
+            # niin pinta-alaltaan suuri, että 12 m takahuoneen seinä on murto-osa
+            # koko pilvestä → conf ~0.01 → filtteri pudottaa aidon seinän. Peitto
+            # (occupancy tiheintä jännettä pitkin) on skaalariippumaton: aito seinä
+            # on tiheästi katettu pituudeltaan, kontaminoitunut hajanne ei. Otetaan
+            # suurempi → nostaa vain, ei laske (monotoninen, ei pudota mitään).
+            size_conf = min(1.0, len(pts_i) / max(total_pts * 0.05, 1))
+            confidence = max(size_conf, coverage)
             z_min = float(pts_i[:, 2].min())
 
             walls.append(Wall(
@@ -119,7 +126,65 @@ class WallDetectorRANSAC(ElementDetector):
         return walls
 
 
-def _plane_to_axis(pts: np.ndarray) -> tuple[list[list[float]], float]:
+_COVER_BIN_MM = 250.0       # mm — peittobinin leveys akselia pitkin
+_COVER_MIN_BIN_PTS = 3      # bin "katettu" kun ≥ tämä pistettä
+_COVER_GAP_BRIDGE_MM = 1600.0  # mm — tätä pienemmät aukot (ovet/ikkunat) sillataan
+_COVER_MIN_SEG_MM = 2000.0  # mm — lyhyempi katettu jänne EI ole seinänäyttö; muuten
+                            # yksittäinen pilari (~0.5 m täysin katettu) tai pilaririvi
+                            # (jokainen pilari erillinen lyhyt jänne) saisi peiton 1.0
+
+
+def _dense_segment(proj: np.ndarray) -> tuple[float, float, float]:
+    """Tihein yhtäjaksoinen seinäjänne akselia pitkin.
+
+    Palauttaa (peitto 0..1, t_lo, t_hi) missä t_lo/t_hi ovat projektioarvot
+    (samassa origossa kuin ``proj``). Aito seinä on lähes yhtäjaksoisesti katettu
+    (ovi/ikkuna-aukot sillataan); pilarilinjan tms. kontaminoima taso venyy
+    pitkälle harvana → matala peitto JA väärä min–max-laajuus. Käytetään sekä
+    confidencen (skaalariippumaton peitto) että akselin laajuuden (ei venytä
+    kontaminaation ääripisteisiin) määrittämiseen."""
+    lo, hi = float(proj.min()), float(proj.max())
+    span = hi - lo
+    if span < _COVER_BIN_MM:
+        return 1.0, lo, hi
+    nb = max(int(span / _COVER_BIN_MM), 1)
+    hist, edges = np.histogram(proj, bins=nb, range=(lo, hi))
+    occ = np.flatnonzero(hist >= _COVER_MIN_BIN_PTS)
+    if occ.size == 0:
+        return 0.0, lo, hi
+    bin_mm = span / nb
+    gap_bins = max(int(_COVER_GAP_BRIDGE_MM / bin_mm), 1)
+
+    def _seg_cover(s, e):
+        width = e - s + 1
+        if width * bin_mm < _COVER_MIN_SEG_MM:
+            return 0.0
+        covered = int(np.count_nonzero((occ >= s) & (occ <= e)))
+        return covered / width if width > 0 else 0.0
+
+    # Ryhmittele katetut binit jänteiksi: > gap_bins peräkkäistä tyhjää katkaisee.
+    # Paras = korkein peitto (tihein pitkä jänne), ja sen reunat rajaavat akselin.
+    best_cov, best_s, best_e = 0.0, occ[0], occ[-1]
+    start = prev = occ[0]
+    for k in occ[1:]:
+        if k - prev > gap_bins:
+            c = _seg_cover(start, prev)
+            if c > best_cov:
+                best_cov, best_s, best_e = c, start, prev
+            start = k
+        prev = k
+    c = _seg_cover(start, prev)
+    if c > best_cov:
+        best_cov, best_s, best_e = c, start, prev
+
+    if best_cov <= 0.0:
+        return 0.0, lo, hi   # ei aitoa jännettä → jätä laajuus ennalleen
+    t_lo = float(edges[best_s])
+    t_hi = float(edges[best_e + 1])
+    return float(min(1.0, best_cov)), t_lo, t_hi
+
+
+def _plane_to_axis(pts: np.ndarray) -> tuple[list[list[float]], float, float]:
     xy = pts[:, :2]
     centroid = xy.mean(axis=0)
     _, _, vt = np.linalg.svd(xy - centroid, full_matrices=False)
@@ -129,8 +194,10 @@ def _plane_to_axis(pts: np.ndarray) -> tuple[list[list[float]], float]:
     p0 = centroid - half * direction
     p1 = centroid + half * direction
     height = float(pts[:, 2].max() - pts[:, 2].min())
+    coverage, _, _ = _dense_segment(proj)
     return (
         [[round(float(p0[0]), 1), round(float(p0[1]), 1)],
          [round(float(p1[0]), 1), round(float(p1[1]), 1)]],
         height,
+        coverage,
     )
