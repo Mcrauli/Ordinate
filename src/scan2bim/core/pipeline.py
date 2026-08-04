@@ -135,12 +135,22 @@ def _trim_endpoints(wall, pts: np.ndarray, index=None):
                          # osuu vain RISTEÄVIEN seinien pisteitä → percentiilit
                          # romahduttaisivat koko seinän risteyskohtaan
 
+    # ...PAITSI kun [lo,hi] on kiistatta aito seinäpinta: pitkä (>=2.5 m) JA
+    # tiheä (>=300 pintapistettä). Silloin percentiilit eivät ole risteyspiste-
+    # rypäs vaan seinän todelliset reunat → poikkeuksellisen pitkä haamuylitys
+    # (esim. isossa myymälässä 10–30 m akselin jatke tyhjän lattian yli) saadaan
+    # leikattua. Lyhyt/harva kaista pysyy 300 mm cap:n suojassa (romahdussuoja).
+    _TRUST_SPAN = 2500.0  # mm
+    _TRUST_PTS = 300
+    trust = (hi - lo) >= _TRUST_SPAN and int(on_face.sum()) >= _TRUST_PTS
+    trim_cap = 1e12 if trust else _MAX_TRIM
+
     ax = [list(wall.axis[0]), list(wall.axis[1])]
     changed = False
 
     # p0: trimmaa jos data alkaa sisempänä, pidennä jos data alkaa ulompana
     if lo > _MARGIN:
-        new_p0 = p0 + min(lo - _MARGIN, _MAX_TRIM) * along
+        new_p0 = p0 + min(lo - _MARGIN, trim_cap) * along
         ax[0] = [round(float(new_p0[0]), 1), round(float(new_p0[1]), 1)]
         changed = True
     elif lo < -_MARGIN and abs(lo) <= _MAX_EXTEND:
@@ -150,7 +160,7 @@ def _trim_endpoints(wall, pts: np.ndarray, index=None):
 
     # p1: trimmaa jos data loppuu sisempänä, pidennä jos data jatkuu ulompana
     if hi < length - _MARGIN:
-        new_p1 = p0 + max(hi + _MARGIN, length - _MAX_TRIM) * along
+        new_p1 = p0 + max(hi + _MARGIN, length - trim_cap) * along
         ax[1] = [round(float(new_p1[0]), 1), round(float(new_p1[1]), 1)]
         changed = True
     elif hi > length + _MARGIN and (hi - length) <= _MAX_EXTEND:

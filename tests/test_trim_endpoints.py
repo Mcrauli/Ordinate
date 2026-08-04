@@ -47,3 +47,21 @@ def test_trim_still_trims_real_overshoot():
     out = _trim_endpoints(wall, pts)
     p1 = np.array(out.axis[1])
     assert p1[0] < 2900.0, "aito ylitys jai trimmaamatta"
+
+
+def test_trim_cuts_large_phantom_overshoot():
+    """Iso myymälä: seinän akseli venyi metrejä yli datan tyhjän lattian yli.
+    Kun kaista on kiistatta aito (pitkä + tiheä), leikkaus saa ylittää 300 mm."""
+    rng = np.random.RandomState(2)
+    n = 20000
+    # Aito seinä x in [40000, 72000] (32 m), akseli venyy 0 -> 120000 (48 m yli)
+    pts = np.column_stack([
+        rng.uniform(40000, 72000, n),
+        np.where(rng.rand(n) < 0.5, -100.0, 100.0) + rng.normal(0, 3, n),
+        rng.uniform(0, 2700, n),
+    ])
+    wall = _wall(0, 0, 120000, 0, method="contour")
+    out = _trim_endpoints(wall, pts)
+    p0, p1 = np.array(out.axis[0]), np.array(out.axis[1])
+    assert p0[0] > 39000.0 and p0[0] < 41000.0, f"p0 ei leikkautunut datan alkuun: {p0[0]:.0f}"
+    assert p1[0] > 71000.0 and p1[0] < 73000.0, f"p1 ei leikkautunut datan loppuun: {p1[0]:.0f}"
