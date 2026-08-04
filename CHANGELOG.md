@@ -4,6 +4,17 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 [`Mcrauli/scan2bim-web`](https://github.com/Mcrauli/scan2bim-web/releases):iin;
 sovellus päivittää itsensä sieltä.
 
+## v0.9.3 (4.8.2026) — liiketilan hyllyn valeseinät pois
+- **Lattia-katto-hyllykön etupintaan syntyneet valeseinät poistetaan.** Myymälän
+  hyllykön etupinta ulottuu lattiasta kattoon, joten se on geometrisesti seinä
+  eikä kalustesuodatin poista sitä (tiheä pystytaso) — arkkitehti sai pitkiä
+  valeseiniä hyllyrivien eteen (mitattu synteettisellä myymälällä: 2 valeseinää,
+  43 m). Uusi geometrinen erotin tunnistaa ne: hyllyn etupinta on lyhyehkö seinä
+  joka kulkee rinnakkain ja 300–1500 mm irti paljon pidemmästä perimetriseinästä,
+  jonka edessä se seisoo. Aito perimetriseinä on itse pisin eikä sillä ole
+  pidempää rinnakkaista. **Mitattu:** retail hylly-valeseinät 2 → 0, ja kaikki 9
+  GT-seinää löytyivät edelleen; asunto (7 seinää) ja talo (13) ennallaan.
+
 ## v0.9.2 (3.8.2026) — lisenssipuhtaat painot (3DSES pois); parempi rakenne
 - **Semanttisen suodattimen malli koulutettu uudelleen ilman 3DSES:ää →
   lisenssipuhdas.** Aiemmat painot sisälsivät 3DSES-dataa (CC BY-SA 4.0), jonka

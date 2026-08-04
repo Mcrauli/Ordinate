@@ -505,9 +505,11 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   8.2 M pistettä, GT tunnettu). Hyvin: kaikki 9 GT-seinää löytyi, jokainen 24
   seinästä ≤0.4 mm pinnastaan (`_tol_heatmap`), sisäseinien paksuus täsmälleen
   oikein (120/200 mm). Auki:
-  1. **Lattia-katto-hyllykkö tuottaa 44.8 m valeseinän** — semanttinen suodatin
-     poisti vain 6 % pisteistä eikä tunnistanut hyllykköä. Geometrisesti hyllykön
-     etupinta ON seinä; ero on vain semanttinen.
+  1. ~~Lattia-katto-hyllykkö tuottaa valeseinän~~ **KORJATTU (v0.9.3):
+     `remove_shelf_front_walls`** — hyllyn etupinta on geometrisesti seinä eikä
+     suodatin poista sitä, mutta se on LYHYEHKÖ seinä rinnakkain ja 300–1500 mm
+     irti PALJON PIDEMMÄSTÄ perimetriseinästä (jonka edessä se seisoo). Mitattu:
+     retail hylly-valeseinät 2→0, GT-kattavuus 9/9 säilyi, asunto/talo no-op.
   3. ~~Pilareita 24/34~~ **KORJATTU: 34/34** (ks. "Pilarin irrallisuus" alla).
   4. Yksipuolisten ulkoseinien paksuus 66–92 mm (todellinen 250) — pinta on oikein,
      paksuutta ei voi mitata.
