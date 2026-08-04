@@ -4,6 +4,23 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 [`Mcrauli/scan2bim-web`](https://github.com/Mcrauli/scan2bim-web/releases):iin;
 sovellus päivittää itsensä sieltä.
 
+## v0.9.2 (3.8.2026) — lisenssipuhtaat painot (3DSES pois); parempi rakenne
+- **Semanttisen suodattimen malli koulutettu uudelleen ilman 3DSES:ää →
+  lisenssipuhdas.** Aiemmat painot sisälsivät 3DSES-dataa (CC BY-SA 4.0), jonka
+  ShareAlike-ulottuvuus mallin painoihin oli oikeudellisesti epäselvä — este
+  kaupalliselle myynnille. Uusi malli on koulutettu pelkästään Rohbau3D:llä (MIT)
+  ja omalla synteettisellä datalla (liiketila + monikerros + kalustetut huoneet),
+  tyhjästä ilman esiharjoitettua checkpointia. **CC BY-SA -riski poistettu.**
+- **Rakenteen säilyvyys parani samalla:** rohbau held-out -rakenne **0.947 →
+  0.987** (mitattu), ja talo-END löysi yhden oikean perimetriseinän lisää.
+  Asunnon ja talon loppumalli (seinät, tilat) on ekvivalentti aiempaan.
+  Ainoa pieni kompromissi: asunnon sisäseinien pintatarkkuus ≤2.5 mm (aiemmin
+  ≤1.5 mm) — synteettinen kaluste ei tavoita 3DSES:n oikean kalusteen tarkkuutta,
+  mutta ero on skannerikohinan (20 mm) sisällä ja täyttää 1.5 mm -lupauksen
+  useimmilla seinillä.
+- **Lisenssiauditointi täydennetty:** kolmannen osapuolen ilmoitukset kattavat nyt
+  myös Open3D:n transitiiviset riippuvuudet (Flask/Werkzeug/plotly ym.).
+
 ## v0.9.1 (3.8.2026) — one-dir-siirtymärelease; pilarit 34/34; suodatin kevyemmäksi
 - **One-dir-paketointi käyttäjille (LGPL).** Sovellus toimitetaan nyt
   hakemistona (zip) yhden exen sijaan, jotta LGPL-kirjastot (IfcOpenShell, Qt)

@@ -27,26 +27,30 @@ purkautuu väliaikaishakemistoon) on tässä tulkinnanvaraisempi.
 
 ## B. Koulutusdatan lisenssi — koskee `models/*.onnx`
 
-Toimitettavat painot on harjoitettu seuraavilla aineistoilla:
+**Toimitettavat painot ovat LISENSSIPUHTAAT (3.8.2026):** malli on harjoitettu
+UUDELLEEN ilman 3DSES:ää, joten CC BY-SA -dataa ei ole painoissa. ShareAlike-
+kysymys ei enää koske tuotetta.
 
 | Aineisto | Lisenssi | Huomio |
 |---|---|---|
-| **3DSES** (Zenodo 13323342) | **CC BY-SA 4.0** | Kaupallinen käyttö sallittu. **Attribuutio pakollinen.** ShareAlike koskee "adapted materialia" — onko koulutettu malli sellainen, on oikeudellisesti epäselvä kysymys. |
 | **Rohbau3D** (doi:10.60776/ZWJFI4) | **MIT** | Ei rajoitteita, attribuutio riittää. |
-| Synteettiset scenet (liiketila, monikerros) | oma | Ei rajoitteita. |
-
-**Attribuutio (3DSES):** Mérizette, M.; Audebert, N.; Kervella, P.; Verdun, J.
-*3DSES: an indoor Lidar point cloud segmentation dataset with real and pseudo-labels
-from a 3D model.* Zenodo. https://doi.org/10.5281/zenodo.13323342 — CC BY-SA 4.0.
+| Synteettiset scenet (liiketila, monikerros, kalustetut huoneet) | oma | Ei rajoitteita. |
 
 **Attribuutio (Rohbau3D):** RauchLukas/Rohbau3D, Open Data UniBw M,
 https://doi.org/10.60776/ZWJFI4 — MIT.
 
-**Riskin poisto jos ShareAlike halutaan pois kokonaan:** harjoita malli uudelleen
-ilman 3DSES:ää — Rohbau3D (MIT) + synteettinen data riittävät. Koulutusskriptit
-tukevat tätä jo (`scripts/export_s3dis_model.py --train`,
-`scripts/train_3dses_rohbau.py --rohbau`). Nykyinen tuotantomalli on
-yhdistelmäkoulutettu (`train_3dses_rohbau.py`: "3DSES Gold + Rohbau").
+Malli koulutetaan **tyhjästä** (`scripts/train_3dses_full.py --rohbau … ` ilman
+`--zip`-argumenttia + `scripts/geo_ablation.py --drop-rgb`), ei esiharjoitetusta
+checkpointista. Resepti: Rohbau (sitet 1,4,13) + synteettinen liiketila +
+monikerros + kalustetut huoneet (`--synth-retail --synth-multistory
+--synth-furnished`). Mitattu vs. aiempi 3DSES-yhdistelmämalli: rohbau-rakenne
+0.947 → **0.987**, asunto/talo loppumalli ekvivalentti, asunto-pintatarkkuus
+sisäseinillä ≤2.5 mm (aiempi ≤1.5 mm — pieni pysyvä ero, synteettinen ei tavoita
+3DSES:n oikean kalusteen tarkkuutta; kohinan 20 mm sisällä).
+
+**HISTORIA:** aiempi tuotantomalli (v0.9.1 asti) oli yhdistelmäkoulutettu 3DSES
+(CC BY-SA) + Rohbau + synteettinen. Sen ShareAlike-ulottuvuus painoihin oli
+oikeudellisesti epäselvä → poistettu uudelleenkoulutuksella v0.9.2:ssa.
 
 **VAROITUS:** `models/README.md` ehdottaa parannuksena S3DIS-esiharjoitettujen
 painojen lataamista (`yanx27/Pointnet_Pointnet2_pytorch`). **Älä tee sitä
@@ -159,10 +163,14 @@ Vaihtoehto joka poistaa vain Qt:n velvoitteen: kaupallinen Qt-lisenssi.
 **IfcOpenShell jää silti LGPL:ksi** eikä sille ole kaupallista vaihtoehtoa, joten
 one-dir tarvitaan joka tapauksessa.
 
-### F2. 3DSES pois painoista
+### F2. 3DSES pois painoista — ✅ TEHTY (v0.9.2, 3.8.2026)
 
-Nykyinen tuotantomalli on koulutettu `scripts/train_3dses_rohbau.py`:llä
-("3DSES Gold + Rohbau"), eli CC BY-SA -dataa on mukana.
+Malli koulutettu uudelleen ilman 3DSES:ää (Rohbau + synteettinen, ml. kalustetut
+huoneet). Rohbau-rakenne 0.947 → 0.987, gauntlet vihreä, loppumalli ekvivalentti.
+Ks. kohta B. **Alla oleva alkuperäinen suunnitelma jätetty viitteeksi.**
+
+Aiempi tuotantomalli oli koulutettu `scripts/train_3dses_rohbau.py`:llä
+("3DSES Gold + Rohbau"), eli CC BY-SA -dataa oli mukana.
 
 1. Ympäristö: `py -3.12 -m venv .venv_train` + `pip install torch` (~2.5 GB)
 2. Data: Rohbau3D (MIT) — `scripts/rohbau_download.py`. Nykyinen skripti vaatii

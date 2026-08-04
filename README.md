@@ -13,7 +13,7 @@ ArchiCADissa / Solibrissa.
 Tavoite: tuottaa **inventointimallitason** pohja niin että arkkitehdin ei
 tarvitse juuri korjailla mallia käsin.
 
-Nykyinen versio: **v0.9.1** — pre-release-vaiheessa.
+Nykyinen versio: **v0.9.2** — pre-release-vaiheessa.
 
 ## Mitä se osaa
 
