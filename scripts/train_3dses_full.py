@@ -123,7 +123,10 @@ def synth_furnished_blocks(n_rooms, voxel, max_bps, rng, geo=False, colf=False, 
     puhtaat mutta malli osaa yha poistaa asuntokalusteet (F2). Kaikki koulutukseen."""
     F, Lb = [], []
     for i in range(n_rooms):
-        xyz, lbl = E._gen_room(rng)
+        # tihea + seinanvierus-kaluste: vahva poistosignaali juuri siihen
+        # vikatilaan (seinanvieruskaluste vinouttaa seinapinnan) jonka 3DSES
+        # ennen opetti. 8-20 kalustetta/huone, puolet seinustalla.
+        xyz, lbl = E._gen_room(rng, furn_count=(8, 20), furn_wall_frac=0.5)
         xyz = np.asarray(xyz, np.float32); lbl = np.asarray(lbl).ravel()
         idx = FX._voxel_repr_idx(xyz, voxel); xyz, lbl = xyz[idx], lbl[idx]
         fz = np.percentile(xyz[:, 2], 2); h = np.clip((xyz[:, 2] - fz) / 3.0, 0, 1.5)

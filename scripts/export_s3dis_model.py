@@ -540,8 +540,13 @@ def _gen_retail_room(rng, n_pts: int = 120_000, wall_t: float = 0.0):
     return pts, lbl
 
 
-def _gen_room(rng, n_pts: int = 80_000):
-    """Generoi yksi synteettinen huone, palauttaa (pts Nx3, labels N) metreinä."""
+def _gen_room(rng, n_pts: int = 80_000, furn_count=(1, 8), furn_wall_frac: float = 0.0):
+    """Generoi yksi synteettinen huone, palauttaa (pts Nx3, labels N) metreinä.
+
+    furn_count: (lo,hi) huonekalujen määrä; furn_wall_frac: osuus kalusteista
+    työnnetään seinän viereen (asunnon kaluste on tyypillisesti seinustalla, ja
+    juuri seinänvieruskaluste vinouttaa seinädetektointia → mallin on opittava
+    poistamaan se). Oletus = alkuperäinen käytös (harva, satunnaissijoitus)."""
     import numpy as np
 
     W = rng.uniform(3.0, 9.0)
@@ -582,10 +587,11 @@ def _gen_room(rng, n_pts: int = 80_000):
             w = np.c_[u, np.full(n_wall, fixed) + noise, v]
         _plane(w, 2)
 
-    # Huonekalut — pöydät (label 7) ja tuolit (label 8)
-    n_furniture = rng.integers(1, 8)
+    # Huonekalut — pöytä(7)/tuoli(8)/sohva(9)/kaappi(10)/krääsä(12)
+    n_furniture = int(rng.integers(furn_count[0], furn_count[1] + 1))
     for _ in range(n_furniture):
-        kind = rng.integers(0, 3)      # 0=pöytä, 1=tuoli, 2=kaappi
+        kind = rng.integers(0, 5)      # 0=pöytä 1=tuoli 2=kaappi 3=sohva 4=krääsäpino
+        against_wall = rng.random() < furn_wall_frac
         if kind == 0:                   # pöytä
             fw, fd = rng.uniform(0.6, 1.6), rng.uniform(0.6, 1.0)
             fh_bot, fh_top = sorted((rng.uniform(0.68, 0.75), rng.uniform(0.68, 0.75)))
@@ -594,13 +600,28 @@ def _gen_room(rng, n_pts: int = 80_000):
             fw, fd = rng.uniform(0.4, 0.6), rng.uniform(0.4, 0.6)
             fh_bot, fh_top = rng.uniform(0.42, 0.48), rng.uniform(0.80, 0.95)
             label = 8
-        else:                           # kaappi/hylly
+        elif kind == 2:                 # kaappi/hylly (usein seinustalla, korkea)
             fw, fd = rng.uniform(0.3, 0.6), rng.uniform(0.8, 1.8)
-            fh_bot, fh_top = rng.uniform(0.0, 0.1), rng.uniform(0.9, 2.0)
+            fh_bot, fh_top = rng.uniform(0.0, 0.1), rng.uniform(0.9, 2.2)
             label = 10
+        elif kind == 3:                 # sohva (matala, leveä, seinustalla)
+            fw, fd = rng.uniform(1.6, 2.4), rng.uniform(0.8, 1.0)
+            fh_bot, fh_top = 0.0, rng.uniform(0.75, 0.95)
+            label = 9
+        else:                           # krääsäpino (epämääräinen, matala-keskikorkea)
+            fw, fd = rng.uniform(0.3, 0.9), rng.uniform(0.3, 0.9)
+            fh_bot, fh_top = 0.0, rng.uniform(0.4, 1.4)
+            label = 12
 
-        fx = rng.uniform(0.3, max(0.31, W - fw - 0.3))
-        fy = rng.uniform(0.3, max(0.31, D - fd - 0.3))
+        if against_wall:               # työnnä satunnaista seinää vasten
+            side = rng.integers(0, 4)
+            if side == 0:   fx, fy = rng.uniform(0.02, 0.10), rng.uniform(0.1, max(0.11, D - fd - 0.1))
+            elif side == 1: fx, fy = W - fw - rng.uniform(0.02, 0.10), rng.uniform(0.1, max(0.11, D - fd - 0.1))
+            elif side == 2: fx, fy = rng.uniform(0.1, max(0.11, W - fw - 0.1)), rng.uniform(0.02, 0.10)
+            else:           fx, fy = rng.uniform(0.1, max(0.11, W - fw - 0.1)), D - fd - rng.uniform(0.02, 0.10)
+        else:
+            fx = rng.uniform(0.3, max(0.31, W - fw - 0.3))
+            fy = rng.uniform(0.3, max(0.31, D - fd - 0.3))
 
         n_obj = max(30, int(density * 2 * (fw * fd + fw * (fh_top - fh_bot) + fd * (fh_top - fh_bot))))
         ox = rng.uniform(fx, fx + fw, n_obj)
