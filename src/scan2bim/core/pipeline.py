@@ -1332,6 +1332,17 @@ class Pipeline:
                 for w in model.walls
             ]
 
+        # Poista lattia-katto-hyllykön etupintaan syntyneet valeseinät: hyllyn
+        # etupinta on geometrisesti seinä (lattiasta kattoon) mutta seisoo
+        # ~500-1200 mm perimetrin SISÄLLÄ rinnakkain sen kanssa. Semanttinen
+        # suodatin ei sitä poista (tiheä pystytaso). Ennen huonepolygonia jotta
+        # tilat lasketaan puhtaasta seinäjoukosta.
+        from scan2bim.core.semantics.wall_semantics import remove_shelf_front_walls
+        _nw_pre_shelf = len(model.walls)
+        model.walls = remove_shelf_front_walls(model.walls)
+        if len(model.walls) < _nw_pre_shelf:
+            self._progress(f"  Hyllyn etupinta-valeseiniä poistettu: {_nw_pre_shelf - len(model.walls)}")
+
         # Korvaa laatan rajapisteet seinien leikkauspisteistä johdetulla polygonilla
         from scan2bim.core.semantics.room_polygon import build_room_polygon, snap_walls_to_polygon
         room_poly = build_room_polygon(model.walls)

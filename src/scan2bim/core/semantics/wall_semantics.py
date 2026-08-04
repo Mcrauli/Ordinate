@@ -506,3 +506,60 @@ def _measure_thickness(proj: np.ndarray, T_ref: float = 200.0) -> float | None:
         return None
 
     return float(thickness)
+
+
+def remove_shelf_front_walls(walls, dist_lo=300.0, dist_hi=1500.0,
+                             ang_tol_deg=12.0, min_partner_len=4000.0,
+                             len_ratio=2.0, min_overlap_frac=0.5):
+    """Poista lattia-katto-hyllykön etupintaan syntyneet valeseinät.
+
+    Liiketilan hyllykön etupinta ulottuu lattiasta kattoon → geometrisesti seinä,
+    ja semanttinen suodatin ei sitä poista (etupinta on tiheä pystytaso). Erotin:
+    hyllyn etupinta on LYHYEHKÖ seinä joka kulkee rinnakkain ja 300-1500 mm irti
+    PALJON PIDEMMÄSTÄ seinästä (rakennuksen perimetri, jonka edessä hylly seisoo),
+    peittäen sitä pituudeltaan. Oikea perimetriseinä on itse pisin → sillä ei ole
+    pidempää rinnakkaista. Kontuurista riippumaton (raaka lattiakontuuri on 25-90 mm
+    epätarkka → sitä ei saa käyttää). Mitattu synteettisellä myymälällä: hyllyn
+    etupinnat 842-982 mm pidemmän perimetriseinän edessä; oikeat seinät eivät.
+    """
+    def _endpoints(w):
+        return np.asarray(w.axis[0], float), np.asarray(w.axis[1], float)
+
+    lens = []
+    for w in walls:
+        a, b = _endpoints(w)
+        lens.append(float(np.linalg.norm(b - a)))
+
+    remove = set()
+    for i, w in enumerate(walls):
+        Li = lens[i]
+        if Li < 1e-6:
+            continue
+        a, b = _endpoints(w)
+        u = (b - a) / Li
+        n = np.array([-u[1], u[0]])
+        for j, w2 in enumerate(walls):
+            if j == i:
+                continue
+            Lj = lens[j]
+            # kumppanin on oltava selvästi pidempi (aito perimetri) JA pitkä
+            if Lj < max(min_partner_len, len_ratio * Li):
+                continue
+            a2, b2 = _endpoints(w2)
+            L2v = b2 - a2
+            u2 = L2v / Lj
+            if abs(float(np.dot(u, u2))) < np.cos(np.radians(ang_tol_deg)):
+                continue  # ei rinnakkainen
+            # kohtisuora etäisyys w:n keskeltä kumppanin linjaan
+            c = 0.5 * (a + b)
+            perp = abs(float(np.dot(c - a2, n)))
+            if not (dist_lo <= perp <= dist_hi):
+                continue
+            # w:n on peityttävä kumppanin pituudelle (kulkee sen vieressä)
+            ta = float(np.dot(a - a2, u2)); tb = float(np.dot(b - a2, u2))
+            lo, hi = sorted((ta, tb))
+            ov = max(0.0, min(hi, Lj) - max(lo, 0.0))
+            if ov / Li >= min_overlap_frac:
+                remove.add(i)
+                break
+    return [w for k, w in enumerate(walls) if k not in remove]
