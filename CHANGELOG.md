@@ -4,6 +4,25 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 [`Mcrauli/scan2bim-web`](https://github.com/Mcrauli/scan2bim-web/releases):iin;
 sovellus päivittää itsensä sieltä.
 
+## v0.9.4 (4.8.2026) — iso myymälä: seinien ylitys pois + kalustesuodatin auto
+
+- **Seinät eivät enää työnny rakennuksen ulkopuolelle.** Isossa liiketilassa
+  seinän akseli saattoi venyä 9–31 m rakennuksen ulkopuolelle tyhjän lattian yli
+  (päätepisteen leikkaus oli rajattu 300 mm:iin, jottei datattoman seinän kaista
+  romahda risteyskohtaan). Nyt iso leikkaus sallitaan kun kaista on kiistatta aito
+  seinäpinta (pitkä + tiheä), lyhyt/harva kaista säilyttää suojauksen. **Mitattu**
+  synteettisellä 96×64 m myymälällä: seinät 5/9 → 7/9, pilarit 51/65 → 65/65,
+  ei yhtään seinää rakennuksen ulkopuolella.
+- **Kalustesuodatin kytkeytyy automaattisesti liiketilassa.** Lattiasta kattoon
+  ulottuva myymälähylly seinää vasten on geometrisesti seinä, eikä koko seinän
+  mittaista hyllyä voi erottaa aidosta seinästä pelkällä geometrialla. Semanttinen
+  suodatin (PointNet) poistaa sen. Se kytketään nyt automaattisesti vain kun skene
+  on iso ja korkea (pohja ≥ 600 m², vapaa korkeus ≥ 4,5 m = big-box-liiketila);
+  asunnot ja tavalliset rakennukset (matala kerroskorkeus) eivät suodatu eivätkä
+  hidastu. **Mitattu:** retail hylly-valeseinät 2 → 0, pilarit 20/20; asunto ja
+  talo ennallaan (9 seinää / 3 ja 2 huonetta). Ohitus: `--semantic-filter
+  auto|off|pointnet`.
+
 ## v0.9.3 (4.8.2026) — liiketilan hyllyn valeseinät pois
 - **Lattia-katto-hyllykön etupintaan syntyneet valeseinät poistetaan.** Myymälän
   hyllykön etupinta ulottuu lattiasta kattoon, joten se on geometrisesti seinä
