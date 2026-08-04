@@ -31,7 +31,13 @@ class PipelineConfig:
     icp_refine: bool = False                                   # ICP-hienorekisteröinti monoskannauksille
     save_intermediate: bool = False
     semantic_filter: bool = False          # Vaihe 2 legacy (geometric); käytä semantic_filter_mode
-    semantic_filter_mode: Literal["off", "geometric", "pointnet", "pointnet-retail"] = "off"
+    semantic_filter_mode: Literal["off", "auto", "geometric", "pointnet", "pointnet-retail"] = "auto"
+    # auto (oletus): kytkee PointNet-suodattimen VAIN liiketiloihin (iso pohja +
+    # korkea tila = lattia-katto-hyllyt). Suodatin poistaa hyllyvaleseinät joita
+    # geometria ei koko-mittaisille hyllyille pysty (mitattu: retail 2→0). Mutta
+    # se REGRESSOI asuintaloa (poistaa aidon seinän+huoneen, mitattu talo 9→8/2→1
+    # huonetta) → asunto/talo/rohbau (matala tila) pysyvät suodattamattomina eivätkä
+    # hidastu. Kynnykset _RETAIL_MIN_* alla.
     # pointnet-retail: ALIAS "pointnet":lle. Erillinen liiketilamalli sulautettiin
     # yhteen malliin cb50610:ssä (geocol_v2_ms, koulutettu synteettisellä liiketila-
     # ja monikerrosdatalla; hyllynpoisto 15 % → 71 %, Rohbau-rakenne 0.879 → 0.947).
@@ -80,6 +86,33 @@ def _recenter_wall_axes(walls, cloud, band: float | None = None, keep_thickness:
     idx = _xy_index(pts, walls)
     return [_surface_lock_wall(w, pts, band=band, keep_thickness=keep_thickness, index=idx)
             for w in walls]
+
+
+# --- Liiketilan tunnistus (semantic_filter_mode="auto") ---------------------
+_RETAIL_MIN_AREA_M2 = 600.0     # m² — pienempi pohja = ei big-box-liiketila
+_RETAIL_MIN_HEIGHT_MM = 4500.0  # mm — lattia-katto-hyllyt vaativat korkean tilan;
+                                # asunto/talo/rohbau-kerros ~2400–3000 mm → alle rajan
+
+
+def _looks_like_retail(cloud) -> bool:
+    """True kun skene on iso JA korkea = big-box-liiketila (lattia-katto-hyllyt).
+
+    Tunnistus tehdään ENNEN detektiota raakapilvestä: hyllyvaleseinien poisto
+    (PointNet-suodatin) hyödyttää liiketilaa mutta regressoi asuintaloa, joten se
+    kytketään vain kun sekä pohjan pinta-ala että vapaa korkeus ylittävät rajan.
+    Korkeus on avainerotin: asuinkerros ~2.7 m jää aina alle 4.5 m rajan."""
+    pts = np.asarray(cloud.points)
+    if len(pts) < 1000:
+        return False
+    z = pts[:, 2]
+    height = float(np.percentile(z, 99) - np.percentile(z, 1))
+    if height < _RETAIL_MIN_HEIGHT_MM:
+        return False
+    x, y = pts[:, 0], pts[:, 1]
+    dx = float(np.percentile(x, 99) - np.percentile(x, 1))
+    dy = float(np.percentile(y, 99) - np.percentile(y, 1))
+    area_m2 = (dx * dy) / 1.0e6
+    return area_m2 >= _RETAIL_MIN_AREA_M2
 
 
 def _trim_wall_endpoints(walls, cloud) -> list:
@@ -1098,6 +1131,14 @@ class Pipeline:
         # Taaksepäinyhteensopivuus: vanha semantic_filter=True → "geometric"
         if mode == "off" and self.config.semantic_filter:
             mode = "geometric"
+        # auto: PointNet vain liiketilassa (iso+korkea = lattia-katto-hyllyt).
+        # Muualla off → ei regressiota (talo/asunto) eikä hidastumista.
+        if mode == "auto":
+            if _looks_like_retail(cloud):
+                mode = "pointnet"
+                self._progress("  Liiketila tunnistettu → semanttinen suodatin päälle")
+            else:
+                mode = "off"
         if mode == "off":
             return cloud
 

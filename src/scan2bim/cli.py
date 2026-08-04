@@ -28,6 +28,14 @@ def main() -> None:
 )
 @click.option("--no-ifc", is_flag=True, help="Älä tuota IFC")
 @click.option("--no-dxf", is_flag=True, help="Älä tuota DXF")
+@click.option(
+    "--semantic-filter",
+    type=click.Choice(["auto", "off", "pointnet"]),
+    default="auto",
+    show_default=True,
+    help="Kalustesuodatin: auto = päälle vain liiketilassa (poistaa hyllyvaleseinät), "
+         "off = ei koskaan, pointnet = aina",
+)
 def convert(
     input_file: Path,
     output_dir: Path,
@@ -35,6 +43,7 @@ def convert(
     detector: str,
     no_ifc: bool,
     no_dxf: bool,
+    semantic_filter: str,
 ) -> None:
     """Konvertoi pistepilvi arkkitehtimalliksi."""
     import logging
@@ -47,6 +56,7 @@ def convert(
         detector=detector,
         export_ifc=not no_ifc,
         export_dxf=not no_dxf,
+        semantic_filter_mode=semantic_filter,
     )
 
     def log(msg: str) -> None:

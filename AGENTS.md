@@ -529,7 +529,15 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
      risteysdata pitää sen 300 mm cap:ssa; juurisyy on liian pitkä RANSAC-fit).
      2/9 takahuoneen seinää jäi kokonaan löytymättä.
 - **Liiketilojen hyllyt** (lattia-katto) läpäisevät geometrisen pystymaskin →
-  semanttinen suodatin tarvitaan. **`pointnet-retail` on nykyään ALIAS
+  semanttinen suodatin tarvitaan. **KYTKETTY (4.8.2026): `semantic_filter_mode="auto"`
+  on nyt OLETUS.** `_looks_like_retail(cloud)` (pipeline.py) kytkee PointNet-
+  suodattimen VAIN big-box-liiketilaan (pohja ≥600 m² JA korkeus ≥4.5 m — lattia-
+  katto-hyllyt vaativat korkean tilan). Mitattu: retail hylly-valeseinät 2→0
+  (koko-mittainen hylly = geometrisesti seinä, len_ratio-erotin ei pysty; suodatin
+  pystyy), pilarit 20/20, asunto/talo EIVÄT triggeröi (9/3 ja 9/2 muuttumattomat,
+  ei hidastu). SYY vain-retail-ehdolle: suodatin REGRESSOI asuintaloa (talo 9→8
+  seinää, 2→1 huone, poistaa aidon seinän+huoneen — vision-varmistettu). CLI:
+  `--semantic-filter auto|off|pointnet`. **`pointnet-retail` on edelleen ALIAS
   `pointnet`:lle** — erillinen liiketilamalli sulautettiin yhteen malliin
   (cb50610, geocol_v2_ms: hyllynpoisto 15 % → 71 %, Rohbau-rakenne
   0.879 → 0.947, monikerros korjattu). Molemmat `.onnx`-tiedostot ovat
