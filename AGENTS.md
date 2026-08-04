@@ -513,6 +513,21 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   3. ~~Pilareita 24/34~~ **KORJATTU: 34/34** (ks. "Pilarin irrallisuus" alla).
   4. Yksipuolisten ulkoseinien paksuus 66–92 mm (todellinen 250) — pinta on oikein,
      paksuutta ei voi mitata.
+- **ISO MYYMÄLÄ, mitattu synteettisellä 96×64×8 m myymälällä** (`data/_synth_retail.py
+  --sx 96000 --sy 64000 --height 8000`, 57 M pistettä, GT tunnettu). ÄLÄ aja
+  `python -m scan2bim <ply>` — se avaa GUI:n; oikea CLI on `scan2bim convert`
+  (tai `-m scan2bim.cli`). Ajo ~13 min. Löydökset:
+  1. ~~Seinän akseli venyi 9–31 m rakennuksen ULKOPUOLELLE tyhjän lattian yli~~
+     **KORJATTU (cb224ba): `_trim_endpoints` sallii >300 mm leikkauksen kun kaista
+     on kiistatta aito (span ≥2.5 m + ≥300 pintapistettä).** Seinät 5/9→7/9,
+     pilarit 51/65→65/65, ei ulkopuolisia seiniä (vision).
+  2. AUKI: perimetrin ulkopinta erotellaan omaksi seinäksi (`wall_ext_*`, ~414 mm
+     irti aitosta akselista) isoilla ulkoseinillä → tuplaseinä.
+  3. AUKI: lattia-katto-hylly AIVAN seinää vasten (30–50 mm irti) jää valeseinäksi
+     — `remove_shelf_front_walls` alaraja on 300 mm, ei nappaa <300 mm skiniä.
+  4. AUKI: takahuoneen väliseinä jää joskus 32 m sales-floor-jatkeella (harva
+     risteysdata pitää sen 300 mm cap:ssa; juurisyy on liian pitkä RANSAC-fit).
+     2/9 takahuoneen seinää jäi kokonaan löytymättä.
 - **Liiketilojen hyllyt** (lattia-katto) läpäisevät geometrisen pystymaskin →
   semanttinen suodatin tarvitaan. **`pointnet-retail` on nykyään ALIAS
   `pointnet`:lle** — erillinen liiketilamalli sulautettiin yhteen malliin
