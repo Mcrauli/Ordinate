@@ -4,6 +4,23 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 [`Mcrauli/scan2bim-web`](https://github.com/Mcrauli/scan2bim-web/releases):iin;
 sovellus päivittää itsensä sieltä.
 
+## v0.9.6 (5.8.2026) — liiketilan seinädetektio: deterministinen ja pilarivapaa
+
+- **Uusi histogrammipohjainen seinädetektori liiketiloihin.** Aiempi RANSAC-
+  detektori antoi saman skannin eri ajoilla eri seinämäärän (satunnaisuutta ei
+  saanut vakioitua hidastamatta), oli hidas isossa pilvessä, ja sen kallistuneet
+  tasot sekoittivat pilaririvit seiniin (valeseiniä ja ylivenymää). Uusi detektori
+  löytää seinät suoraan pisteiden tiheyshuipuista rakennuksen pääsuunnissa: se on
+  **toistettava (deterministinen), noin 130× nopeampi ja pilarivapaa** (pilari ei
+  muodosta seinäviivaa). Se tunnistaa myös seinän molemmat pinnat, joten paksuus
+  saadaan suoraan. **Mitattu** synteettisellä 48×32 m myymälällä: 9/9 seinää,
+  13/13 pilaria, **0 valeseinää** (RANSAC: 8–9/9, 4–13 pilaria, 2–5 valeseinää ja
+  luvut heittelivät ajojen välillä). Skaalautuu: 96×64 m (47 M pistettä) 1,6 s.
+- Detektori valitaan automaattisesti vain liiketiloille (iso + korkea, suora-
+  kulmainen). Asunnot ja tavalliset rakennukset (joissa voi olla vinoja seiniä)
+  käyttävät entistä kontuuridetektoria — niiden tulos ei muutu. `--detector
+  histogram` pakottaa uuden detektorin. 126 testiä läpi.
+
 ## v0.9.5 (5.8.2026) — iso myymälä: takahuoneen seinät löytyvät + vähemmän ylivenymää
 
 - **Takahuoneen väliseinät löytyvät nyt (recall 6/9 → 9/9).** Isossa myymälässä
