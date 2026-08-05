@@ -220,7 +220,9 @@ class _Loader(QtCore.QObject):
             from scan2bim.core.geometry.loader import load_point_cloud
             cloud = load_point_cloud(Path(self._path))
             P = np.asarray(cloud.points, dtype=np.float32)
-            step = max(1, len(P) // self._max)
+            # CEIL-harvennus: len//max antaa step=1 kun len<2*max → 9M pistettä
+            # jäi harventamatta. Ceil takaa että työjoukko todella cappaantuu.
+            step = max(1, -(-len(P) // self._max))
             Ps = np.ascontiguousarray(P[::step])
             offset = Ps.mean(axis=0)
             if cloud.has_colors():
@@ -248,7 +250,10 @@ class InspectView(QtWidgets.QWidget):
         self._rgba = None; self._res = None; self._expl = None
         self._scatter = None; self._grid = None
         self._model_items: list = []
-        self._psize = 24.0   # pisteen maailmakoko mm (fotorealistisuus: isompi → pinnat täyttyvät)
+        # Pistekoko PIKSELEINÄ (pxMode=True): renderöityy luotettavasti joka
+        # mittakaavassa. Maailmayksikkö (pxMode=False) rikkoi pienet huoneet —
+        # lähellä koko ylitti GL:n max-pistekoon → mitään ei piirtynyt.
+        self._psize = 6.0
 
         lay = QtWidgets.QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0); lay.setSpacing(0)
@@ -266,7 +271,7 @@ class InspectView(QtWidgets.QWidget):
         bar.addWidget(self._mode)
         bar.addWidget(QtWidgets.QLabel("Täyteys:"))
         self._size_slider = QtWidgets.QSlider(QtCore.Qt.Orientation.Horizontal)
-        self._size_slider.setMinimum(6); self._size_slider.setMaximum(48)
+        self._size_slider.setMinimum(1); self._size_slider.setMaximum(16)
         self._size_slider.setValue(int(self._psize)); self._size_slider.setFixedWidth(110)
         self._size_slider.setEnabled(False)
         self._size_slider.valueChanged.connect(self._on_size)
@@ -332,12 +337,17 @@ class InspectView(QtWidgets.QWidget):
         self._pts = (Ps - offset).astype(np.float32)
         # perspektiivikoko (maailmayksikkö mm): lähellä pisteet suurenevat →
         # pinnat täyttyvät valokuvamaisiksi kun navigoi lähelle
-        self._scatter = gl.GLScatterPlotItem(pos=self._pts, color=self._rgba, size=self._psize, pxMode=False)
+        # pxMode=True (PIKSELIkoko): renderöityy luotettavasti joka mittakaavassa
+        # ja frozen-exessä. pxMode=False (maailmakoko) näytti tyhjää pienissä
+        # PLY-huoneissa releasessa.
+        self._scatter = gl.GLScatterPlotItem(pos=self._pts, color=self._rgba, size=self._psize, pxMode=True)
         self._scatter.setGLOptions("opaque")
         self._view.addItem(self._scatter)
         # pohjaruudukko orientaatioon
         lo = self._pts.min(axis=0); hi = self._pts.max(axis=0)
         ext = float(max(hi[0] - lo[0], hi[1] - lo[1]))
+        if not np.isfinite(ext) or ext <= 0:
+            ext = 5000.0
         self._grid = gl.GLGridItem()
         self._grid.setSize(ext * 1.2, ext * 1.2)
         self._grid.setSpacing(1000, 1000)                 # 1 m ruudukko
@@ -345,7 +355,9 @@ class InspectView(QtWidgets.QWidget):
         self._grid.setGLOptions("opaque")
         self._view.addItem(self._grid)
         span = float(np.linalg.norm(hi - lo))
-        self._view.setCameraPosition(distance=max(span * 0.55, 1000.0))
+        if not np.isfinite(span) or span <= 0:
+            span = ext
+        self._view.setCameraPosition(distance=max(span * 0.55, 500.0))
         self._mode.setEnabled(True)
         self._size_slider.setEnabled(True)
         self._apply_model()
@@ -395,9 +407,9 @@ class InspectView(QtWidgets.QWidget):
         mode = self._mode.currentIndex()
         s = self._psize
         if mode == 0:                                          # Väri
-            self._scatter.setData(pos=self._pts, color=self._rgba, size=s, pxMode=False)
+            self._scatter.setData(pos=self._pts, color=self._rgba, size=s, pxMode=True)
         elif mode == 1:                                        # Residuaali (kaikki)
-            self._scatter.setData(pos=self._pts, color=self._res, size=s, pxMode=False)
+            self._scatter.setData(pos=self._pts, color=self._res, size=s, pxMode=True)
         else:                                                  # Vain puuttuvat
             m = ~self._expl if self._expl is not None else np.ones(len(self._pts), bool)
-            self._scatter.setData(pos=self._pts[m], color=self._res[m], size=s * 1.5, pxMode=False)
+            self._scatter.setData(pos=self._pts[m], color=self._res[m], size=s * 1.6, pxMode=True)
