@@ -188,12 +188,13 @@ def perform_update(info: UpdateInfo, parent: QtWidgets.QWidget | None = None) ->
         dialog.setRange(0, 0)
         QtWidgets.QApplication.processEvents()
 
-        # In-place swap (silent, no UAC). Works kun sovellus on käyttäjän
-        # kirjoitettavassa kansiossa (per-user: %LOCALAPPDATA%\Programs\scan2bim).
-        # apply_downloaded_update valitsee oikean tavan: one-dir-ZIP puretaan
-        # (replace_app_dir); vain vanha one-file-.exe kirjoitetaan sellaisenaan.
+        # apply_downloaded_update valitsee oikean tavan. One-dir-ZIP: vaihto tehdään
+        # APUPROSESSILLA joka odottaa tämän appin sulkeutumista (base_library.zip on
+        # lukossa ajon aikana → in-place-vaihto kaatuisi WinError 32:een) → palauttaa
+        # True ja app pitää sulkea, apuri asentaa + avaa uudelleen. Legacy one-file:
+        # replace_exe on jo tehnyt vaihdon → False, käyttäjä avaa uudelleen itse.
         try:
-            apply_downloaded_update(downloaded_path, info.download_url)
+            via_helper = apply_downloaded_update(downloaded_path, info.download_url)
         except Exception as exc:
             dialog.close()
             QtWidgets.QMessageBox.critical(
@@ -204,12 +205,20 @@ def perform_update(info: UpdateInfo, parent: QtWidgets.QWidget | None = None) ->
             )
             return
         dialog.close()
-        QtWidgets.QMessageBox.information(
-            parent,
-            "Päivitys asennettu",
-            f"scan2bim {info.tag} on nyt asennettu.\n\n"
-            f"Avaa scan2bim uudelleen työpöydältä tai Käynnistä-valikosta.",
-        )
+        if via_helper:
+            QtWidgets.QMessageBox.information(
+                parent,
+                "Päivitys valmis asennettavaksi",
+                f"scan2bim {info.tag} asennetaan kun sovellus suljetaan, ja se "
+                f"avautuu automaattisesti uudelleen.\n\nPaina OK sulkeaksesi nyt.",
+            )
+        else:
+            QtWidgets.QMessageBox.information(
+                parent,
+                "Päivitys asennettu",
+                f"scan2bim {info.tag} on nyt asennettu.\n\n"
+                f"Avaa scan2bim uudelleen työpöydältä tai Käynnistä-valikosta.",
+            )
         os._exit(0)
 
     def on_fail(message: str) -> None:

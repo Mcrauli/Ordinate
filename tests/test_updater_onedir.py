@@ -65,28 +65,40 @@ def test_setup_exe_never_selected_as_update_payload():
     assert _select_asset(rel) is None
 
 
-def test_apply_zip_extracts_and_swaps_dir_not_exe(tmp_path, monkeypatch):
-    """KRIITTINEN regressio: one-dir-ZIP-paivitys pitaa PURKAA (replace_app_dir),
-    EI kirjoittaa zippia sellaisenaan scan2bim.exe:ksi (replace_exe). GUI kutsui
-    ennen aina replace_exe:ta → jokainen itsepaivitys teki appista rikkinaisen
-    zip-tiedoston ("Sovellus ei toimi tietokoneessasi")."""
+def test_apply_zip_uses_helper_not_replace_exe(tmp_path, monkeypatch):
+    """KRIITTINEN regressio: one-dir-ZIP-paivitys puretaan ja vaihdetaan APUPROSESSILLA
+    (base_library.zip lukossa ajon aikana → ei in-place). EI koskaan kirjoiteta zippia
+    scan2bim.exe:ksi (replace_exe). Palauttaa True (kutsujan suljettava app)."""
     calls = []
     monkeypatch.setattr(_updater, "extract_zip", lambda p, d: tmp_path / "app")
-    monkeypatch.setattr(_updater, "replace_app_dir", lambda d: calls.append(("app_dir", d)))
+    monkeypatch.setattr(_updater, "swap_app_dir_via_helper", lambda d: calls.append(("helper", d)))
     monkeypatch.setattr(_updater, "replace_exe", lambda p: calls.append(("exe", p)))
-    apply_downloaded_update(tmp_path / "scan2bim-0.9.8.zip",
-                            "https://x/releases/download/v0.9.8/scan2bim-0.9.8.zip")
-    assert calls == [("app_dir", tmp_path / "app")], f"zip meni vaaraan polkuun: {calls}"
+    result = apply_downloaded_update(tmp_path / "scan2bim-0.9.8.zip",
+                                    "https://x/releases/download/v0.9.8/scan2bim-0.9.8.zip")
+    assert calls == [("helper", tmp_path / "app")], f"zip meni vaaraan polkuun: {calls}"
+    assert result is True
 
 
 def test_apply_raw_exe_uses_replace_exe(tmp_path, monkeypatch):
-    """Vanha one-file-.exe kirjoitetaan sellaisenaan (replace_exe)."""
+    """Vanha one-file-.exe kirjoitetaan sellaisenaan (replace_exe); palauttaa False."""
     calls = []
-    monkeypatch.setattr(_updater, "replace_app_dir", lambda d: calls.append(("app_dir", d)))
+    monkeypatch.setattr(_updater, "swap_app_dir_via_helper", lambda d: calls.append(("helper", d)))
     monkeypatch.setattr(_updater, "replace_exe", lambda p: calls.append(("exe", p)))
-    apply_downloaded_update(tmp_path / "scan2bim.exe",
-                            "https://x/releases/download/v0.8.0/scan2bim.exe")
+    result = apply_downloaded_update(tmp_path / "scan2bim.exe",
+                                    "https://x/releases/download/v0.8.0/scan2bim.exe")
     assert calls == [("exe", tmp_path / "scan2bim.exe")], f"exe meni vaaraan polkuun: {calls}"
+    assert result is False
+
+
+def test_update_helper_script_waits_copies_relaunches(tmp_path):
+    """Apuskripti: odota PID:n sulkeutumista → robocopy staging→install → kaynnista."""
+    from scan2bim.core.updater import _build_update_helper_script
+    s = _build_update_helper_script(12345, tmp_path / "staging", tmp_path / "install")
+    assert 'PID eq 12345' in s              # odottaa oikeaa prosessia
+    assert ':wait' in s and 'goto wait' in s  # odotussilmukka
+    assert 'robocopy' in s and str(tmp_path / "staging") in s and str(tmp_path / "install") in s
+    assert 'start ""' in s and 'scan2bim.exe' in s  # kaynnistaa uudelleen
+    assert 'del "%~f0"' in s                 # siivoaa itsensa
 
 
 def test_replace_app_dir_swaps_every_file_and_keeps_old(tmp_path):

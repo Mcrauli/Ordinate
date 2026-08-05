@@ -4,6 +4,15 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 [`Mcrauli/scan2bim-web`](https://github.com/Mcrauli/scan2bim-web/releases):iin;
 sovellus päivittää itsensä sieltä.
 
+## v0.9.11 (5.8.2026) — itsepäivitys viimeinkin toimii (one-dir vaihto apuprosessilla)
+
+- **Itsepäivitys asentaa nyt one-dir-version oikein.** Edellinen korjaus (v0.9.9)
+  purki zipin, mutta vaihto kaatui käynnissä olevan sovelluksen lukitsemaan
+  `base_library.zip`-tiedostoon (Windows-virhe 32). Nyt vaihdon tekee pieni
+  apuprosessi, joka odottaa sovelluksen sulkeutumista, kopioi uuden version
+  paikalleen ja käynnistää sovelluksen automaattisesti uudelleen. Todennettu
+  hiekkalaatikossa (lukittu tiedosto → apuri odotti → vaihtoi oikein). 134 testiä.
+
 ## v0.9.10 (5.8.2026) — itsepäivityksen varmennus
 
 - Sama korjattu itsepäivitys kuin v0.9.9; julkaistu jotta korjatun version (0.9.9)

@@ -18,7 +18,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
+import subprocess
 import sys
 import tempfile
 import urllib.error
@@ -405,18 +407,69 @@ def replace_exe(
     shutil.move(str(new_exe), str(current_exe))
 
 
-def apply_downloaded_update(downloaded_path: Path, download_url: str) -> None:
-    """Ota ladattu päivitys käyttöön: valitse OIKEA vaihtotapa payloadin mukaan.
+def _build_update_helper_script(pid: int, staging_dir: Path, install_dir: Path,
+                                exe_name: str = "scan2bim.exe") -> str:
+    """Batch-skripti joka odottaa PID:n sulkeutumista, kopioi staging→install ja
+    käynnistää appin uudelleen. Erillinen (puhdas) funktio → testattava."""
+    exe = install_dir / exe_name
+    # TÄYDET POLUT system-työkaluihin: apuri ei saa nojata PATH:iin (voi olla
+    # saastunut esim. Git Bashin find.exe:llä) eikä käyttää `timeout`:ia (vaatii
+    # konsolin, mutta apuri on DETACHED → ei konsolia → `ping` viiveeksi).
+    sys32 = r"%SystemRoot%\System32"
+    return (
+        "@echo off\r\n"
+        ":wait\r\n"
+        f'{sys32}\\tasklist.exe /FI "PID eq {pid}" /NH 2>NUL | '
+        f'{sys32}\\find.exe /I "{exe_name}" >NUL\r\n'
+        "if not errorlevel 1 (\r\n"
+        f"  {sys32}\\ping.exe -n 2 127.0.0.1 >NUL\r\n"
+        "  goto wait\r\n"
+        ")\r\n"
+        f'{sys32}\\robocopy.exe "{staging_dir}" "{install_dir}" /E /IS /IT /R:5 /W:2 >NUL\r\n'
+        f'start "" "{exe}"\r\n'
+        'del "%~f0" >NUL 2>&1\r\n'
+    )
 
-    KRIITTINEN: one-dir-julkaisu on ZIP joka pitää PURKAA ja vaihtaa hakemisto
-    tiedosto kerrallaan (:func:`replace_app_dir`). Zipin kirjoittaminen sellaisenaan
-    scan2bim.exe:ksi (:func:`replace_exe`) rikkoo appin ("Sovellus ei toimi
-    tietokoneessasi" — tiedosto on zip, ei PE). :func:`replace_exe` on VAIN vanhoille
-    one-file-julkaisuille (raaka .exe). Ennen tätä GUI kutsui aina replace_exe:ä →
-    jokainen one-dir-itsepäivitys hajosi (kenttäbugi 5.8.2026)."""
+
+def swap_app_dir_via_helper(new_app_dir: Path, install_dir: Path | None = None) -> None:
+    """Vaihda one-dir-asennus APUPROSESSILLA joka odottaa appin sulkeutumista.
+
+    In-place-vaihto (:func:`replace_app_dir`) EPÄONNISTUU käynnissä olevalle
+    one-dir-appille: ``_internal/base_library.zip`` (PyInstallerin ajonaikainen
+    tiedosto) on lukossa eikä sitä voi nimetä uudelleen → WinError 32 (kenttäbugi
+    5.8.2026). Ratkaisu: kirjoita irrallinen batch-apuri joka ODOTTAA tämän prosessin
+    sulkeutumista (silloin lukot vapautuvat), kopioi uusi versio paikalleen ja
+    käynnistää appin uudelleen. Kutsuja sulkee appin heti tämän jälkeen."""
+    inst = install_dir or app_dir()
+    helper = Path(tempfile.gettempdir()) / f"scan2bim_update_{os.getpid()}.cmd"
+    helper.write_text(_build_update_helper_script(os.getpid(), new_app_dir, inst),
+                      encoding="ascii")
+    # CREATE_NO_WINDOW (piilokonsoli), EI DETACHED_PROCESS: apuri käyttää konsoli-
+    # työkaluja (tasklist/find/robocopy), jotka JUMITTAVAT ilman konsolia. Piilo-
+    # konsoli antaa niille konsolin näyttämättä ikkunaa. NEW_PROCESS_GROUP + apuri
+    # jää eloon kun app sulkeutuu. (Todennettu hiekkalaatikossa 5.8.2026.)
+    _CREATE_NO_WINDOW = 0x08000000
+    _CREATE_NEW_PROCESS_GROUP = 0x00000200
+    subprocess.Popen(
+        ["cmd", "/c", str(helper)],
+        creationflags=_CREATE_NO_WINDOW | _CREATE_NEW_PROCESS_GROUP,
+        close_fds=True, cwd=tempfile.gettempdir(),
+    )
+
+
+def apply_downloaded_update(downloaded_path: Path, download_url: str) -> bool:
+    """Ota ladattu päivitys käyttöön: valitse OIKEA vaihtotapa payloadin mukaan.
+    Palauttaa True jos vaihto tapahtuu VASTA appin sulkeutuessa (one-dir, apuprosessi)
+    → kutsujan on suljettava app; False jos vaihto on jo tehty (legacy one-file).
+
+    KRIITTINEN historia: (1) GUI kutsui ennen aina replace_exe:ä → zip kirjoittui
+    exe:ksi → "ei toimi tietokoneessasi". (2) Korjaus replace_app_dir:iin kaatui
+    WinError 32:een koska base_library.zip on lukossa ajon aikana. → one-dir vaihto
+    tehdään nyt apuprosessilla appin sulkeuduttua. replace_exe on VAIN legacy one-file."""
     if asset_is_zip(download_url):
         extract_dir = Path(tempfile.mkdtemp(prefix="scan2bim_upd_"))
         app_root = extract_zip(downloaded_path, extract_dir)
-        replace_app_dir(app_root)
-    else:
-        replace_exe(downloaded_path)
+        swap_app_dir_via_helper(app_root)
+        return True
+    replace_exe(downloaded_path)
+    return False
