@@ -3,10 +3,14 @@ INTERAKTIIVISESSA 3D-ikkunassa (pyorita/zoomaa hiirella). Cintoo-tyylinen
 tarkistus jolla nakee OIKEASTI ollaanko lahella totuutta.
 
 Kaytto:
-  python data/_navigate.py <e57|ply> <model.json> [max_points]
+  python data/_navigate.py <e57|ply> <model.json> [max_points] [residual]
 
 Hiiri: vasen=pyorita, rulla=zoom, oikea=siirra. Malli: seinat syaani,
 aukot punainen, pilarit keltainen, palkit vihrea.
+
+residual-moodi: varjaa pilven sen mukaan selittaako malli pisteen. Punainen =
+mikaan mallielementti ei kata pistetta (puuttuva rakenne erottuu punaisena
+tasona, kaluste punaisena moykkyna); himmea oma vari = selitetty.
 """
 import sys
 import json
@@ -16,6 +20,43 @@ import numpy as np
 import open3d as o3d
 
 from scan2bim.core.geometry.loader import load_point_cloud
+
+
+def classify_explained(P, model, tol=200.0):
+    """Bool/piste: onko piste jonkin mallielementin pinnan lahella (selitetty)."""
+    P = np.asarray(P, float)
+    expl = np.zeros(len(P), bool)
+    xy = P[:, :2]; z = P[:, 2]
+    for w in model["walls"]:
+        (x0, y0), (x1, y1) = w["axis"][0], w["axis"][1]
+        d = np.array([x1 - x0, y1 - y0]); L = np.hypot(*d)
+        if L < 1:
+            continue
+        u = d / L; n = np.array([-u[1], u[0]])
+        rel = xy - np.array([x0, y0])
+        along = rel @ u; perp = rel @ n
+        z0 = w.get("z_min", 0.0); z1 = z0 + w["height"]
+        th = w.get("thickness", 100.0)
+        expl |= ((np.abs(perp) < th / 2 + tol) & (along >= -tol) & (along <= L + tol)
+                 & (z >= z0 - tol) & (z <= z1 + tol))
+    for c in model.get("columns", []):
+        cx, cy = c["location"]; z0 = c["base_z"]; z1 = z0 + c["height"]
+        pr = c["profile"]
+        expl |= ((np.abs(xy[:, 0] - cx) < pr["width"] / 2 + tol)
+                 & (np.abs(xy[:, 1] - cy) < pr["depth"] / 2 + tol)
+                 & (z >= z0 - tol) & (z <= z1 + tol))
+    for b in model.get("beams", []):
+        a, cc = np.array(b["axis"][0], float), np.array(b["axis"][1], float)
+        d = cc - a; L = np.linalg.norm(d[:2])
+        if L < 1:
+            continue
+        u = d[:2] / L; nn = np.array([-u[1], u[0]])
+        rel = xy - a[:2]; along = rel @ u; perp = rel @ nn
+        pr = b["profile"]
+        zc = (a[2] + cc[2]) / 2
+        expl |= ((np.abs(perp) < pr["width"] / 2 + tol) & (along >= -tol) & (along <= L + tol)
+                 & (np.abs(z - zc) < pr["height"] / 2 + tol))
+    return expl
 
 
 def _lineset(points, lines, color):
@@ -104,20 +145,35 @@ def beam_geoms(model):
 
 
 def main():
-    src = Path(sys.argv[1]); model_path = Path(sys.argv[2])
-    max_pts = int(sys.argv[3]) if len(sys.argv) > 3 else 3_000_000
+    args = sys.argv[1:]
+    residual = "residual" in args
+    args = [a for a in args if a != "residual"]
+    src = Path(args[0]); model_path = Path(args[1])
+    max_pts = int(args[2]) if len(args) > 2 else 3_000_000
     cloud = load_point_cloud(src)
     P = np.asarray(cloud.points)
     step = max(1, len(P) // max_pts)
+    Ps = P[::step]
     pcd = o3d.geometry.PointCloud()
-    pcd.points = o3d.utility.Vector3dVector(P[::step])
-    if cloud.has_colors():
-        C = np.asarray(cloud.colors)[::step]
-        pcd.colors = o3d.utility.Vector3dVector(C)
-    print(f"pilvi {len(P)} -> naytetaan {len(pcd.points)} pistetta")
+    pcd.points = o3d.utility.Vector3dVector(Ps)
 
     model = json.load(open(model_path))
     wall_by_id = {w["id"]: w for w in model["walls"]}
+
+    if residual:
+        expl = classify_explained(Ps, model)
+        col = np.tile([0.85, 0.15, 0.15], (len(Ps), 1))  # punainen = ei selitetty
+        if cloud.has_colors():
+            C = np.asarray(cloud.colors)[::step]
+            col[expl] = C[expl] * 0.45                    # selitetty = himmea oma vari
+        else:
+            col[expl] = [0.55, 0.55, 0.55]
+        pcd.colors = o3d.utility.Vector3dVector(col)
+        print(f"residuaali: selitetty {expl.mean()*100:.1f} %, punaisena "
+              f"{(~expl).sum()} / {len(Ps)} pistetta (= puuttuva rakenne + kalusteet)")
+    elif cloud.has_colors():
+        pcd.colors = o3d.utility.Vector3dVector(np.asarray(cloud.colors)[::step])
+    print(f"pilvi {len(P)} -> naytetaan {len(pcd.points)} pistetta")
     geoms = [pcd]
     geoms += wall_geoms(model)
     geoms += column_geoms(model)
