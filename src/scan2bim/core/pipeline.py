@@ -115,6 +115,26 @@ def _looks_like_retail(cloud) -> bool:
     return area_m2 >= _RETAIL_MIN_AREA_M2
 
 
+_LARGE_SPACE_M2 = 400.0   # m² — tätä suurempi POHJA-ala (miehitetyt ruudut, ei
+                          # tiheyspainotettu percentiili) → histogrammi-detektori.
+                          # Isossa tilassa contour rakentaa seinät vain tiheän
+                          # lattiakontuurin ympärille (skannerihuone); histogrammi
+                          # nappaa koko rakennusvaipan keskikorkeuden tiheydestä.
+
+
+def _occupancy_area_m2(cloud, cell: float = 1000.0, min_pts: int = 3) -> float:
+    """Tilan POHJA-ala miehitettyinä xy-ruutuina — tiheysriippumaton (harvaan
+    keilattu kaukoseinä lasketaan). Percentiili-ala aliarvioi kun skannerit ovat
+    yhdessä huoneessa (tiheä alue dominoi); miehitysala näkee koko rakennuksen."""
+    pts = np.asarray(cloud.points)
+    if len(pts) < 1000:
+        return 0.0
+    g = np.floor(pts[:, :2] / cell).astype(np.int64)
+    key = g[:, 0] * 2_000_003 + g[:, 1]
+    _, counts = np.unique(key, return_counts=True)
+    return float((counts >= min_pts).sum()) * (cell / 1000.0) ** 2
+
+
 def _trim_wall_endpoints(walls, cloud) -> list:
     """Trimmaa seinien päätepisteet vastaamaan todellista pistepilvidataa."""
     pts = np.asarray(cloud.points)
@@ -1187,10 +1207,15 @@ class Pipeline:
         # nappaa pilarilinjoja). Asunnot/talot voivat olla ei-Manhattan (vinot
         # seinät) → niissä histogrammi löytää vähemmän → pidä configin detektori.
         is_retail = _looks_like_retail(cloud)
+        is_large = _occupancy_area_m2(cloud) >= _LARGE_SPACE_M2
         detector_name = self.config.detector
-        if detector_name in ("ransac", "density") and is_retail:
+        # Iso tila TAI liiketila → histogrammi (myös contour-oletuksesta): iso
+        # rakennus jonka lattia on osin okkluusiossa jää contourilla vajaaksi
+        # (vain skannerihuone). Asunto/talo (pieni pohja) pysyvät contourissa.
+        if detector_name in ("ransac", "density", "contour") and (is_retail or is_large):
             detector_name = "histogram"
-            self._progress("  Liiketila → histogrammi-detektori (deterministinen)")
+            why = "liiketila" if is_retail else "iso tila"
+            self._progress(f"  {why} → histogrammi-detektori (deterministinen)")
         detector = DetectorRegistry.get(detector_name)()
         # Semanttiset labelit detektorille jos suodatin tuotti ne. Muut
         # detektorit eivät tunne kenttää → ei vaikutusta niihin.
