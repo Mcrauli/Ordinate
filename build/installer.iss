@@ -46,6 +46,14 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 UninstallDisplayName=scan2bim {#AppVersion}
 UninstallDisplayIcon={app}\scan2bim.exe
+; Sulje kaynnissa oleva sovellus ENNEN tiedostojen korvausta → ei Windows-virhe 32
+; ("tiedosto toisen prosessin kaytossa") kun kayttaja asentaa uuden version appin
+; ollessa auki. AppMutex-nimi = gui/app.py:n luoma mutex (luotettava tunnistus,
+; Restart Manager ei aina huomaa Qt-appia). RestartApplications=no: ei kaynnista
+; appia yllattaen kesken asennuksen.
+CloseApplications=yes
+RestartApplications=no
+AppMutex=Scan2BimAppMutex
 VersionInfoVersion={#AppNumericVersion}
 VersionInfoCompany=Lauri Rekola
 VersionInfoDescription=scan2bim point cloud to IFC/DXF installer

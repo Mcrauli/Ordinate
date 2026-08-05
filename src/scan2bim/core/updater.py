@@ -77,7 +77,7 @@ def _select_asset(release: dict) -> tuple[str, int] | None:
     one-file-asennukset jää päivityksettä.
     """
     zips: list[tuple[str, int]] = []
-    exes: list[tuple[str, int, bool]] = []
+    exes: list[tuple[str, int]] = []
     for asset in release.get("assets", []):
         name = (asset.get("name") or "").lower()
         if name.endswith(".sha256"):
@@ -86,19 +86,19 @@ def _select_asset(release: dict) -> tuple[str, int] | None:
         size = int(asset.get("size", 0))
         if name.endswith(".zip"):
             zips.append((url, size))
-        elif name.endswith(".exe"):
-            # "setup" tunnistetaan asset­NIMESTÄ, ei URL:sta: latausosoite ei
-            # välttämättä sisällä nimeä lainkaan, jolloin hiljainen päivitys
-            # valitsisi asentajan ja käyttäjä saisi UAC-ikkunan.
-            exes.append((url, size, "setup" in name))
+        elif name.endswith(".exe") and "setup" not in name:
+            # KRIITTINEN: Setup.exe on ASENNUSOHJELMA, EI päivityspayload. Jos se
+            # valittaisiin, replace_exe korvaisi appin (scan2bim.exe) asentajalla →
+            # käyttäjän "appi" muuttuisi installeriksi (mitattu: näin kävi kentällä).
+            # Vain zip (one-dir) tai raaka onefile-exe kelpaa itsepäivitykseen;
+            # "setup"-niminen exe ohitetaan aina. Tunnistus assetNIMESTÄ (URL voi
+            # olla nimetön).
+            exes.append((url, size))
     if zips:
         return zips[0]
-    if not exes:
-        return None
-    for url, size, is_setup in exes:
-        if not is_setup:
-            return url, size
-    return exes[0][0], exes[0][1]
+    if exes:
+        return exes[0]
+    return None
 
 
 def asset_is_zip(url_or_name: str) -> bool:

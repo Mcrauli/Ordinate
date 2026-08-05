@@ -51,6 +51,18 @@ def test_raw_exe_still_works_for_old_releases():
     assert not asset_is_zip(url)
 
 
+def test_setup_exe_never_selected_as_update_payload():
+    """KRIITTINEN: Setup.exe on ASENNUSOHJELMA. Jos se valittaisiin, replace_exe
+    korvaisi appin asentajalla → appi muuttuisi installeriksi (kavi kentalla).
+    Pelkka Setup.exe -julkaisusta EI saa paivittaa."""
+    rel = {"assets": [
+        {"name": "scan2bim-Setup-0.9.7.exe", "browser_download_url": "u/s1.exe", "size": 3},
+        {"name": "scan2bim-Setup.exe", "browser_download_url": "u/s2.exe", "size": 4},
+        {"name": "scan2bim-Setup.exe.sha256", "browser_download_url": "u/s.sha256", "size": 1},
+    ]}
+    assert _select_asset(rel) is None
+
+
 def test_replace_app_dir_swaps_every_file_and_keeps_old(tmp_path):
     cur = _mkapp(tmp_path / "app", {
         "scan2bim.exe": "vanha-exe",
