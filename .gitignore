@@ -34,6 +34,10 @@ dist73/
 .venv_train/
 models/_new/
 models/_backup_3dses/
+# Mallien rollback-backupit: sisältävät 3DSES-johdannaisia painoja (CC-BY-SA) —
+# EI SAA jaella julkisessa repossa (F2 poisti 3DSES:n lisenssipuhtauden vuoksi).
+# Vain paikallinen rollback-turva.
+models/_backup/
 
 # Rohbau3D-testidata (2 GB, ladataan open-data.unibw.de doi:10.60776/ZWJFI4)
 data/_rohbau/
