@@ -4,6 +4,18 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 [`Mcrauli/scan2bim-web`](https://github.com/Mcrauli/scan2bim-web/releases):iin;
 sovellus päivittää itsensä sieltä.
 
+## v0.9.7 (5.8.2026) — liiketilan hyllyvaleseinät pois myös koko seinän mittaisina
+
+- **Koko seinän mittainen lattia-katto-hylly poistetaan nyt valeseinänä.** Aiempi
+  hyllynpoisto vaati, että hyllyn takana oleva seinä on selvästi pidempi — mutta
+  perimetriä vasten koko matkalta kulkeva hylly on yhtä pitkä kuin seinä, joten se
+  jäi jäljelle valeseinäksi. Uusi tunnistus: seinä on hyllyn etupinta, jos sen
+  ULKOPUOLELLA (rakennuksen reunaa kohti) kulkee pitkä rinnakkainen perimetriseinä
+  300–1500 mm päässä. **Mitattu** synteettisellä 48×32 m myymälällä: hyllyvaleseinät
+  2 → 0, jäljelle jää tasan oikeat seinät (9/9), 13/13 pilaria, 0 ylimääräistä — ja
+  ilman raskasta kalustesuodatinta. Vain liiketiloille (asunnoissa aito seinä voi
+  olla lähellä ulkoseinää → niiden tulos ei muutu). 130 testiä läpi.
+
 ## v0.9.6 (5.8.2026) — liiketilan seinädetektio: deterministinen ja pilarivapaa
 
 - **Uusi histogrammipohjainen seinädetektori liiketiloihin.** Aiempi RANSAC-
