@@ -538,6 +538,26 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   → histogrammi löytää vähemmän (asunto 6 vs contour 9) → ne pitävät CONTOUR:n,
   eivät triggeröi. RANSAC jää fallbackiksi (vinot seinät). `--detector histogram`
   pakottaa.
+- **ISO TILA → histogrammi MYÖS ilman "korkeaa" ehtoa; pohja-ala mitataan
+  MIEHITYSRUUDUISTA ei percentiilistä (5.8.2026).** Matterport-aula (46 M pistettä,
+  9 asemaa yhdessä huoneessa): contour rakensi seinät vain tiheän lattiakontuurin
+  ympärille (349 m² skannerihuone) ja koko vasen halli — jonka seinäpinnat näkyvät
+  TERÄVINÄ keskikorkeudella mutta lattia on okkluusiovarjossa — jäi mallintamatta
+  (13 seinää, 1 tila). Residuaalinäkymä (`data/_navigate.py residual`) paljasti sen:
+  vasen halli oli täynnä kattamattomia (punaisia) aitoja seinälinjoja. **Tämä
+  KUMOSI aiemman "lasin takana, jätä pois" -päätelmän** — läpi lasin näkyvä tila on
+  HARVA/kohinainen, aula-halli oli tiheä ja teräväviivainen = aito keilattu tila.
+  Kaksi ansaa: (1) `_looks_like_retail`-korkeus (p1–p99 z) oli aulalla vain 3.86 m
+  (harva katto) → ei "korkea"; (2) sen pinta-ala on tiheyspainotettu x/y-percentiili
+  → skannerihuone dominoi → 270 m² < 600. Molemmat aliarvioivat. Ratkaisu:
+  `_occupancy_area_m2` (miehitetyt 1 m xy-ruudut, TIHEYSRIIPPUMATON: harvakin
+  kaukoseinä lasketaan) ja `_detect` valitsee histogrammin kun **miehitysala ≥400 m²
+  TAI `_looks_like_retail`** — myös contour-OLETUKSESTA (aula 825 m², asunto 31,
+  talo 54 → vain iso tila triggeröi). Mitattu: aula 13→11 seinää mutta OIKEAT
+  (koko rakennusvaippa, 1→6 tilaa; residuaali vision). Gauntlet vihreä: retail-synt
+  9/9 seinää + 34/34 pilaria + 0 hyllyvaleseinää ennallaan; asunto/talo identtiset
+  (pieni ala + matala → detektori pysyy contourissa). Histogrammi contouria
+  nopeampi → ei hidastu.
 - **ISO MYYMÄLÄ, mitattu synteettisellä 96×64×8 m myymälällä** (`data/_synth_retail.py
   --sx 96000 --sy 64000 --height 8000`, 57 M pistettä, GT tunnettu). ÄLÄ aja
   `python -m scan2bim <ply>` — se avaa GUI:n; oikea CLI on `scan2bim convert`
