@@ -115,12 +115,27 @@ def build(out: np.ndarray | Path, step: float, sx: float, sy: float, h: float,
     rng = np.random.default_rng(seed)
     w = PlyWriter(Path(out))
     T_EXT, T_BOH, T_ROOM = 250.0, 200.0, 120.0
-    gt: dict = {"walls": [], "floor_z": 0.0, "ceiling_z": h, "columns": []}
+    gt: dict = {"walls": [], "floor_z": 0.0, "ceiling_z": h, "columns": [],
+                "openings": []}
 
     def wall(p0, p1, t, gaps=(), keep=1.0, both=True, z0=0.0, z1=None):
         z1 = h if z1 is None else z1
         _wall_faces(rng, p0, p1, t, z0 + 20, z1 - 20, step, w, gaps, keep, both)
         gt["walls"].append({"axis": [list(p0), list(p1)], "thickness": t})
+        # Kirjaa oviaukot (gap = rako seinassa) GT:hen: keskipiste maailmassa +
+        # leveys + korkeus. gap mitattu p0:sta seinan suuntaan.
+        p0a = np.asarray(p0, float); p1a = np.asarray(p1, float)
+        L = float(np.linalg.norm(p1a - p0a))
+        if L > 0:
+            u = (p1a - p0a) / L
+            for s0, s1, gh in gaps:
+                ctr = p0a + ((s0 + s1) / 2.0) * u
+                gt["openings"].append({
+                    "center": [float(ctr[0]), float(ctr[1])],
+                    "width": float(s1 - s0),
+                    "height": float(gh),
+                    "type": "door" if gh <= 2400.0 else "window",
+                })
 
     # --- ulkoseinat: sisapinta aina, ulkopinta ei (sisakeilaus) -------------
     glass0, glass1 = 0.14 * sx, 0.34 * sx        # sisaankaynnin lasijulkisivu
