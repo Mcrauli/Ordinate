@@ -25,6 +25,7 @@ class _FlyView(gl.GLViewWidget):
         super().__init__(parent)
         self.setFocusPolicy(QtCore.Qt.FocusPolicy.StrongFocus)
         self._keys: set[int] = set()
+        self._last_pos = None
         self._timer = QtCore.QTimer(self)
         self._timer.setInterval(16)
         self._timer.timeout.connect(self._step)
@@ -40,6 +41,31 @@ class _FlyView(gl.GLViewWidget):
     def focusOutEvent(self, e):
         self._keys.clear()
         super().focusOutEvent(e)
+
+    # -- FPS-hiirikatse: raahaus kääntää katsesuuntaa, kamera pysyy paikallaan --
+    def mousePressEvent(self, ev):
+        self._last_pos = ev.position()
+        self.setFocus()
+
+    def mouseReleaseEvent(self, ev):
+        self._last_pos = None
+
+    def mouseMoveEvent(self, ev):
+        if self._last_pos is None:
+            self._last_pos = ev.position()
+            return
+        p = ev.position()
+        dx = p.x() - self._last_pos.x(); dy = p.y() - self._last_pos.y()
+        self._last_pos = p
+        cam = self.cameraPosition()
+        az = self.opts["azimuth"] - dx * 0.16
+        el = float(np.clip(self.opts["elevation"] - dy * 0.16, -89.0, 89.0))
+        ar, er = np.radians(az), np.radians(el)
+        u = Vector(np.cos(er) * np.cos(ar), np.cos(er) * np.sin(ar), np.sin(er))
+        self.opts["azimuth"] = az
+        self.opts["elevation"] = el
+        self.opts["center"] = cam - u * self.opts["distance"]
+        self.update()
 
     def _step(self):
         if not self._keys:
@@ -60,9 +86,9 @@ class _FlyView(gl.GLViewWidget):
         if Q.Key_Q in self._keys: move -= up
         if not move.any():
             return
-        step = max(self.opts["distance"] * 0.02, 40.0)
+        step = max(self.opts["distance"] * 0.005, 25.0)
         if QtWidgets.QApplication.keyboardModifiers() & QtCore.Qt.KeyboardModifier.ShiftModifier:
-            step *= 4.0
+            step *= 3.5
         self.opts["center"] = center + Vector(*(move * step))
         self.update()
 
@@ -268,7 +294,7 @@ class InspectView(QtWidgets.QWidget):
         self._load_btn.setEnabled(False)
         self._info.setText("Ladataan pistepilveä…")
         self._thread = QtCore.QThread(self)
-        self._loader = _Loader(self._cloud_path, 2_000_000)
+        self._loader = _Loader(self._cloud_path, 4_000_000)
         self._loader.moveToThread(self._thread)
         self._thread.started.connect(self._loader.run)
         self._loader.done.connect(self._on_loaded)
@@ -290,7 +316,9 @@ class InspectView(QtWidgets.QWidget):
         self._Ps = Ps; self._rgb = rgb; self._offset = offset
         self._rgba = np.column_stack([rgb, np.ones(len(rgb), np.float32)])
         self._pts = (Ps - offset).astype(np.float32)
-        self._scatter = gl.GLScatterPlotItem(pos=self._pts, color=self._rgba, size=2.2, pxMode=True)
+        # perspektiivikoko (maailmayksikkö mm): lähellä pisteet suurenevat →
+        # pinnat täyttyvät valokuvamaisiksi kun navigoi lähelle
+        self._scatter = gl.GLScatterPlotItem(pos=self._pts, color=self._rgba, size=16.0, pxMode=False)
         self._scatter.setGLOptions("opaque")
         self._view.addItem(self._scatter)
         # pohjaruudukko orientaatioon
@@ -347,9 +375,9 @@ class InspectView(QtWidgets.QWidget):
             return
         mode = self._mode.currentIndex()
         if mode == 0:                                          # Väri
-            self._scatter.setData(pos=self._pts, color=self._rgba, size=2.2)
+            self._scatter.setData(pos=self._pts, color=self._rgba, size=16.0, pxMode=False)
         elif mode == 1:                                        # Residuaali (kaikki)
-            self._scatter.setData(pos=self._pts, color=self._res, size=2.2)
+            self._scatter.setData(pos=self._pts, color=self._res, size=16.0, pxMode=False)
         else:                                                  # Vain puuttuvat
             m = ~self._expl if self._expl is not None else np.ones(len(self._pts), bool)
-            self._scatter.setData(pos=self._pts[m], color=self._res[m], size=3.5)
+            self._scatter.setData(pos=self._pts[m], color=self._res[m], size=28.0, pxMode=False)
