@@ -403,3 +403,20 @@ def replace_exe(
 
     current_exe.rename(old_path)
     shutil.move(str(new_exe), str(current_exe))
+
+
+def apply_downloaded_update(downloaded_path: Path, download_url: str) -> None:
+    """Ota ladattu päivitys käyttöön: valitse OIKEA vaihtotapa payloadin mukaan.
+
+    KRIITTINEN: one-dir-julkaisu on ZIP joka pitää PURKAA ja vaihtaa hakemisto
+    tiedosto kerrallaan (:func:`replace_app_dir`). Zipin kirjoittaminen sellaisenaan
+    scan2bim.exe:ksi (:func:`replace_exe`) rikkoo appin ("Sovellus ei toimi
+    tietokoneessasi" — tiedosto on zip, ei PE). :func:`replace_exe` on VAIN vanhoille
+    one-file-julkaisuille (raaka .exe). Ennen tätä GUI kutsui aina replace_exe:ä →
+    jokainen one-dir-itsepäivitys hajosi (kenttäbugi 5.8.2026)."""
+    if asset_is_zip(download_url):
+        extract_dir = Path(tempfile.mkdtemp(prefix="scan2bim_upd_"))
+        app_root = extract_zip(downloaded_path, extract_dir)
+        replace_app_dir(app_root)
+    else:
+        replace_exe(downloaded_path)

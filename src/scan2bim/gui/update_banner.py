@@ -19,11 +19,11 @@ from PySide6 import QtCore, QtWidgets
 from scan2bim.core.updater import (
     DEFAULT_REPO,
     UpdateInfo,
+    apply_downloaded_update,
     check_for_update,
     download_asset,
     fetch_expected_sha256,
     is_running_bundled,
-    replace_exe,
 )
 
 
@@ -188,11 +188,12 @@ def perform_update(info: UpdateInfo, parent: QtWidgets.QWidget | None = None) ->
         dialog.setRange(0, 0)
         QtWidgets.QApplication.processEvents()
 
-        # In-place exe swap (silent, no UAC) — same mechanism as dwg2ifc.
-        # Works only when the app lives in a user-writable folder; a
-        # per-user install (%LOCALAPPDATA%\Programs\scan2bim) satisfies this.
+        # In-place swap (silent, no UAC). Works kun sovellus on käyttäjän
+        # kirjoitettavassa kansiossa (per-user: %LOCALAPPDATA%\Programs\scan2bim).
+        # apply_downloaded_update valitsee oikean tavan: one-dir-ZIP puretaan
+        # (replace_app_dir); vain vanha one-file-.exe kirjoitetaan sellaisenaan.
         try:
-            replace_exe(downloaded_path)
+            apply_downloaded_update(downloaded_path, info.download_url)
         except Exception as exc:
             dialog.close()
             QtWidgets.QMessageBox.critical(

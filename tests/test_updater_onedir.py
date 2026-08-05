@@ -11,11 +11,13 @@ import pytest
 
 from scan2bim.core.updater import (
     _select_asset,
+    apply_downloaded_update,
     asset_is_zip,
     cleanup_old_exe,
     extract_zip,
     replace_app_dir,
 )
+import scan2bim.core.updater as _updater
 
 
 def _mkapp(root, files):
@@ -61,6 +63,30 @@ def test_setup_exe_never_selected_as_update_payload():
         {"name": "scan2bim-Setup.exe.sha256", "browser_download_url": "u/s.sha256", "size": 1},
     ]}
     assert _select_asset(rel) is None
+
+
+def test_apply_zip_extracts_and_swaps_dir_not_exe(tmp_path, monkeypatch):
+    """KRIITTINEN regressio: one-dir-ZIP-paivitys pitaa PURKAA (replace_app_dir),
+    EI kirjoittaa zippia sellaisenaan scan2bim.exe:ksi (replace_exe). GUI kutsui
+    ennen aina replace_exe:ta → jokainen itsepaivitys teki appista rikkinaisen
+    zip-tiedoston ("Sovellus ei toimi tietokoneessasi")."""
+    calls = []
+    monkeypatch.setattr(_updater, "extract_zip", lambda p, d: tmp_path / "app")
+    monkeypatch.setattr(_updater, "replace_app_dir", lambda d: calls.append(("app_dir", d)))
+    monkeypatch.setattr(_updater, "replace_exe", lambda p: calls.append(("exe", p)))
+    apply_downloaded_update(tmp_path / "scan2bim-0.9.8.zip",
+                            "https://x/releases/download/v0.9.8/scan2bim-0.9.8.zip")
+    assert calls == [("app_dir", tmp_path / "app")], f"zip meni vaaraan polkuun: {calls}"
+
+
+def test_apply_raw_exe_uses_replace_exe(tmp_path, monkeypatch):
+    """Vanha one-file-.exe kirjoitetaan sellaisenaan (replace_exe)."""
+    calls = []
+    monkeypatch.setattr(_updater, "replace_app_dir", lambda d: calls.append(("app_dir", d)))
+    monkeypatch.setattr(_updater, "replace_exe", lambda p: calls.append(("exe", p)))
+    apply_downloaded_update(tmp_path / "scan2bim.exe",
+                            "https://x/releases/download/v0.8.0/scan2bim.exe")
+    assert calls == [("exe", tmp_path / "scan2bim.exe")], f"exe meni vaaraan polkuun: {calls}"
 
 
 def test_replace_app_dir_swaps_every_file_and_keeps_old(tmp_path):
