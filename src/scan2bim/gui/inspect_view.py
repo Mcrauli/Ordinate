@@ -72,11 +72,14 @@ class _FlyView(gl.GLViewWidget):
             return
         Q = QtCore.Qt.Key
         cam = self.cameraPosition(); center = self.opts["center"]
-        fwd = np.array([center.x() - cam.x(), center.y() - cam.y(), 0.0])
+        # täysi 3D-katsesuunta → W/S lentää minne katsoo (myös ylös/alas)
+        fwd = np.array([center.x() - cam.x(), center.y() - cam.y(), center.z() - cam.z()])
         nrm = np.linalg.norm(fwd)
         fwd = fwd / nrm if nrm > 1e-6 else np.array([1.0, 0.0, 0.0])
-        right = np.array([fwd[1], -fwd[0], 0.0])
-        up = np.array([0.0, 0.0, 1.0])
+        right = np.array([fwd[1], -fwd[0], 0.0])           # sivuaskel pysyy vaakana
+        rnrm = np.linalg.norm(right)
+        right = right / rnrm if rnrm > 1e-6 else np.array([1.0, 0.0, 0.0])
+        up = np.array([0.0, 0.0, 1.0])                     # Q/E maailman pystyssä
         move = np.zeros(3)
         if Q.Key_W in self._keys: move += fwd
         if Q.Key_S in self._keys: move -= fwd
