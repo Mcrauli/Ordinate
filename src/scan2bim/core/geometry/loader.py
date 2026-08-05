@@ -334,12 +334,20 @@ def _load_e57(path: Path) -> o3d.geometry.PointCloud:
     merged = o3d.geometry.PointCloud()
     for i in range(e57.scan_count):
         try:
-            data = e57.read_scan(i, transform=True, ignore_missing_fields=True)
+            data = e57.read_scan(i, colors=True, transform=True, ignore_missing_fields=True)
         except Exception:
-            data = e57.read_scan(i, ignore_missing_fields=True)
+            data = e57.read_scan(i, colors=True, ignore_missing_fields=True)
         xyz = np.column_stack([data["cartesianX"], data["cartesianY"], data["cartesianZ"]])
         cloud = o3d.geometry.PointCloud()
         cloud.points = o3d.utility.Vector3dVector(xyz.astype(np.float64))
+        # Värit jos E57:ssä on ne (Matterport/Radikal): ilman tätä pilvi
+        # renderöityi harmaana "mössönä". Normalisoi 0–1 (E57-värit 8- tai 16-bit).
+        if all(k in data for k in ("colorRed", "colorGreen", "colorBlue")):
+            rgb = np.column_stack([data["colorRed"], data["colorGreen"], data["colorBlue"]]).astype(np.float64)
+            mx = float(rgb.max()) if rgb.size else 0.0
+            if mx > 1.0:
+                rgb /= 65535.0 if mx > 255.0 else 255.0
+            cloud.colors = o3d.utility.Vector3dVector(np.clip(rgb, 0.0, 1.0))
         merged += cloud
     return merged
 
