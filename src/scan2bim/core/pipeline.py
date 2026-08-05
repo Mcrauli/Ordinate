@@ -1321,11 +1321,18 @@ class Pipeline:
 
         # Poista seinät jotka ovat kaukana KAIKISTA skannereista (harvan reunapilven
         # ajautuma-artefaktit). No-op ilman skannerisijainteja (synteettinen/E57:tön).
-        from scan2bim.core.semantics.wall_semantics import remove_walls_beyond_scan_range
-        _nw = len(model.walls)
-        model.walls = remove_walls_beyond_scan_range(model.walls, self._scanner_origins)
-        if len(model.walls) < _nw:
-            self._progress(f"  Skannausalueen ulkopuolisia seiniä poistettu: {_nw - len(model.walls)}")
+        # ISOSSA TILASSA OHITETAAN: 12 m -raja on asuntomittakaavan vakio; iso
+        # rakennus jonka skannerit ovat yhdessä huoneessa jättää aidot vaippaseinät
+        # >12 m päähän → mitattu Matterport-aula: raja poisti 19 m conf=1.00 -seinän
+        # (koko vasen perimetri) + 2 perimetripätkää, kaikki aitoja (residuaali vision).
+        # Histogrammi (ison tilan detektori) on rakenteellisesti puhdas → ei funny-
+        # seiniä joita raja torjuisi, joten poisto olisi pelkkää haittaa.
+        if not is_large:
+            from scan2bim.core.semantics.wall_semantics import remove_walls_beyond_scan_range
+            _nw = len(model.walls)
+            model.walls = remove_walls_beyond_scan_range(model.walls, self._scanner_origins)
+            if len(model.walls) < _nw:
+                self._progress(f"  Skannausalueen ulkopuolisia seiniä poistettu: {_nw - len(model.walls)}")
 
         # LUKITSE PINNAT LOPULLISESTI: snap/trim siirtävät päätepisteitä ja kumoavat
         # aiemman pintalukituksen (akseli jää pistepinnalle → mallin pinta thickness/2
