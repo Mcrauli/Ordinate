@@ -4,6 +4,17 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 [`Mcrauli/scan2bim-web`](https://github.com/Mcrauli/scan2bim-web/releases):iin;
 sovellus päivittää itsensä sieltä.
 
+## v0.9.8 (5.8.2026) — asennuksen ja itsepäivityksen kestävyys
+
+- **Itsepäivitys ei voi enää muuttaa sovellusta asennusohjelmaksi.** Harvinaisessa
+  tilanteessa päivitys saattoi napata asennusohjelman (Setup.exe) päivityspakettina ja
+  korvata sovelluksen sillä — jolloin sovelluksen käynnistys avasikin asennusohjelman.
+  Nyt päivitys hyväksyy vain varsinaisen ohjelmapaketin (zip); "Setup"-nimistä tiedostoa
+  ei koskaan valita.
+- **Uuden version asennus sulkee käynnissä olevan sovelluksen** ensin, sen sijaan että
+  kaatuisi virheeseen "tiedosto on toisen prosessin käytössä" (Windows-virhe 32).
+- 131 testiä läpi.
+
 ## v0.9.7 (5.8.2026) — liiketilan hyllyvaleseinät pois myös koko seinän mittaisina
 
 - **Koko seinän mittainen lattia-katto-hylly poistetaan nyt valeseinänä.** Aiempi
