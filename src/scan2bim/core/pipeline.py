@@ -1186,8 +1186,9 @@ class Pipeline:
         # deterministinen, ~130× nopeampi ja pilarivapaa (ransac-tason kallistuma
         # nappaa pilarilinjoja). Asunnot/talot voivat olla ei-Manhattan (vinot
         # seinät) → niissä histogrammi löytää vähemmän → pidä configin detektori.
+        is_retail = _looks_like_retail(cloud)
         detector_name = self.config.detector
-        if detector_name in ("ransac", "density") and _looks_like_retail(cloud):
+        if detector_name in ("ransac", "density") and is_retail:
             detector_name = "histogram"
             self._progress("  Liiketila → histogrammi-detektori (deterministinen)")
         detector = DetectorRegistry.get(detector_name)()
@@ -1403,7 +1404,7 @@ class Pipeline:
         # tilat lasketaan puhtaasta seinäjoukosta.
         from scan2bim.core.semantics.wall_semantics import remove_shelf_front_walls
         _nw_pre_shelf = len(model.walls)
-        model.walls = remove_shelf_front_walls(model.walls)
+        model.walls = remove_shelf_front_walls(model.walls, retail=is_retail)
         if len(model.walls) < _nw_pre_shelf:
             self._progress(f"  Hyllyn etupinta-valeseiniä poistettu: {_nw_pre_shelf - len(model.walls)}")
 

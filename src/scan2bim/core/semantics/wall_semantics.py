@@ -515,7 +515,7 @@ def _measure_thickness(proj: np.ndarray, T_ref: float = 200.0) -> float | None:
 
 def remove_shelf_front_walls(walls, dist_lo=300.0, dist_hi=1500.0,
                              ang_tol_deg=12.0, min_partner_len=4000.0,
-                             len_ratio=2.0, min_overlap_frac=0.5):
+                             len_ratio=2.0, min_overlap_frac=0.5, retail=False):
     """Poista lattia-katto-hyllykön etupintaan syntyneet valeseinät.
 
     Liiketilan hyllykön etupinta ulottuu lattiasta kattoon → geometrisesti seinä,
@@ -526,14 +526,23 @@ def remove_shelf_front_walls(walls, dist_lo=300.0, dist_hi=1500.0,
     pidempää rinnakkaista. Kontuurista riippumaton (raaka lattiakontuuri on 25-90 mm
     epätarkka → sitä ei saa käyttää). Mitattu synteettisellä myymälällä: hyllyn
     etupinnat 842-982 mm pidemmän perimetriseinän edessä; oikeat seinät eivät.
-    """
+
+    ``retail=True`` (vain liiketilassa, ``_looks_like_retail``) lisää KOKO SEINÄN
+    MITTAISEN hyllyn erottimen: len_ratio-testi ei nappaa hyllyä joka on yhtä pitkä
+    kuin perimetri (histogrammidetektori löytää molemmat pintoina). Silloin hylly =
+    seinä jonka ULKOPUOLELLA (rakennuksen reunaa kohti) on pitkä rinnakkainen
+    perimetriseinä 300-1500 mm. Portitettu retailiin: asunnossa aito seinä voi olla
+    lähellä ulkoseinää (komero/erkkeri) → ei saa poistaa siellä."""
     def _endpoints(w):
         return np.asarray(w.axis[0], float), np.asarray(w.axis[1], float)
 
     lens = []
+    mids = []
     for w in walls:
         a, b = _endpoints(w)
         lens.append(float(np.linalg.norm(b - a)))
+        mids.append(0.5 * (a + b))
+    centroid = np.mean(mids, axis=0) if mids else np.zeros(2)
 
     remove = set()
     for i, w in enumerate(walls):
@@ -543,12 +552,17 @@ def remove_shelf_front_walls(walls, dist_lo=300.0, dist_hi=1500.0,
         a, b = _endpoints(w)
         u = (b - a) / Li
         n = np.array([-u[1], u[0]])
+        c = 0.5 * (a + b)
+        # W:n ULKOSUUNTA = normaali joka osoittaa poispäin rakennuksen keskeltä
+        n_out = n if float(np.dot(c - centroid, n)) > 0 else -n
         for j, w2 in enumerate(walls):
             if j == i:
                 continue
             Lj = lens[j]
-            # kumppanin on oltava selvästi pidempi (aito perimetri) JA pitkä
-            if Lj < max(min_partner_len, len_ratio * Li):
+            long_partner = Lj >= max(min_partner_len, len_ratio * Li)
+            # retail: koko-mittainen hylly → kumppanin riittää olla pitkä perimetri
+            full_len_ok = retail and Lj >= min_partner_len
+            if not (long_partner or full_len_ok):
                 continue
             a2, b2 = _endpoints(w2)
             L2v = b2 - a2
@@ -556,7 +570,6 @@ def remove_shelf_front_walls(walls, dist_lo=300.0, dist_hi=1500.0,
             if abs(float(np.dot(u, u2))) < np.cos(np.radians(ang_tol_deg)):
                 continue  # ei rinnakkainen
             # kohtisuora etäisyys w:n keskeltä kumppanin linjaan
-            c = 0.5 * (a + b)
             perp = abs(float(np.dot(c - a2, n)))
             if not (dist_lo <= perp <= dist_hi):
                 continue
@@ -564,7 +577,13 @@ def remove_shelf_front_walls(walls, dist_lo=300.0, dist_hi=1500.0,
             ta = float(np.dot(a - a2, u2)); tb = float(np.dot(b - a2, u2))
             lo, hi = sorted((ta, tb))
             ov = max(0.0, min(hi, Lj) - max(lo, 0.0))
-            if ov / Li >= min_overlap_frac:
+            if ov / Li < min_overlap_frac:
+                continue
+            if long_partner:
+                remove.add(i)
+                break
+            # full_len_ok: kumppanin oltava W:n ULKOPUOLELLA (perimetri hyllyn takana)
+            if float(np.dot(0.5 * (a2 + b2) - c, n_out)) > 0:
                 remove.add(i)
                 break
     return [w for k, w in enumerate(walls) if k not in remove]
