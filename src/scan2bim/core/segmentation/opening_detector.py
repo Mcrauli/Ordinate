@@ -112,11 +112,27 @@ def _is_occlusion_shadow(
     patch_area = max(opening.width * opening.opening_height, 1.0)
     occ_thr = max(int(patch_area / (40.0 * 40.0) * 0.25), 80)  # ~25 % katepeitto
 
+    # Aukon keskipiste (2D) näkökulmakulman arviointiin
+    center2d = p0 + along * (0.5 * (a0 + a1))
+
     pN = pts[:, :2] @ normal
+    # Kerää OKKLUUSIO-osumat per skanneri. Aito aukko on JOKIN skanneri näkee
+    # sen läpi (matala osumaluku); aito varjo on kaikilta korkea. → hylkää vain
+    # jos VÄHITEN peittynytkin (min) ylittää kynnyksen. Sivuttain (grazing)
+    # aukkoa katsova skanneri antaa keinotekoisen matalan luvun → ohitetaan.
+    counts: list[int] = []
     for S in origins:
         sN = float(S[:2] @ normal)
         wall_gap = plane_D - sN           # etäisyys skannerista seinätasolle (normaalin suunnassa)
         if abs(wall_gap) < 100.0:
+            continue
+        # näkökulmakulma seinän normaaliin nähden — grazing (>75°) ei ole informatiivinen
+        view = center2d - S[:2]
+        vlen = float(np.linalg.norm(view))
+        if vlen < 1.0:
+            continue
+        cos_inc = abs(float(view @ normal)) / vlen
+        if cos_inc < 0.26:
             continue
         denom = pN - sN
         with np.errstate(divide="ignore", invalid="ignore"):
@@ -124,15 +140,18 @@ def _is_occlusion_shadow(
         # P on skannerin ja seinän VÄLISSÄ (f>1) ja selvästi seinän edessä
         front = np.isfinite(f) & (f > 1.05) & (np.abs(denom) < abs(wall_gap) - 50.0) & (np.sign(denom) == np.sign(wall_gap))
         if not front.any():
+            counts.append(0)
             continue
         Pf = pts[front]
         ff = f[front][:, None]
         hit = S[None, :] + ff * (Pf - S[None, :])      # osumapiste seinätasolla
         hit_along = (hit[:, :2] - p0) @ along
         inside = (hit_along >= a0) & (hit_along <= a1) & (hit[:, 2] >= z0) & (hit[:, 2] <= z1)
-        if int(inside.sum()) >= occ_thr:
-            return True
-    return False
+        counts.append(int(inside.sum()))
+    if not counts:
+        return False
+    # kaikkien informatiivisten skannerien näkymä on tukossa → aito varjo
+    return min(counts) >= occ_thr
 
 
 def _wall_openings(
