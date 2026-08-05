@@ -87,3 +87,22 @@ def test_separate_parallel_wall_not_merged_into_perimeter():
     perim = _wall("w_perim", 12930, -25580, 12930, -32100, method="floorplan")
     out = merge_collinear_walls([meas, perim])
     assert len(out) == 2, "erillinen rinnakkaisseina sulautui virheellisesti"
+
+
+def test_remove_walls_beyond_scan_range():
+    from scan2bim.core.semantics.wall_semantics import remove_walls_beyond_scan_range
+    from scan2bim.schemas.model import ElementSource, Wall
+
+    def _w(x0, y0, x1, y1):
+        return Wall(id="w", confidence=1.0, classification="wall",
+                    source=ElementSource(method="contour"),
+                    axis=[[x0, y0], [x1, y1]], height=2700.0, thickness=200.0, z_min=0.0)
+
+    origins = [[0.0, 0.0, 1400.0], [5000.0, 0.0, 1400.0]]
+    near = _w(0, 500, 4000, 500)        # ~0.5 m skannerista → säilyy
+    far = _w(0, 20000, 4000, 20000)     # ~20 m kaikista → poistuu
+    kept = remove_walls_beyond_scan_range([near, far], origins)
+    xs = [round(w.axis[0][1]) for w in kept]
+    assert 500 in xs and 20000 not in xs, f"skannausalue-suodatin vaarin: {xs}"
+    # ilman skannerisijainteja → EI poista mitaan (ei todistetta)
+    assert len(remove_walls_beyond_scan_range([near, far], [])) == 2

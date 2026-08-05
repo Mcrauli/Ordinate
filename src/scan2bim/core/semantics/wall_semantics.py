@@ -340,6 +340,43 @@ _DANGLING_REACH = 2300.0   # mm — sama kuin corner_snap._CLOSE_MAX_EXT: näin 
                            # close_open_corners voi vielä yhdistää avoimen pään
 
 
+_SCAN_RANGE_MM = 12000.0   # mm — kauempana KAIKISTA skannereista oleva seinä on
+                           # harvan reunapilven (ajautuma/stray) artefakti, ei aito.
+                           # TLS/Matterport kaappaa seinän luotettavasti ~≤10 m; 12 m
+                           # antaa marginaalin. Mitattu Matterport-lobbylla: aidot
+                           # seinät ≤7 m lähimmästä skannerista, artefaktit ≥12 m.
+
+
+def remove_walls_beyond_scan_range(walls: list[Wall], scanner_origins: list,
+                                   max_dist: float = _SCAN_RANGE_MM) -> list[Wall]:
+    """Poista seinät jotka ovat kauempana kuin ``max_dist`` KAIKISTA skannereista.
+
+    Käyttää E57:n skannerisijainteja kuten okkluusiosuodatin: aidot seinät
+    skannataan läheltä, kaukana harvassa pilvessä oleva "seinä" on ajautuma-/
+    stray-artefakti. No-op jos skannerisijainteja ei ole (esim. synteettinen tai
+    metatiedoton pilvi) → ei koskaan poista mitään ilman todistetta."""
+    if not scanner_origins:
+        return walls
+    S = np.array([np.asarray(o, float)[:2] for o in scanner_origins])
+    kept: list[Wall] = []
+    for w in walls:
+        if len(w.axis) < 2:
+            kept.append(w)
+            continue
+        a = np.asarray(w.axis[0], float); b = np.asarray(w.axis[1], float)
+        ab = b - a
+        denom = float(np.dot(ab, ab))
+        if denom < 1e-9:
+            dmin = float(np.min(np.linalg.norm(S - a, axis=1)))
+        else:
+            t = np.clip((S - a) @ ab / denom, 0.0, 1.0)   # lähin piste janalla
+            proj = a + t[:, None] * ab
+            dmin = float(np.min(np.linalg.norm(S - proj, axis=1)))
+        if dmin <= max_dist:
+            kept.append(w)
+    return kept
+
+
 def remove_dangling_walls(walls: list[Wall], free_tol: float = 400.0) -> list[Wall]:
     """Poistaa irralliset tynkäseinät: sisäseinä jonka jompikumpi pää on ilmassa
     (>free_tol kaikista muista seinistä) ei rajaa huonetta → roskaa. Perimetri

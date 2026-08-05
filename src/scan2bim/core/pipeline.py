@@ -1294,6 +1294,14 @@ class Pipeline:
         from scan2bim.core.semantics.wall_semantics import remove_dangling_walls
         model.walls = remove_dangling_walls(model.walls)
 
+        # Poista seinät jotka ovat kaukana KAIKISTA skannereista (harvan reunapilven
+        # ajautuma-artefaktit). No-op ilman skannerisijainteja (synteettinen/E57:tön).
+        from scan2bim.core.semantics.wall_semantics import remove_walls_beyond_scan_range
+        _nw = len(model.walls)
+        model.walls = remove_walls_beyond_scan_range(model.walls, self._scanner_origins)
+        if len(model.walls) < _nw:
+            self._progress(f"  Skannausalueen ulkopuolisia seiniä poistettu: {_nw - len(model.walls)}")
+
         # LUKITSE PINNAT LOPULLISESTI: snap/trim siirtävät päätepisteitä ja kumoavat
         # aiemman pintalukituksen (akseli jää pistepinnalle → mallin pinta thickness/2
         # ohi → bias ~50mm). Aja surface_lock vielä kerran, sitten snap nurkat kiinni.
