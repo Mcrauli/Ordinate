@@ -67,6 +67,42 @@ class Camera:
         v = self.ppy + self.fl * Pc[:, 1] / (zc * self.ph_)
         return np.column_stack([u, v]), front
 
+    def depth_of(self, P):
+        """Nx3 maailma -> Nx kameran z-syvyys (mm), inf jos takana."""
+        zc = self.to_cam(np.atleast_2d(P))[:, 2]
+        zc[zc <= 1.0] = np.inf
+        return zc
+
+    def build_depth_buffer(self, cloud_pts, cell=8):
+        """Karkea depth-buffer pilvesta: min-z per (cell x cell) pikseliruutu."""
+        uv, front = self.project(cloud_pts)
+        Pc = self.to_cam(cloud_pts)
+        zc = Pc[:, 2]
+        u, v = uv[:, 0], uv[:, 1]
+        ok = front & (u >= 0) & (u < self.w) & (v >= 0) & (v < self.h)
+        gw = int(np.ceil(self.w / cell)); gh = int(np.ceil(self.h / cell))
+        buf = np.full((gh, gw), np.inf)
+        gi = (v[ok] / cell).astype(int); gj = (u[ok] / cell).astype(int)
+        z = zc[ok]
+        np.minimum.at(buf, (gi, gj), z)
+        self._depth = buf; self._cell = cell
+        return buf
+
+    def occluded(self, world_pt, margin=250.0):
+        """True jos world_pt on lahemman pilvipinnan takana (piilossa)."""
+        if getattr(self, "_depth", None) is None:
+            return False
+        Pc = self.to_cam(np.atleast_2d(world_pt))[0]
+        if Pc[2] <= 1.0:
+            return True
+        u = self.ppx + self.fl * Pc[0] / (Pc[2] * self.pw)
+        v = self.ppy + self.fl * Pc[1] / (Pc[2] * self.ph_)
+        gi = int(v / self._cell); gj = int(u / self._cell)
+        if gi < 0 or gj < 0 or gi >= self._depth.shape[0] or gj >= self._depth.shape[1]:
+            return False
+        d = self._depth[gi, gj]
+        return np.isfinite(d) and Pc[2] > d + margin
+
     def clip_project_segment(self, a, b):
         """Yksi jana a->b (mm) near-plane-leikattuna -> [(u,v),(u,v)] tai None."""
         a = np.asarray(a, float); b = np.asarray(b, float)
@@ -128,25 +164,33 @@ def _column_edges(col):
     return edges
 
 
-def draw_overlay(cam, model, wall_by_id):
+def draw_overlay(cam, model, wall_by_id, cloud_pts=None):
     img = cam.image()
     dr = ImageDraw.Draw(img)
     W, H = cam.w, cam.h
+    occ = cloud_pts is not None
+    if occ:
+        cam.build_depth_buffer(cloud_pts)
 
     def draw_edges(edges, color, width):
         drew = 0
         for a, b in edges:
-            uv = cam.clip_project_segment(a, b)
-            if uv is None:
-                continue
-            (u0, v0), (u1, v1) = uv
-            # ohita jos molemmat selvasti ruudun ulkona samalla puolella
-            if (u0 < -W and u1 < -W) or (u0 > 2 * W and u1 > 2 * W):
-                continue
-            if (v0 < -H and v1 < -H) or (v0 > 2 * H and v1 > 2 * H):
-                continue
-            dr.line([(u0, v0), (u1, v1)], fill=color, width=width)
-            drew += 1
+            a = np.asarray(a, float); b = np.asarray(b, float)
+            # jaa jana osiin -> syvyystesti pilvipintaa vasten (piilota peitetyt)
+            nseg = 24
+            prev = None
+            for t in np.linspace(0.0, 1.0, nseg + 1):
+                p = a + t * (b - a)
+                vis = not (occ and cam.occluded(p))
+                uv = cam.clip_project_segment(p, p + 1e-3) if vis else None
+                cur = None
+                if vis and uv is not None:
+                    u0, v0 = uv[0]
+                    if -W < u0 < 2 * W and -H < v0 < 2 * H:
+                        cur = (u0, v0)
+                if prev is not None and cur is not None:
+                    dr.line([prev, cur], fill=color, width=width); drew += 1
+                prev = cur
         return drew
 
     n = 0
@@ -166,9 +210,15 @@ def main():
     model = json.load(open(model_path))
     wall_by_id = {w["id"]: w for w in model["walls"]}
     cams = load_cameras(e57)
+    # pilvi syvyyskulkua varten (piilota mallireunat lahemman pinnan takaa)
+    from scan2bim.core.geometry.loader import load_point_cloud
+    cloud = np.asarray(load_point_cloud(e57).points)
+    if len(cloud) > 12_000_000:
+        cloud = cloud[:: len(cloud) // 12_000_000]
+    print(f"depth-pilvi: {len(cloud)} pistetta")
     idxs = range(len(cams)) if which == "all" else [int(which)]
     for i in idxs:
-        img, n = draw_overlay(cams[i], model, wall_by_id)
+        img, n = draw_overlay(cams[i], model, wall_by_id, cloud_pts=cloud)
         if which == "all" and n == 0:
             continue
         out = out_dir / f"overlay_{i:02d}.png"
