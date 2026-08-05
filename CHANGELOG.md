@@ -4,6 +4,23 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 [`Mcrauli/scan2bim-web`](https://github.com/Mcrauli/scan2bim-web/releases):iin;
 sovellus päivittää itsensä sieltä.
 
+## v0.9.5 (5.8.2026) — iso myymälä: takahuoneen seinät löytyvät + vähemmän ylivenymää
+
+- **Takahuoneen väliseinät löytyvät nyt (recall 6/9 → 9/9).** Isossa myymälässä
+  aidot sisäseinät jäivät löytymättä, koska seinän luottamus laskettiin sen koon
+  suhteessa koko pilveen — 12 m takahuoneen seinä on murto-osa 1500 m² hallista →
+  luottamus romahti → seinä hylättiin. Lisätty kokoriippumaton **peitto** (kuinka
+  tiheästi seinä on katettu pituudeltaan): aito seinä on lähes yhtäjaksoisesti
+  katettu, hajanainen taso ei. Seinä säilytetään jos se on hyvin katettu, vaikka
+  kokosuhteinen luottamus jäisi matalaksi. **Mitattu** synteettisellä 48×32 m
+  myymälällä: takahuoneen seinät 6/9 → 9/9, hyllyvaleseiniä 0.
+- **Seinät eivät enää veny tilan syvyyden yli lattialaatan takia.** Seinän pään
+  paikka mitattiin koko korkeudelta, jolloin saman pystylinjan lattia- ja
+  kattolaatta (pisteitä joka kohdassa) sai seinän näyttämään jatkuvan koko tilan
+  läpi. Pää mitataan nyt keskikorkeudelta (vain seinäpinta). **Mitattu:** yli-
+  venyneistä takahuoneen pystyseinistä 2/3 leikkautuu oikein.
+- Asunto- ja talomallit ennallaan (käyttävät eri detektoria); 122 testiä läpi.
+
 ## v0.9.4 (4.8.2026) — iso myymälä: seinien ylitys pois + kalustesuodatin auto
 
 - **Seinät eivät enää työnny rakennuksen ulkopuolelle.** Isossa liiketilassa
