@@ -4,6 +4,16 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 [`Mcrauli/scan2bim-web`](https://github.com/Mcrauli/scan2bim-web/releases):iin;
 sovellus päivittää itsensä sieltä.
 
+## v0.9.9 (5.8.2026) — KRIITTINEN: itsepäivitys ei enää riko sovellusta
+
+- **Itsepäivitys korjattu.** Sovelluksen sisäinen "päivitä"-toiminto rikkoi
+  asennuksen ("Sovellus ei toimi tietokoneessasi") — se kirjoitti päivityspaketin
+  (zip) sellaisenaan `scan2bim.exe`:ksi purkamisen sijaan, jolloin ohjelma ei ollut
+  enää ajettava. Nyt zip puretaan ja vaihdetaan tiedosto kerrallaan oikein.
+  **Kaikissa aiemmissa versioissa (0.9.1–0.9.8) tämä oli rikki**, joten korjattuun
+  versioon on päästävä KERRAN asennusohjelmalla (Setup.exe); sen jälkeen sisäinen
+  päivitys toimii. 133 testiä läpi.
+
 ## v0.9.8 (5.8.2026) — asennuksen ja itsepäivityksen kestävyys
 
 - **Itsepäivitys ei voi enää muuttaa sovellusta asennusohjelmaksi.** Harvinaisessa
