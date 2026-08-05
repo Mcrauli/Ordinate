@@ -1,8 +1,8 @@
 """Upotettu 3D-tarkastusnäkymä: pistepilvi + malli samassa välilehdessä.
 
-pyqtgraph.opengl (MIT) — upotettava QWidget, valmis orbit-kamera. Pilvi
-ladataan taustasäikeessä ettei GUI jäädy. Residuaali-toggle värjää pilven sen
-mukaan selittääkö malli pisteen (punainen = puuttuva rakenne / kaluste).
+pyqtgraph.opengl (MIT) — upotettava QWidget. Hiiri kääntää katseen, WASD+QE
+lentää (Shift = nopeampi). Pilvi ladataan taustasäikeessä ettei GUI jäädy.
+Näkymämoodit: Väri / Residuaali (punainen = malli ei kata) / Vain puuttuvat.
 """
 from __future__ import annotations
 
@@ -14,6 +14,57 @@ from PySide6 import QtCore, QtWidgets
 
 os.environ.setdefault("PYQTGRAPH_QT_LIB", "PySide6")
 import pyqtgraph.opengl as gl  # noqa: E402
+from pyqtgraph import Vector  # noqa: E402
+
+
+class _FlyView(gl.GLViewWidget):
+    """GLViewWidget + WASD/QE-lentokamera. Hiiri kääntää (orbit), näppäimet
+    liikuttavat kameraa katseen suuntaan → pelimäinen navigointi."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFocusPolicy(QtCore.Qt.FocusPolicy.StrongFocus)
+        self._keys: set[int] = set()
+        self._timer = QtCore.QTimer(self)
+        self._timer.setInterval(16)
+        self._timer.timeout.connect(self._step)
+        self._timer.start()
+
+    def keyPressEvent(self, e):
+        self._keys.add(e.key())
+
+    def keyReleaseEvent(self, e):
+        if not e.isAutoRepeat():
+            self._keys.discard(e.key())
+
+    def focusOutEvent(self, e):
+        self._keys.clear()
+        super().focusOutEvent(e)
+
+    def _step(self):
+        if not self._keys:
+            return
+        Q = QtCore.Qt.Key
+        cam = self.cameraPosition(); center = self.opts["center"]
+        fwd = np.array([center.x() - cam.x(), center.y() - cam.y(), 0.0])
+        nrm = np.linalg.norm(fwd)
+        fwd = fwd / nrm if nrm > 1e-6 else np.array([1.0, 0.0, 0.0])
+        right = np.array([fwd[1], -fwd[0], 0.0])
+        up = np.array([0.0, 0.0, 1.0])
+        move = np.zeros(3)
+        if Q.Key_W in self._keys: move += fwd
+        if Q.Key_S in self._keys: move -= fwd
+        if Q.Key_D in self._keys: move += right
+        if Q.Key_A in self._keys: move -= right
+        if Q.Key_E in self._keys: move += up
+        if Q.Key_Q in self._keys: move -= up
+        if not move.any():
+            return
+        step = max(self.opts["distance"] * 0.02, 40.0)
+        if QtWidgets.QApplication.keyboardModifiers() & QtCore.Qt.KeyboardModifier.ShiftModifier:
+            step *= 4.0
+        self.opts["center"] = center + Vector(*(move * step))
+        self.update()
 
 
 # --- pisteiden luokittelu: selittääkö malli pisteen -------------------------
@@ -150,7 +201,9 @@ class _Loader(QtCore.QObject):
 
 
 class InspectView(QtWidgets.QWidget):
-    """3D-välilehti: pilvi + malli, residuaali-toggle."""
+    """3D-välilehti: pilvi + malli. Hiiri kääntää, WASD+QE lentää."""
+
+    _MODES = ["Väri", "Residuaali", "Vain puuttuvat"]
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -159,9 +212,9 @@ class InspectView(QtWidgets.QWidget):
         self._thread = None
         self._loader = None
         # ladattu pilvi (välimuistissa → mallin muutos ei vaadi uudelleenlatausta)
-        self._Ps = None; self._rgb = None; self._offset = None
-        self._rgba = None; self._res = None
-        self._scatter = None
+        self._Ps = None; self._rgb = None; self._offset = None; self._pts = None
+        self._rgba = None; self._res = None; self._expl = None
+        self._scatter = None; self._grid = None
         self._model_items: list = []
 
         lay = QtWidgets.QVBoxLayout(self)
@@ -172,18 +225,22 @@ class InspectView(QtWidgets.QWidget):
         self._load_btn = QtWidgets.QPushButton("Näytä pistepilvi")
         self._load_btn.clicked.connect(self._start_load)
         bar.addWidget(self._load_btn)
-        self._res_btn = QtWidgets.QPushButton("Residuaali: pois")
-        self._res_btn.setCheckable(True)
-        self._res_btn.setEnabled(False)
-        self._res_btn.toggled.connect(self._toggle_res)
-        bar.addWidget(self._res_btn)
+        bar.addWidget(QtWidgets.QLabel("Näkymä:"))
+        self._mode = QtWidgets.QComboBox()
+        self._mode.addItems(self._MODES)
+        self._mode.setEnabled(False)
+        self._mode.currentIndexChanged.connect(lambda _i: self._refresh_scatter())
+        bar.addWidget(self._mode)
         self._info = QtWidgets.QLabel("Aja konversio ja avaa tämä välilehti.")
         bar.addWidget(self._info)
         bar.addStretch()
+        hint = QtWidgets.QLabel("Hiiri: käännä · WASD+QE: liiku · Shift: nopeampi")
+        hint.setStyleSheet("color:#8a8f98;")
+        bar.addWidget(hint)
         lay.addLayout(bar)
 
-        self._view = gl.GLViewWidget()
-        self._view.setBackgroundColor((20, 22, 26))
+        self._view = _FlyView()
+        self._view.setBackgroundColor((18, 20, 24))
         lay.addWidget(self._view, stretch=1)
 
     # -- julkinen API --
@@ -194,11 +251,10 @@ class InspectView(QtWidgets.QWidget):
             self._apply_model()          # sama pilvi ladattu → päivitä vain malli
             return
         self._cloud_path = cloud_path
-        self._Ps = None
+        self._Ps = None; self._pts = None
         self._view.clear()
-        self._scatter = None; self._model_items = []
-        self._res_btn.setEnabled(False)
-        self._res_btn.setChecked(False)
+        self._scatter = None; self._grid = None; self._model_items = []
+        self._mode.setEnabled(False)
         self._load_btn.setEnabled(True)
         self._info.setText("Paina 'Näytä pistepilvi'.")
 
@@ -233,13 +289,22 @@ class InspectView(QtWidgets.QWidget):
         self._stop_thread()
         self._Ps = Ps; self._rgb = rgb; self._offset = offset
         self._rgba = np.column_stack([rgb, np.ones(len(rgb), np.float32)])
-        pts = (Ps - offset).astype(np.float32)
-        self._scatter = gl.GLScatterPlotItem(pos=pts, color=self._rgba, size=1.6, pxMode=True)
+        self._pts = (Ps - offset).astype(np.float32)
+        self._scatter = gl.GLScatterPlotItem(pos=self._pts, color=self._rgba, size=2.2, pxMode=True)
         self._scatter.setGLOptions("opaque")
         self._view.addItem(self._scatter)
-        span = float(np.linalg.norm(pts.max(axis=0) - pts.min(axis=0)))
-        self._view.setCameraPosition(distance=max(span * 0.6, 1000.0))
-        self._res_btn.setEnabled(True)
+        # pohjaruudukko orientaatioon
+        lo = self._pts.min(axis=0); hi = self._pts.max(axis=0)
+        ext = float(max(hi[0] - lo[0], hi[1] - lo[1]))
+        self._grid = gl.GLGridItem()
+        self._grid.setSize(ext * 1.2, ext * 1.2)
+        self._grid.setSpacing(1000, 1000)                 # 1 m ruudukko
+        self._grid.translate((lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, lo[2])
+        self._grid.setGLOptions("opaque")
+        self._view.addItem(self._grid)
+        span = float(np.linalg.norm(hi - lo))
+        self._view.setCameraPosition(distance=max(span * 0.55, 1000.0))
+        self._mode.setEnabled(True)
         self._apply_model()
 
     # -- mallin piirto + residuaali (välimuistin pisteillä, ei uudelleenlatausta) --
@@ -251,9 +316,9 @@ class InspectView(QtWidgets.QWidget):
         self._model_items = []
         off = self._offset
         walls, cols, beams = _model_boxes(self._model)
-        for boxes, color in ((walls, (0.0, 0.75, 1.0, 0.45)),
-                             (cols, (1.0, 0.8, 0.0, 0.5)),
-                             (beams, (0.1, 0.85, 0.2, 0.5))):
+        for boxes, color in ((walls, (0.0, 0.75, 1.0, 0.5)),
+                             (cols, (1.0, 0.8, 0.0, 0.55)),
+                             (beams, (0.1, 0.85, 0.2, 0.55))):
             V, F = _accumulate_boxes(boxes)
             if V is None:
                 continue
@@ -267,18 +332,24 @@ class InspectView(QtWidgets.QWidget):
                                      color=(1.0, 0.1, 0.1, 1.0), width=3.0, mode="lines")
             line.setGLOptions("opaque")
             self._view.addItem(line); self._model_items.append(line)
-        # residuaaliväritys
-        expl = classify_explained(self._Ps, self._model)
-        res = np.tile(np.array([0.9, 0.15, 0.15, 1.0], np.float32), (len(self._Ps), 1))
-        res[expl, :3] = self._rgb[expl] * 0.45
+        # residuaaliluokittelu (talletetaan; väritys näkymämoodin mukaan)
+        self._expl = classify_explained(self._Ps, self._model)
+        res = np.tile(np.array([0.95, 0.12, 0.12, 1.0], np.float32), (len(self._Ps), 1))
+        res[self._expl, :3] = self._rgb[self._expl] * 0.3     # selitetty himmeäksi → punainen erottuu
         self._res = res
-        if self._scatter is not None and self._res_btn.isChecked():
-            self._scatter.setData(color=self._res)
-        self._info.setText(f"{len(self._Ps)} pistettä · syaani=seinä keltainen=pilari "
-                           "vihreä=palkki punainen=aukko · R-nappi = residuaali")
+        miss = int((~self._expl).sum())
+        self._info.setText(f"{len(self._Ps)} pistettä · kattamatta {miss} "
+                           "· syaani=seinä keltainen=pilari vihreä=palkki punainen=aukko")
+        self._refresh_scatter()
 
-    def _toggle_res(self, on: bool) -> None:
-        self._res_btn.setText("Residuaali: päällä" if on else "Residuaali: pois")
-        if self._scatter is None or self._res is None:
+    def _refresh_scatter(self) -> None:
+        if self._scatter is None or self._pts is None:
             return
-        self._scatter.setData(color=self._res if on else self._rgba)
+        mode = self._mode.currentIndex()
+        if mode == 0:                                          # Väri
+            self._scatter.setData(pos=self._pts, color=self._rgba, size=2.2)
+        elif mode == 1:                                        # Residuaali (kaikki)
+            self._scatter.setData(pos=self._pts, color=self._res, size=2.2)
+        else:                                                  # Vain puuttuvat
+            m = ~self._expl if self._expl is not None else np.ones(len(self._pts), bool)
+            self._scatter.setData(pos=self._pts[m], color=self._res[m], size=3.5)
