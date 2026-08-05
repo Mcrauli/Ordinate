@@ -23,10 +23,17 @@ _ifc_api = collect_submodules('ifcopenshell.api')
 _ifc_express = collect_submodules('ifcopenshell.express')
 _ezdxf = collect_submodules('ezdxf')
 
+# 3D-tarkastusnäkymä (gui/inspect_view.py): pyqtgraph.opengl + PyOpenGL.
+# OpenGL.arrays.* ja OpenGL.platform.* ladataan dynaamisesti (ctypes) →
+# staattinen analyysi ei näe niitä, collect_submodules pakko.
+_pyqtgraph = collect_submodules('pyqtgraph')
+_pyopengl = collect_submodules('OpenGL')
+
 # ── Data files (JSON schemas, native resources) ────────────────────────
 _ifc_data = collect_data_files('ifcopenshell')
 _open3d_data = collect_data_files('open3d')
 _laspy_data = collect_data_files('laspy')
+_pyqtgraph_data = collect_data_files('pyqtgraph')
 
 # ── Dynamic libs (open3d / pye57 ship .dll/.pyd not seen statically) ───
 _open3d_bins = collect_dynamic_libs('open3d')
@@ -61,7 +68,7 @@ a = Analysis(
     [os.path.join(ROOT, 'src/scan2bim/gui/__main__.py')],
     pathex=[os.path.join(ROOT, 'src')],
     binaries=_open3d_bins + _pye57_bins + _ort_bins,
-    datas=_ifc_data + _open3d_data + _laspy_data + _ort_data + _model_data + _notice_data,
+    datas=_ifc_data + _open3d_data + _laspy_data + _ort_data + _model_data + _notice_data + _pyqtgraph_data,
     hiddenimports=[
         'scan2bim',
         'open3d',
@@ -82,7 +89,14 @@ a = Analysis(
         'PySide6.QtSvgWidgets',
         'onnxruntime',
         'onnxruntime.capi',
-    ] + _ifc_api + _ifc_express + _ezdxf,
+        'pyqtgraph',
+        'pyqtgraph.opengl',
+        'OpenGL',
+        'OpenGL.GL',
+        'OpenGL.platform.win32',
+        'PySide6.QtOpenGL',
+        'PySide6.QtOpenGLWidgets',
+    ] + _ifc_api + _ifc_express + _ezdxf + _pyqtgraph + _pyopengl,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

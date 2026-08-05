@@ -1,0 +1,284 @@
+"""Upotettu 3D-tarkastusnäkymä: pistepilvi + malli samassa välilehdessä.
+
+pyqtgraph.opengl (MIT) — upotettava QWidget, valmis orbit-kamera. Pilvi
+ladataan taustasäikeessä ettei GUI jäädy. Residuaali-toggle värjää pilven sen
+mukaan selittääkö malli pisteen (punainen = puuttuva rakenne / kaluste).
+"""
+from __future__ import annotations
+
+import os
+from pathlib import Path
+
+import numpy as np
+from PySide6 import QtCore, QtWidgets
+
+os.environ.setdefault("PYQTGRAPH_QT_LIB", "PySide6")
+import pyqtgraph.opengl as gl  # noqa: E402
+
+
+# --- pisteiden luokittelu: selittääkö malli pisteen -------------------------
+
+def classify_explained(P: np.ndarray, model: dict, tol: float = 200.0) -> np.ndarray:
+    P = np.asarray(P, float)
+    expl = np.zeros(len(P), bool)
+    xy, z = P[:, :2], P[:, 2]
+    for w in model["walls"]:
+        (x0, y0), (x1, y1) = w["axis"][0], w["axis"][1]
+        d = np.array([x1 - x0, y1 - y0]); L = float(np.hypot(*d))
+        if L < 1:
+            continue
+        u = d / L; n = np.array([-u[1], u[0]])
+        rel = xy - np.array([x0, y0]); along = rel @ u; perp = rel @ n
+        z0 = w.get("z_min", 0.0); z1 = z0 + w["height"]; th = w.get("thickness", 100.0)
+        expl |= ((np.abs(perp) < th / 2 + tol) & (along >= -tol) & (along <= L + tol)
+                 & (z >= z0 - tol) & (z <= z1 + tol))
+    for c in model.get("columns", []):
+        cx, cy = c["location"]; z0 = c["base_z"]; z1 = z0 + c["height"]; pr = c["profile"]
+        expl |= ((np.abs(xy[:, 0] - cx) < pr["width"] / 2 + tol)
+                 & (np.abs(xy[:, 1] - cy) < pr["depth"] / 2 + tol)
+                 & (z >= z0 - tol) & (z <= z1 + tol))
+    for b in model.get("beams", []):
+        a, cc = np.array(b["axis"][0], float), np.array(b["axis"][1], float)
+        d = cc - a; L = float(np.linalg.norm(d[:2]))
+        if L < 1:
+            continue
+        u = d[:2] / L; nn = np.array([-u[1], u[0]])
+        rel = xy - a[:2]; along = rel @ u; perp = rel @ nn
+        pr = b["profile"]; zc = (a[2] + cc[2]) / 2
+        expl |= ((np.abs(perp) < pr["width"] / 2 + tol) & (along >= -tol) & (along <= L + tol)
+                 & (np.abs(z - zc) < pr["height"] / 2 + tol))
+    return expl
+
+
+# --- mallin laatikko-mesh (verteksit + kolmiot) -----------------------------
+
+_BOX_FACES = np.array([
+    [0, 1, 2], [0, 2, 3], [4, 6, 5], [4, 7, 6], [0, 4, 5], [0, 5, 1],
+    [1, 5, 6], [1, 6, 2], [2, 6, 7], [2, 7, 3], [3, 7, 4], [3, 4, 0],
+], dtype=int)
+
+
+def _box_verts(center, size, angle):
+    sx, sy, sz = (max(float(s), 1.0) for s in size)
+    hx, hy, hz = sx / 2, sy / 2, sz / 2
+    v = np.array([[-hx, -hy, -hz], [hx, -hy, -hz], [hx, hy, -hz], [-hx, hy, -hz],
+                  [-hx, -hy, hz], [hx, -hy, hz], [hx, hy, hz], [-hx, hy, hz]])
+    ca, sa = np.cos(angle), np.sin(angle)
+    R = np.array([[ca, -sa, 0], [sa, ca, 0], [0, 0, 1]])
+    return v @ R.T + np.asarray(center)
+
+
+def _accumulate_boxes(boxes):
+    """boxes: [(center,size,angle)] -> (Vx3, Fx3) yhdistettynä."""
+    V, F = [], []
+    for i, (center, size, angle) in enumerate(boxes):
+        V.append(_box_verts(center, size, angle))
+        F.append(_BOX_FACES + i * 8)
+    if not V:
+        return None, None
+    return np.vstack(V), np.vstack(F)
+
+
+def _model_boxes(model):
+    walls, cols, beams = [], [], []
+    for w in model["walls"]:
+        (x0, y0), (x1, y1) = w["axis"][0], w["axis"][1]
+        dx, dy = x1 - x0, y1 - y0; L = float(np.hypot(dx, dy))
+        if L < 1:
+            continue
+        z0 = w.get("z_min", 0.0); h = w["height"]
+        walls.append((((x0 + x1) / 2, (y0 + y1) / 2, z0 + h / 2),
+                      (L, max(w.get("thickness", 100.0), 40.0), h), float(np.arctan2(dy, dx))))
+    for c in model.get("columns", []):
+        cx, cy = c["location"]; z0 = c["base_z"]; h = c["height"]; pr = c["profile"]
+        cols.append(((cx, cy, z0 + h / 2), (pr["width"], pr["depth"], h), 0.0))
+    for b in model.get("beams", []):
+        a, cc = np.array(b["axis"][0], float), np.array(b["axis"][1], float)
+        d = cc - a; L = float(np.linalg.norm(d[:2]))
+        if L < 1:
+            continue
+        pr = b["profile"]
+        beams.append((tuple((a + cc) / 2), (L, pr["width"], pr["height"]), float(np.arctan2(d[1], d[0]))))
+    return walls, cols, beams
+
+
+def _opening_segments(model):
+    wall_by_id = {w["id"]: w for w in model["walls"]}
+    segs = []
+    for op in model.get("openings", []):
+        w = wall_by_id.get(op["wall_id"])
+        if not w:
+            continue
+        (x0, y0), (x1, y1) = w["axis"][0], w["axis"][1]
+        d = np.array([x1 - x0, y1 - y0]); L = np.linalg.norm(d)
+        if L < 1:
+            continue
+        u = d / L; a0 = op["position_along"]; a1 = a0 + op["width"]
+        zf = w.get("z_min", 0.0); z0 = zf + op["sill_height"]; z1 = z0 + op["opening_height"]
+        pa = np.array([x0, y0]) + u * a0; pb = np.array([x0, y0]) + u * a1
+        A = [pa[0], pa[1], z0]; B = [pb[0], pb[1], z0]
+        C = [pb[0], pb[1], z1]; D = [pa[0], pa[1], z1]
+        segs += [A, B, B, C, C, D, D, A]
+    return np.array(segs, float) if segs else None
+
+
+# --- taustalatain -----------------------------------------------------------
+
+class _Loader(QtCore.QObject):
+    done = QtCore.Signal(object, object, object)  # Ps_raw, rgb, offset
+    failed = QtCore.Signal(str)
+
+    def __init__(self, cloud_path: str, max_pts: int):
+        super().__init__()
+        self._path = cloud_path; self._max = max_pts
+
+    def run(self) -> None:
+        try:
+            from scan2bim.core.geometry.loader import load_point_cloud
+            cloud = load_point_cloud(Path(self._path))
+            P = np.asarray(cloud.points, dtype=np.float32)
+            step = max(1, len(P) // self._max)
+            Ps = np.ascontiguousarray(P[::step])
+            offset = Ps.mean(axis=0)
+            if cloud.has_colors():
+                rgb = np.asarray(cloud.colors, dtype=np.float32)[::step]
+            else:
+                rgb = np.full((len(Ps), 3), 0.6, np.float32)
+            self.done.emit(Ps, np.ascontiguousarray(rgb), offset)
+        except Exception as e:  # noqa: BLE001
+            self.failed.emit(str(e))
+
+
+class InspectView(QtWidgets.QWidget):
+    """3D-välilehti: pilvi + malli, residuaali-toggle."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._model: dict | None = None
+        self._cloud_path: str | None = None
+        self._thread = None
+        self._loader = None
+        # ladattu pilvi (välimuistissa → mallin muutos ei vaadi uudelleenlatausta)
+        self._Ps = None; self._rgb = None; self._offset = None
+        self._rgba = None; self._res = None
+        self._scatter = None
+        self._model_items: list = []
+
+        lay = QtWidgets.QVBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0); lay.setSpacing(0)
+
+        bar = QtWidgets.QHBoxLayout()
+        bar.setContentsMargins(10, 8, 10, 8)
+        self._load_btn = QtWidgets.QPushButton("Näytä pistepilvi")
+        self._load_btn.clicked.connect(self._start_load)
+        bar.addWidget(self._load_btn)
+        self._res_btn = QtWidgets.QPushButton("Residuaali: pois")
+        self._res_btn.setCheckable(True)
+        self._res_btn.setEnabled(False)
+        self._res_btn.toggled.connect(self._toggle_res)
+        bar.addWidget(self._res_btn)
+        self._info = QtWidgets.QLabel("Aja konversio ja avaa tämä välilehti.")
+        bar.addWidget(self._info)
+        bar.addStretch()
+        lay.addLayout(bar)
+
+        self._view = gl.GLViewWidget()
+        self._view.setBackgroundColor((20, 22, 26))
+        lay.addWidget(self._view, stretch=1)
+
+    # -- julkinen API --
+    def set_source(self, model: dict, cloud_path: str) -> None:
+        """Aseta tarkastettava malli + pilvipolku."""
+        self._model = model
+        if cloud_path == self._cloud_path and self._Ps is not None:
+            self._apply_model()          # sama pilvi ladattu → päivitä vain malli
+            return
+        self._cloud_path = cloud_path
+        self._Ps = None
+        self._view.clear()
+        self._scatter = None; self._model_items = []
+        self._res_btn.setEnabled(False)
+        self._res_btn.setChecked(False)
+        self._load_btn.setEnabled(True)
+        self._info.setText("Paina 'Näytä pistepilvi'.")
+
+    # -- lataus --
+    def _start_load(self) -> None:
+        if not self._model or not self._cloud_path or self._thread is not None:
+            return
+        if not Path(self._cloud_path).exists():
+            self._info.setText("Pilvitiedostoa ei löydy — tarkastus vaatii alkuperäisen skannin.")
+            return
+        self._load_btn.setEnabled(False)
+        self._info.setText("Ladataan pistepilveä…")
+        self._thread = QtCore.QThread(self)
+        self._loader = _Loader(self._cloud_path, 2_000_000)
+        self._loader.moveToThread(self._thread)
+        self._thread.started.connect(self._loader.run)
+        self._loader.done.connect(self._on_loaded)
+        self._loader.failed.connect(self._on_failed)
+        self._thread.start()
+
+    def _stop_thread(self) -> None:
+        if self._thread is not None:
+            self._thread.quit(); self._thread.wait()
+            self._thread = None; self._loader = None
+
+    def _on_failed(self, msg: str) -> None:
+        self._stop_thread()
+        self._info.setText(f"Lataus epäonnistui: {msg}")
+        self._load_btn.setEnabled(True)
+
+    def _on_loaded(self, Ps, rgb, offset) -> None:
+        self._stop_thread()
+        self._Ps = Ps; self._rgb = rgb; self._offset = offset
+        self._rgba = np.column_stack([rgb, np.ones(len(rgb), np.float32)])
+        pts = (Ps - offset).astype(np.float32)
+        self._scatter = gl.GLScatterPlotItem(pos=pts, color=self._rgba, size=1.6, pxMode=True)
+        self._scatter.setGLOptions("opaque")
+        self._view.addItem(self._scatter)
+        span = float(np.linalg.norm(pts.max(axis=0) - pts.min(axis=0)))
+        self._view.setCameraPosition(distance=max(span * 0.6, 1000.0))
+        self._res_btn.setEnabled(True)
+        self._apply_model()
+
+    # -- mallin piirto + residuaali (välimuistin pisteillä, ei uudelleenlatausta) --
+    def _apply_model(self) -> None:
+        if self._Ps is None or self._model is None:
+            return
+        for it in self._model_items:
+            self._view.removeItem(it)
+        self._model_items = []
+        off = self._offset
+        walls, cols, beams = _model_boxes(self._model)
+        for boxes, color in ((walls, (0.0, 0.75, 1.0, 0.45)),
+                             (cols, (1.0, 0.8, 0.0, 0.5)),
+                             (beams, (0.1, 0.85, 0.2, 0.5))):
+            V, F = _accumulate_boxes(boxes)
+            if V is None:
+                continue
+            md = gl.MeshData(vertexes=(V - off).astype(np.float32), faces=F)
+            mesh = gl.GLMeshItem(meshdata=md, smooth=False, color=color,
+                                 shader="shaded", glOptions="translucent")
+            self._view.addItem(mesh); self._model_items.append(mesh)
+        segs = _opening_segments(self._model)
+        if segs is not None:
+            line = gl.GLLinePlotItem(pos=(segs - off).astype(np.float32),
+                                     color=(1.0, 0.1, 0.1, 1.0), width=3.0, mode="lines")
+            line.setGLOptions("opaque")
+            self._view.addItem(line); self._model_items.append(line)
+        # residuaaliväritys
+        expl = classify_explained(self._Ps, self._model)
+        res = np.tile(np.array([0.9, 0.15, 0.15, 1.0], np.float32), (len(self._Ps), 1))
+        res[expl, :3] = self._rgb[expl] * 0.45
+        self._res = res
+        if self._scatter is not None and self._res_btn.isChecked():
+            self._scatter.setData(color=self._res)
+        self._info.setText(f"{len(self._Ps)} pistettä · syaani=seinä keltainen=pilari "
+                           "vihreä=palkki punainen=aukko · R-nappi = residuaali")
+
+    def _toggle_res(self, on: bool) -> None:
+        self._res_btn.setText("Residuaali: päällä" if on else "Residuaali: pois")
+        if self._scatter is None or self._res is None:
+            return
+        self._scatter.setData(color=self._res if on else self._rgba)

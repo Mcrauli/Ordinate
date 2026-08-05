@@ -12,6 +12,7 @@ from scan2bim.gui.log_panel import LogPanel
 from scan2bim.gui.plan_view import PlanView, _polygon_area
 from scan2bim.gui.process_worker import ProcessWorker
 from scan2bim.gui.review_panel import ReviewPanel
+from scan2bim.gui.inspect_view import InspectView
 from scan2bim.gui.stage_indicator import StageIndicator, stage_for_message
 from scan2bim.gui.update_banner import UpdateBanner, UpdateChecker, perform_update
 from scan2bim.gui.brand import app_icon, logo_pixmap
@@ -82,8 +83,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self._review.delete_requested.connect(self._on_review_delete)
         self._review.reexport_requested.connect(self._on_reexport)
         self._log_panel = LogPanel()
+        self._inspect_view = InspectView()
         self._tabs.addTab(self._plan_view, "Pohja")
         self._review_tab_idx = self._tabs.addTab(self._review, "Tarkistus")
+        self._inspect_tab_idx = self._tabs.addTab(self._inspect_view, "3D-tarkastus")
         self._tabs.addTab(self._log_panel, "Loki")
         splitter.addWidget(self._tabs)
         splitter.setStretchFactor(1, 1)
@@ -117,6 +120,7 @@ class MainWindow(QtWidgets.QMainWindow):
         root.addWidget(self._results_bar)
 
         self._last_out: Path | None = None
+        self._last_inputs: list = []
 
         self.setCentralWidget(central)
         self.statusBar().showMessage("Valmis")
@@ -153,6 +157,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self._footer_reexport.setVisible(False)
         self._footer_reexport.clicked.connect(self._on_reexport)
         row.addWidget(self._footer_reexport)
+        self._inspect_btn = QtWidgets.QPushButton("Tarkasta malli 3D")
+        self._inspect_btn.clicked.connect(self._inspect_3d)
+        row.addWidget(self._inspect_btn)
         self._open_ifc_btn = QtWidgets.QPushButton("Avaa IFC")
         self._open_ifc_btn.clicked.connect(self._open_ifc)
         row.addWidget(self._open_ifc_btn)
@@ -226,6 +233,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._log_panel.clear()
         self._last_out = out
         self._last_cfg = cfg
+        self._last_inputs = list(inputs)
         self._select_bar.setVisible(False)
         self._results_bar.setVisible(False)
         self._stage.reset()
@@ -355,6 +363,19 @@ class MainWindow(QtWidgets.QMainWindow):
                 return p
         hits = sorted(self._last_out.glob("**/*.ifc"))
         return hits[0] if hits else None
+
+    def _inspect_3d(self) -> None:
+        """Näytä malli + pistepilvi 3D-tarkastus-välilehdessä."""
+        if not self._result_models or not self._last_inputs:
+            return
+        fi = 0
+        if self._result_multi:
+            fi = max(0, self._plan_view._floor_combo.currentIndex())
+        if not (0 <= fi < len(self._result_models)):
+            fi = 0
+        model_dict = self._result_models[fi].model_dump()
+        self._inspect_view.set_source(model_dict, str(self._last_inputs[0]))
+        self._tabs.setCurrentWidget(self._inspect_view)
 
     def _open_ifc(self) -> None:
         p = self._find_ifc()
