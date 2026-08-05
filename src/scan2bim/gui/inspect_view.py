@@ -248,6 +248,7 @@ class InspectView(QtWidgets.QWidget):
         self._rgba = None; self._res = None; self._expl = None
         self._scatter = None; self._grid = None
         self._model_items: list = []
+        self._psize = 24.0   # pisteen maailmakoko mm (fotorealistisuus: isompi → pinnat täyttyvät)
 
         lay = QtWidgets.QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0); lay.setSpacing(0)
@@ -263,6 +264,13 @@ class InspectView(QtWidgets.QWidget):
         self._mode.setEnabled(False)
         self._mode.currentIndexChanged.connect(lambda _i: self._refresh_scatter())
         bar.addWidget(self._mode)
+        bar.addWidget(QtWidgets.QLabel("Täyteys:"))
+        self._size_slider = QtWidgets.QSlider(QtCore.Qt.Orientation.Horizontal)
+        self._size_slider.setMinimum(6); self._size_slider.setMaximum(48)
+        self._size_slider.setValue(int(self._psize)); self._size_slider.setFixedWidth(110)
+        self._size_slider.setEnabled(False)
+        self._size_slider.valueChanged.connect(self._on_size)
+        bar.addWidget(self._size_slider)
         self._info = QtWidgets.QLabel("Aja konversio ja avaa tämä välilehti.")
         bar.addWidget(self._info)
         bar.addStretch()
@@ -300,7 +308,7 @@ class InspectView(QtWidgets.QWidget):
         self._load_btn.setEnabled(False)
         self._info.setText("Ladataan pistepilveä…")
         self._thread = QtCore.QThread(self)
-        self._loader = _Loader(self._cloud_path, 4_000_000)
+        self._loader = _Loader(self._cloud_path, 6_000_000)
         self._loader.moveToThread(self._thread)
         self._thread.started.connect(self._loader.run)
         self._loader.done.connect(self._on_loaded)
@@ -324,7 +332,7 @@ class InspectView(QtWidgets.QWidget):
         self._pts = (Ps - offset).astype(np.float32)
         # perspektiivikoko (maailmayksikkö mm): lähellä pisteet suurenevat →
         # pinnat täyttyvät valokuvamaisiksi kun navigoi lähelle
-        self._scatter = gl.GLScatterPlotItem(pos=self._pts, color=self._rgba, size=16.0, pxMode=False)
+        self._scatter = gl.GLScatterPlotItem(pos=self._pts, color=self._rgba, size=self._psize, pxMode=False)
         self._scatter.setGLOptions("opaque")
         self._view.addItem(self._scatter)
         # pohjaruudukko orientaatioon
@@ -339,7 +347,12 @@ class InspectView(QtWidgets.QWidget):
         span = float(np.linalg.norm(hi - lo))
         self._view.setCameraPosition(distance=max(span * 0.55, 1000.0))
         self._mode.setEnabled(True)
+        self._size_slider.setEnabled(True)
         self._apply_model()
+
+    def _on_size(self, val: int) -> None:
+        self._psize = float(val)
+        self._refresh_scatter()
 
     # -- mallin piirto + residuaali (välimuistin pisteillä, ei uudelleenlatausta) --
     def _apply_model(self) -> None:
@@ -380,10 +393,11 @@ class InspectView(QtWidgets.QWidget):
         if self._scatter is None or self._pts is None:
             return
         mode = self._mode.currentIndex()
+        s = self._psize
         if mode == 0:                                          # Väri
-            self._scatter.setData(pos=self._pts, color=self._rgba, size=16.0, pxMode=False)
+            self._scatter.setData(pos=self._pts, color=self._rgba, size=s, pxMode=False)
         elif mode == 1:                                        # Residuaali (kaikki)
-            self._scatter.setData(pos=self._pts, color=self._res, size=16.0, pxMode=False)
+            self._scatter.setData(pos=self._pts, color=self._res, size=s, pxMode=False)
         else:                                                  # Vain puuttuvat
             m = ~self._expl if self._expl is not None else np.ones(len(self._pts), bool)
-            self._scatter.setData(pos=self._pts[m], color=self._res[m], size=28.0, pxMode=False)
+            self._scatter.setData(pos=self._pts[m], color=self._res[m], size=s * 1.5, pxMode=False)
