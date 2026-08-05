@@ -26,22 +26,34 @@ def _lineset(points, lines, color):
     return ls
 
 
-def _box_edges(pts):
-    """pts: 8 kulmaa (alaneljä, ylaneljä) -> 12 reunaa (indeksipareina + pisteet)."""
-    lines = [(0, 1), (1, 2), (2, 3), (3, 0), (4, 5), (5, 6), (6, 7), (7, 4),
-             (0, 4), (1, 5), (2, 6), (3, 7)]
-    return pts, lines
+def _box_mesh(center, size, angle, color):
+    """Orientoitu laatikkomesh: keskipiste, koko (dx,dy,dz), Z-kierto, vari."""
+    sx, sy, sz = (max(float(s), 1.0) for s in size)
+    b = o3d.geometry.TriangleMesh.create_box(sx, sy, sz)
+    b.translate((-sx / 2, -sy / 2, -sz / 2))
+    R = b.get_rotation_matrix_from_xyz((0.0, 0.0, angle))
+    b.rotate(R, center=(0, 0, 0))
+    b.translate(center)
+    b.compute_vertex_normals()
+    b.paint_uniform_color(color)
+    return b
 
 
 def wall_geoms(model):
-    P, L = [], []
+    """Seinat umpinaisina laatikkoina (pituus x paksuus x korkeus)."""
+    meshes = []
     for w in model["walls"]:
         (x0, y0), (x1, y1) = w["axis"][0], w["axis"][1]
-        z0 = w.get("z_min", 0.0); z1 = z0 + w["height"]
-        base = len(P)
-        P += [[x0, y0, z0], [x1, y1, z0], [x1, y1, z1], [x0, y0, z1]]
-        L += [(base, base + 1), (base + 1, base + 2), (base + 2, base + 3), (base + 3, base)]
-    return _lineset(P, L, [0.0, 0.8, 1.0]) if P else None
+        z0 = w.get("z_min", 0.0); h = w["height"]
+        dx, dy = x1 - x0, y1 - y0
+        length = float(np.hypot(dx, dy))
+        if length < 1:
+            continue
+        angle = float(np.arctan2(dy, dx))
+        center = ((x0 + x1) / 2, (y0 + y1) / 2, z0 + h / 2)
+        th = max(w.get("thickness", 100.0), 40.0)
+        meshes.append(_box_mesh(center, (length, th, h), angle, [0.0, 0.75, 1.0]))
+    return meshes
 
 
 def opening_geoms(model, wall_by_id):
@@ -65,28 +77,30 @@ def opening_geoms(model, wall_by_id):
 
 
 def column_geoms(model):
-    P, L = [], []
+    """Pilarit umpinaisina laatikkoina."""
+    meshes = []
     for c in model.get("columns", []):
-        x, y = c["location"]; z0 = c["base_z"]; z1 = z0 + c["height"]
-        pr = c["profile"]; wx = pr["width"] / 2; wy = pr["depth"] / 2
-        base = len(P)
-        for zz in (z0, z1):
-            P += [[x - wx, y - wy, zz], [x + wx, y - wy, zz],
-                  [x + wx, y + wy, zz], [x - wx, y + wy, zz]]
-        for a, b in [(0, 1), (1, 2), (2, 3), (3, 0), (4, 5), (5, 6), (6, 7), (7, 4),
-                     (0, 4), (1, 5), (2, 6), (3, 7)]:
-            L.append((base + a, base + b))
-    return _lineset(P, L, [1.0, 0.85, 0.0]) if P else None
+        x, y = c["location"]; z0 = c["base_z"]; h = c["height"]
+        pr = c["profile"]
+        center = (x, y, z0 + h / 2)
+        meshes.append(_box_mesh(center, (pr["width"], pr["depth"], h), 0.0, [1.0, 0.8, 0.0]))
+    return meshes
 
 
 def beam_geoms(model):
-    P, L = [], []
+    """Palkit umpinaisina laatikkoina akselin suunnassa."""
+    meshes = []
     for b in model.get("beams", []):
-        a, c = b["axis"][0], b["axis"][1]
-        base = len(P)
-        P += [list(a), list(c)]
-        L.append((base, base + 1))
-    return _lineset(P, L, [0.1, 0.9, 0.2]) if P else None
+        a, c = np.array(b["axis"][0], float), np.array(b["axis"][1], float)
+        d = c - a
+        length = float(np.linalg.norm(d))
+        if length < 1:
+            continue
+        angle = float(np.arctan2(d[1], d[0]))
+        center = tuple((a + c) / 2)
+        pr = b["profile"]
+        meshes.append(_box_mesh(center, (length, pr["width"], pr["height"]), angle, [0.1, 0.85, 0.2]))
+    return meshes
 
 
 def main():
@@ -105,10 +119,12 @@ def main():
     model = json.load(open(model_path))
     wall_by_id = {w["id"]: w for w in model["walls"]}
     geoms = [pcd]
-    for g in (wall_geoms(model), opening_geoms(model, wall_by_id),
-              column_geoms(model), beam_geoms(model)):
-        if g is not None:
-            geoms.append(g)
+    geoms += wall_geoms(model)
+    geoms += column_geoms(model)
+    geoms += beam_geoms(model)
+    op = opening_geoms(model, wall_by_id)
+    if op is not None:
+        geoms.append(op)
     print(f"malli: {len(model['walls'])} seinaa, {len(model.get('openings', []))} aukkoa, "
           f"{len(model.get('columns', []))} pilaria, {len(model.get('beams', []))} palkkia")
     o3d.visualization.draw_geometries(geoms, window_name="scan2bim navigointi", width=1600, height=1000)
