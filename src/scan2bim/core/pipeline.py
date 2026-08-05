@@ -1169,6 +1169,7 @@ class Pipeline:
         import scan2bim.core.segmentation.wall_density  # noqa: F401
         import scan2bim.core.segmentation.wall_normals  # noqa: F401
         import scan2bim.core.segmentation.wall_contour  # noqa: F401
+        import scan2bim.core.segmentation.wall_histogram  # noqa: F401
         import scan2bim.core.floorplan.detector  # noqa: F401
         from scan2bim.core.segmentation.base import DetectorRegistry
         from scan2bim.core.segmentation.slab_detector import detect_slabs
@@ -1181,7 +1182,15 @@ class Pipeline:
         # rajaamatta → ulkoseinien paksuus mitataan silti niiden ulkopinnasta.
         cloud = _crop_to_building_envelope(cloud)
 
-        detector = DetectorRegistry.get(self.config.detector)()
+        # Liiketilassa (iso + korkea, suorakulmainen big-box) HISTOGRAMMI-detektori:
+        # deterministinen, ~130× nopeampi ja pilarivapaa (ransac-tason kallistuma
+        # nappaa pilarilinjoja). Asunnot/talot voivat olla ei-Manhattan (vinot
+        # seinät) → niissä histogrammi löytää vähemmän → pidä configin detektori.
+        detector_name = self.config.detector
+        if detector_name in ("ransac", "density") and _looks_like_retail(cloud):
+            detector_name = "histogram"
+            self._progress("  Liiketila → histogrammi-detektori (deterministinen)")
+        detector = DetectorRegistry.get(detector_name)()
         # Semanttiset labelit detektorille jos suodatin tuotti ne. Muut
         # detektorit eivät tunne kenttää → ei vaikutusta niihin.
         if self._sem_labels is not None and hasattr(detector, "semantic_labels"):

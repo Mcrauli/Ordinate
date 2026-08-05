@@ -513,6 +513,23 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   3. ~~Pilareita 24/34~~ **KORJATTU: 34/34** (ks. "Pilarin irrallisuus" alla).
   4. Yksipuolisten ulkoseinien paksuus 66–92 mm (todellinen 250) — pinta on oikein,
      paksuutta ei voi mitata.
+- **HISTOGRAMMI-DETEKTORI korvaa RANSACin liiketilassa (5.8.2026, uusi
+  `wall_histogram.py`).** RANSAC (o3d.segment_plane) oli epädeterministinen
+  (OpenMP-säie-tie → sama skanni 17/18/18 seinää eri ajoissa; yksisäie korjaisi
+  mutta 6× hitaampi → rikkoo "ei saa hidastu"), hidas (~130 s isossa pilvessä) ja
+  sen kallistuneet tasot nappasivat pilarilinjoja (kontaminaatio → yliulottuma).
+  Uusi detektori: kierrä pilvi pääsuuntiin (`_dominant_angle`, Σcount²-maksimointi),
+  keskikorkeusviipale, histogrammoi x & y → seinä = tiheyspiikki; piikkiparit
+  (≤500 mm) = saman seinän kaksi pintaa → PAKSUUS suoraan; jänne dense-runista
+  (ei venymää). **Deterministinen, ~130× nopeampi (0.3 s), pilarivapaa
+  rakenteellisesti.** Mitattu 48×32 m myymälä AUTO: **9/9 seinää, 13/13 pilaria,
+  0 spuriaaliseinää, backroom täydellinen ruudukko** (vs RANSAC 8-9/9, 4-13 pilaria,
+  2-5 spuriaali, heittelee) — vision. Kytkentä: pipeline._detect vaihtaa
+  `ransac/density` → `histogram` kun `_looks_like_retail` (iso+korkea). VAIN
+  suorakulmaisille (Manhattan): asunto/talo voivat olla ei-Manhattan (vino seinä)
+  → histogrammi löytää vähemmän (asunto 6 vs contour 9) → ne pitävät CONTOUR:n,
+  eivät triggeröi. RANSAC jää fallbackiksi (vinot seinät). `--detector histogram`
+  pakottaa.
 - **ISO MYYMÄLÄ, mitattu synteettisellä 96×64×8 m myymälällä** (`data/_synth_retail.py
   --sx 96000 --sy 64000 --height 8000`, 57 M pistettä, GT tunnettu). ÄLÄ aja
   `python -m scan2bim <ply>` — se avaa GUI:n; oikea CLI on `scan2bim convert`
