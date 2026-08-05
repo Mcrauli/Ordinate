@@ -501,6 +501,14 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   keilattu. Fyysinen raja, ei bugi.
 - **Occluusio** (kalusteet nurkissa) rajaa nurkkasijainnin ~100 mm:iin kalustetulla
   datalla. Puhtaalla rungolla sama pipeline antaa ~mm.
+- **Aukon okkluusiovarjo-testi: MIN yli skannerien, ei MAX.** `_is_occlusion_shadow`
+  hylkäsi ennen aukon heti kun YKSI skanneri näki kalusteen aukon kohdalla (max) →
+  kalustetussa tilassa jokainen aito aukko katosi (Matterport-aula: 3/3 aukkoa
+  hukkui). Aito aukko = JOKIN skanneri näkee sen läpi (matala luku); aito varjo =
+  kaikki skannerit tukossa. → hylkää vain jos VÄHITEN peittynytkin skanneri ylittää
+  kynnyksen. Grazing-kulmalla (>75° normaalista) katsova skanneri antaa
+  keinotekoisen matalan luvun → ohitetaan. Mitattu aulalla: ovi min=71, ikkuna
+  min=26, ovi min=0 → 3/3 säilyy; aito kalustevarjo (min~100 k) yhä hylätään.
 - **LIIKETILA, mitattu synteettisellä 72×48×7 m myymälällä** (`data/_synth_retail.py`,
   8.2 M pistettä, GT tunnettu). Hyvin: kaikki 9 GT-seinää löytyi, jokainen 24
   seinästä ≤0.4 mm pinnastaan (`_tol_heatmap`), sisäseinien paksuus täsmälleen
