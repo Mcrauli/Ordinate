@@ -13,6 +13,7 @@ from scan2bim.gui.plan_view import PlanView, _polygon_area
 from scan2bim.gui.process_worker import ProcessWorker
 from scan2bim.gui.review_panel import ReviewPanel
 from scan2bim.gui.inspect_view import InspectView
+from scan2bim.gui.photo_view import PhotoView
 from scan2bim.gui.stage_indicator import StageIndicator, stage_for_message
 from scan2bim.gui.update_banner import UpdateBanner, UpdateChecker, perform_update
 from scan2bim.gui.brand import app_icon, logo_pixmap
@@ -84,9 +85,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self._review.reexport_requested.connect(self._on_reexport)
         self._log_panel = LogPanel()
         self._inspect_view = InspectView()
+        self._photo_view = PhotoView()
         self._tabs.addTab(self._plan_view, "Pohja")
         self._review_tab_idx = self._tabs.addTab(self._review, "Tarkistus")
         self._inspect_tab_idx = self._tabs.addTab(self._inspect_view, "3D-tarkastus")
+        self._photo_tab_idx = self._tabs.addTab(self._photo_view, "Valokuvat")
         self._tabs.addTab(self._log_panel, "Loki")
         splitter.addWidget(self._tabs)
         splitter.setStretchFactor(1, 1)
@@ -374,7 +377,9 @@ class MainWindow(QtWidgets.QMainWindow):
         if not (0 <= fi < len(self._result_models)):
             fi = 0
         model_dict = self._result_models[fi].model_dump()
-        self._inspect_view.set_source(model_dict, str(self._last_inputs[0]))
+        cloud = str(self._last_inputs[0])
+        self._inspect_view.set_source(model_dict, cloud)
+        self._photo_view.set_source(model_dict, cloud)
         self._tabs.setCurrentWidget(self._inspect_view)
 
     def _open_ifc(self) -> None:

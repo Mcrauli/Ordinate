@@ -58,8 +58,11 @@ class _FlyView(gl.GLViewWidget):
         dx = p.x() - self._last_pos.x(); dy = p.y() - self._last_pos.y()
         self._last_pos = p
         cam = self.cameraPosition()
+        # FPS-tilassa kamera pysyy paikallaan ja katsepiste lasketaan uudelleen →
+        # elevaation etumerkki on PÄINVASTAINEN kuin orbitissa (kasvava elevaatio
+        # laskee katsepisteen). Siksi +dy (hiiri ylös = katso ylös, ei invertti).
         az = self.opts["azimuth"] - dx * 0.16
-        el = float(np.clip(self.opts["elevation"] - dy * 0.16, -89.0, 89.0))
+        el = float(np.clip(self.opts["elevation"] + dy * 0.16, -89.0, 89.0))
         ar, er = np.radians(az), np.radians(el)
         u = Vector(np.cos(er) * np.cos(ar), np.cos(er) * np.sin(ar), np.sin(er))
         self.opts["azimuth"] = az
