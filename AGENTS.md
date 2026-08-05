@@ -534,10 +534,16 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
      jännettä pitkin (ovet sillataan ≤1.6 m; jänne ≥2 m ettei pilaririvi kelpaa).
      Retail AUTO: 9/9 seinää, hyllyt 0, 7 tilaa (vision). Asunto/talo käyttävät
      CONTOUR-detektoria → muutos ei koske niitä (9/3, 9/2 ennallaan).
-  5. AUKI: rescatut backroom-pystyt yliulottuvat ~8 m myyntitilaan (RANSAC-taso
-     nappaa pilaripisteitä; `_trim_endpoints`-percentiili ei leikkaa harvaa
-     kontaminoitunutta häntää — sama juurisyy kuin vaakaseinien sales-floor-jatke).
-     Dense-axis-fit kokeiltu mutta toi RANSAC-kohinaa (pilarit 3–13) → hylätty.
+  5. ~~Rescatut backroom-pystyt yliulottuvat ~8 m myyntitilaan~~ **OSIN KORJATTU
+     (2/3): `_trim_endpoints` mittasi päätepisteen KOKO korkeudelta → seinän
+     x-kaistan LATTIA/KATTOLAATTA (pisteitä joka y:llä) venytti seinän tilan
+     syvyyden yli. Trim käyttää nyt KESKIKORKEUTTA (0.25–0.75 H) → vain seinäpinta,
+     ei laattaa.** Mitattu: 3:sta backroom-pystystä 2 leikkautuu oikein y≈12160:een
+     (ennen kaikki y≈22000). Asunto/talo ennallaan (9/3, 9/2), 122 testiä.
+     JÄLJELLÄ: pilarilinjan VIERESSÄ (≤~350 mm) oleva seinä yliulottuu yhä
+     (pilari on pystyrakenne → näkyy keskikorkeudellakin); aisle-hyllyt (pystyt
+     gondolit) jäävät valeseiniksi OFF-moodissa (auto/suodatin osin hoitaa).
+     Dense-axis-fit kokeiltu mutta hylätty (RANSAC-kohina, pilarit 3–13).
 - **Liiketilojen hyllyt** (lattia-katto) läpäisevät geometrisen pystymaskin →
   semanttinen suodatin tarvitaan. **KYTKETTY (4.8.2026): `semantic_filter_mode="auto"`
   on nyt OLETUS.** `_looks_like_retail(cloud)` (pipeline.py) kytkee PointNet-

@@ -137,8 +137,12 @@ def _trim_endpoints(wall, pts: np.ndarray, index=None):
 
     half_t = wall.thickness / 2.0
     face_tol = 30.0
-    z_lo = wall.z_min - 50.0
-    z_hi = wall.z_min + wall.height + 50.0
+    # KESKIKORKEUS, ei koko korkeus: seinän x-kaistalla on myös LATTIA- ja
+    # KATTOLAATAN pisteitä (laatta ulottuu joka y:hyn), jotka saisivat seinän
+    # näyttämään jatkuvan koko tilan syvyyden → päätepistettä ei voi mitata.
+    # Keskikorkeudella (0.25–0.75 H) on vain seinäpinta + pystyrakenteet.
+    z_lo = wall.z_min + 0.25 * wall.height
+    z_hi = wall.z_min + 0.75 * wall.height
 
     # Akselin suuntaan EI rajausta: percentiilit lasketaan kaikista pinnalle
     # osuvista pisteistä, myös janan päiden ulkopuolelta (juuri siitä pidennys

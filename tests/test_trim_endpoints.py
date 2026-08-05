@@ -49,6 +49,32 @@ def test_trim_still_trims_real_overshoot():
     assert p1[0] < 2900.0, "aito ylitys jai trimmaamatta"
 
 
+def test_trim_ignores_floor_slab_strip():
+    """Seinän x-kaistalla kulkee lattia/kattolaatta (pisteitä joka y:llä
+    lattia- ja kattotasossa). Trimmin pitää mitata seinän pää KESKIKORKEUDELTA
+    (vain seinäpinta), ei antaa laatan venyttää seinää tilan syvyyden yli."""
+    rng = np.random.RandomState(3)
+    n_wall = 8000
+    # aito seinä y in [0, 3000], KOKO korkeus 0..2700
+    wall_pts = np.column_stack([
+        rng.uniform(0, 3000, n_wall),
+        np.where(rng.rand(n_wall) < 0.5, -100.0, 100.0) + rng.normal(0, 3, n_wall),
+        rng.uniform(0, 2700, n_wall),
+    ])
+    # lattialaatta seinän jatkeena y in [3000, 9000], VAIN lattiataso (z≈0)
+    n_slab = 8000
+    slab_pts = np.column_stack([
+        rng.uniform(3000, 9000, n_slab),
+        rng.uniform(-100, 100, n_slab),
+        rng.uniform(0, 60, n_slab),
+    ])
+    pts = np.vstack([wall_pts, slab_pts])
+    wall = _wall(0, 0, 9000, 0, method="contour")   # akseli venytetty laatan yli
+    out = _trim_endpoints(wall, pts)
+    p1 = np.array(out.axis[1])
+    assert p1[0] < 3600.0, f"lattialaatta venytti seinän {p1[0]:.0f}mm:iin (odotus ~3000)"
+
+
 def test_trim_cuts_large_phantom_overshoot():
     """Iso myymälä: seinän akseli venyi metrejä yli datan tyhjän lattian yli.
     Kun kaista on kiistatta aito (pitkä + tiheä), leikkaus saa ylittää 300 mm."""
