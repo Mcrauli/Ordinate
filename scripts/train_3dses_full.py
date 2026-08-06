@@ -35,6 +35,33 @@ def _lut(mp):
     for k, v in mp.items(): l[k] = v
     return l
 LUT12, LUT18 = _lut(MAP12), _lut(MAP18)
+IDENT = np.arange(13, dtype=np.int64)   # auto-labeloitu data on JO S3DIS 0-12
+
+
+def npy_scene_blocks(path, voxel, max_bps, rng, geo=False, colf=False, pairf=False):
+    """Kuten scene_blocks mutta plain Nx7-npy:stä (auto-labeler ulostulo).
+    Normalisoi yksiköt (mm→m jos iso) + värit (0-1→0-255) + IDENT-LUT."""
+    a = np.load(path)
+    xyz = a[:, :3].astype(np.float32)
+    if np.abs(xyz).max() > 1000:            # mm → m (rohbau/3dses ovat metreissä)
+        xyz = xyz / 1000.0
+    rgb = a[:, 3:6].astype(np.float32)
+    if rgb.max() > 1.5:
+        rgb = rgb / 255.0                   # 0-255 → 0-1 (scene_blocks jakaa myös /255; tässä jo 0-1)
+    lbl = IDENT[np.clip(a[:, -1].astype(np.int64), 0, 12)]
+    idx = FX._voxel_repr_idx(xyz, voxel); xyz, rgb, lbl = xyz[idx], rgb[idx], lbl[idx]
+    fz = np.percentile(xyz[:, 2], 2); h = np.clip((xyz[:, 2] - fz) / 3.0, 0, 1.5)
+    cols = [rgb, h[:, None]]
+    if geo: cols.append(GEO.compute(xyz))
+    if colf: cols.append(COL.compute(xyz))
+    if pairf: cols.append(PAIR.compute(xyz))
+    extra = np.column_stack(cols).astype(np.float32)
+    bf, bl = E._pts_to_blocks(xyz, lbl, 1.0, 4096, 0.5, extra=extra)
+    if bf is None:
+        return None, None
+    if len(bf) > max_bps:
+        p = rng.choice(len(bf), max_bps, replace=False); bf, bl = bf[p], bl[p]
+    return bf, bl
 
 
 def scene_blocks(z, name, mp_lut, voxel, max_bps, rng, geo=False, colf=False, pairf=False):
@@ -212,6 +239,8 @@ def main():
                     help="synteettisiä pysty-ohut-clutter-skenejä (putket/tolpat/nurkkakasat → clutter)")
     ap.add_argument("--synth-furnished", type=int, default=0,
                     help="synteettisiä kalustettuja huoneita (pöydät/tuolit/kalusteet → poista; korvaa 3DSES:n F2)")
+    ap.add_argument("--extra-npy", default="",
+                    help="pilkuin eroteltuja auto-labeloituja Nx7-npy-skenejä (SAM-auto-labeler, oma data)")
     a = ap.parse_args()
     import torch
     device = "cuda" if torch.cuda.is_available() else "cpu"; print(f"device={device}", flush=True)
@@ -266,8 +295,19 @@ def main():
                                             geo=a.geo, colf=a.colfeat, pairf=a.pairfeat)
             if ff is not None:
                 parts_f.append(ff); parts_l.append(fl); n_fu = len(ff)
+        n_ex = 0
+        if a.extra_npy:
+            for p in a.extra_npy.split(","):
+                p = p.strip()
+                if not p or not Path(p).exists():
+                    print(f"  extra-npy PUUTTUU: {p}", flush=True); continue
+                ef, el = npy_scene_blocks(p, a.voxel, a.max_bps, rng, geo=a.geo, colf=a.colfeat, pairf=a.pairfeat)
+                if ef is not None:
+                    parts_f.append(ef); parts_l.append(el); n_ex += len(ef)
+                    print(f"  extra-npy {Path(p).name}: {len(ef)} lohkoa", flush=True)
         tf = np.vstack(parts_f); tl = np.vstack(parts_l)
         print(f"lohkot: 3DSES {n_dses} + Rohbau {len(rf)} + liiketila {n_ret} + monikerros {n_ms} "
+              f"+ auto-npy {n_ex} "
               f"+ vclutter {n_vc} + kalustettu {n_fu} = {len(tf)} train | held-out {len(dvf)} ({time.time()-t0:.0f}s)", flush=True)
         if a.cache:
             np.savez(a.cache, tf=tf, tl=tl, dvf=dvf, dvl=dvl)
