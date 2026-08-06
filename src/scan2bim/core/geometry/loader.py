@@ -29,12 +29,15 @@ def load_and_merge(paths: list[Path]) -> o3d.geometry.PointCloud:
     return merged
 
 
-def load_point_cloud(path: Path) -> o3d.geometry.PointCloud:
-    """Lataa pistepilvi tiedostosta formaatista riippumatta."""
+def load_point_cloud(path: Path, e57_colors: bool = False) -> o3d.geometry.PointCloud:
+    """Lataa pistepilvi tiedostosta formaatista riippumatta.
+
+    e57_colors: lue E57:n RGB (opt-in). Oletus pois → putki/detektio ennallaan;
+    katselin pyytää True (renderöinti värilliseksi). PLY/LAS lataavat värit aina."""
     suffix = path.suffix.lower()
 
     if suffix == ".e57":
-        return _autoscale(_load_e57(path))
+        return _autoscale(_load_e57(path, with_colors=e57_colors))
     if suffix in {".las", ".laz"}:
         return _autoscale(_load_las(path))
     if suffix in {".pts", ".xyz"}:
@@ -328,21 +331,23 @@ def _fix_truncated_ply(path: Path, cloud: o3d.geometry.PointCloud) -> o3d.geomet
     return cloud
 
 
-def _load_e57(path: Path) -> o3d.geometry.PointCloud:
+def _load_e57(path: Path, with_colors: bool = False) -> o3d.geometry.PointCloud:
+    # with_colors on OPT-IN (oletus pois): värit muuttaisivat väritietoisen
+    # semanttisen suodattimen tulosta E57:llä (mitattu: lobby pilarit 14→10),
+    # eikä sitä voi ilman GT:tä validoida. Putki EI pyydä värejä → detektio
+    # ennallaan; VAIN katselin pyytää (harmaan "mössön" korjaus renderöintiin).
     import pye57
     e57 = pye57.E57(str(path))
     merged = o3d.geometry.PointCloud()
     for i in range(e57.scan_count):
         try:
-            data = e57.read_scan(i, colors=True, transform=True, ignore_missing_fields=True)
+            data = e57.read_scan(i, colors=with_colors, transform=True, ignore_missing_fields=True)
         except Exception:
-            data = e57.read_scan(i, colors=True, ignore_missing_fields=True)
+            data = e57.read_scan(i, colors=with_colors, ignore_missing_fields=True)
         xyz = np.column_stack([data["cartesianX"], data["cartesianY"], data["cartesianZ"]])
         cloud = o3d.geometry.PointCloud()
         cloud.points = o3d.utility.Vector3dVector(xyz.astype(np.float64))
-        # Värit jos E57:ssä on ne (Matterport/Radikal): ilman tätä pilvi
-        # renderöityi harmaana "mössönä". Normalisoi 0–1 (E57-värit 8- tai 16-bit).
-        if all(k in data for k in ("colorRed", "colorGreen", "colorBlue")):
+        if with_colors and all(k in data for k in ("colorRed", "colorGreen", "colorBlue")):
             rgb = np.column_stack([data["colorRed"], data["colorGreen"], data["colorBlue"]]).astype(np.float64)
             mx = float(rgb.max()) if rgb.size else 0.0
             if mx > 1.0:

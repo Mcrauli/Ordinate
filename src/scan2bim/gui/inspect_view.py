@@ -218,7 +218,7 @@ class _Loader(QtCore.QObject):
     def run(self) -> None:
         try:
             from scan2bim.core.geometry.loader import load_point_cloud
-            cloud = load_point_cloud(Path(self._path))
+            cloud = load_point_cloud(Path(self._path), e57_colors=True)
             P = np.asarray(cloud.points, dtype=np.float32)
             # CEIL-harvennus: len//max antaa step=1 kun len<2*max → 9M pistettä
             # jäi harventamatta. Ceil takaa että työjoukko todella cappaantuu.
