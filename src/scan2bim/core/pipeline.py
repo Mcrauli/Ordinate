@@ -1465,6 +1465,25 @@ class Pipeline:
         # Ikkuna vaatii ulkoseinän: sisäseinän (huone molemmin puolin) leveä aukko → ovi.
         model.openings = reclassify_interior_windows(model.walls, model.spaces, model.openings)
 
+        # Kuvaohjatut aukot: E57:n skannerikuvista LÄPINÄKYVYYS-signaalilla (säde näkee
+        # seinätason ohi = ikkuna/ovi). VAIN lisää aukkoja joita geometria ei löytänyt.
+        # No-op ilman E57-kuvia → PLY/asunto/talo/retail muuttumaton (gauntlet-turva).
+        if source_path.suffix.lower() == ".e57":
+            try:
+                from scan2bim.core.segmentation.image_openings import detect_image_openings
+                _img_ops = detect_image_openings(model.walls, source_path, np.asarray(cloud.points))
+                _added = 0
+                for _io in _img_ops:
+                    _dup = any(_io.wall_id == o.wall_id
+                               and abs(_io.position_along - o.position_along) < max(o.width, _io.width)
+                               for o in model.openings)
+                    if not _dup:
+                        model.openings.append(_io); _added += 1
+                if _added:
+                    self._progress(f"  Kuvaohjattuja aukkoja lisätty: {_added}")
+            except Exception as _e:  # noqa: BLE001
+                self._progress(f"  Kuva-aukot ohitettu: {_e}")
+
         from scan2bim.core.segmentation.column_detector import detect_columns
         model.columns = detect_columns(cloud, model.walls, floor_z, ceiling_z)
 
