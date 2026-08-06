@@ -78,15 +78,18 @@ def _region_class(pts3d, floor_z, ceil_z, model):
     zext = float(z.max() - z.min()); spread = float(np.sqrt(evals[2]))
     xy = pts3d[:, :2]
     footprint = float(max(xy[:, 0].ptp(), xy[:, 1].ptp()))
+    # AITO SEINÄ = iso pystytaso → suojattu (myös mallista puuttuvat)
     if planar and vertical and zext > 700 and spread > 500:
         return WALL
     # pilari: kapea pysty (pieni footprint, korkea)
     if footprint < 900 and zext > 1500:
         return COL
-    # kompakti/ei-tasomainen mid-height objekti → kaluste
-    if not (planar and vertical) and footprint < 3000:
+    # KAIKKI MUU keskikorkeudella → CLUTTER (kaluste/krääsä/objekti). Aiemmin
+    # tämä jäi liikaa Noneen (7% clutter → malli oppi säilyttämään). Seinät on
+    # jo suojattu yllä; ei-tasomainen tai matala/leveä = ei seinä = kaluste.
+    if zext < 2500 or footprint > 3000:
         return CLUT
-    return None                                          # epävarma → labeloimatta
+    return None
 
 
 def main():
