@@ -150,6 +150,43 @@ def test_ply_autoscale_factor_metres(tmp_path):
     assert ply_autoscale_factor(pmm) == 1.0
 
 
+def test_empty_pts_raises(tmp_path):
+    """Tyhja/pisteeton PTS -> selkovirhe, ei aaneton tyhja pilvi."""
+    p = tmp_path / "empty.pts"
+    p.write_text("# vain kommentteja\nroskaa ei-numeroita\n")
+    with pytest.raises(ValueError, match="piste"):
+        load_point_cloud(p)
+
+
+def test_corrupt_pts_warns(tmp_path, caplog):
+    """Suuri osuus lukukelvottomia riveja -> varoitus (osittainen luku)."""
+    import logging
+    good = "\n".join(f"{x} {x} {x}" for x in range(50))
+    bad = "\n".join("x y z" for _ in range(50))   # 50 lukukelvotonta
+    p = tmp_path / "corrupt.pts"
+    p.write_text(good + "\n" + bad)
+    with caplog.at_level(logging.WARNING):
+        cloud = load_point_cloud(p)
+    assert len(cloud.points) == 50
+    assert any("lukukelvot" in r.message for r in caplog.records)
+
+
+def test_las_empty_or_truncated(tmp_path):
+    """Katkennut LAS -> selkovirhe (vajaa/vaurioitunut), ei kryptista laspy-kaatoa."""
+    laspy = pytest.importorskip("laspy")
+    las = laspy.create(point_format=3)
+    rng = np.random.default_rng(11)
+    xyz = rng.uniform(0, 5000, (20000, 3))
+    las.x, las.y, las.z = xyz[:, 0], xyz[:, 1], xyz[:, 2]
+    full = tmp_path / "full.las"
+    las.write(str(full))
+    data = full.read_bytes()
+    cut = tmp_path / "cut.las"
+    cut.write_bytes(data[: int(len(data) * 0.4)])   # katkaise 40 %:iin
+    with pytest.raises(ValueError, match="vajaa|vaurioitunut|lukea"):
+        load_point_cloud(cut)
+
+
 def test_truncated_ply_warns_or_raises(tmp_path, caplog):
     """Katkennut lataus/siirto -> vajaa PLY: selkea varoitus (osittainen luku)
     tai selkovirhe (tyhja luku), ei aanetonta osittaista mallia."""

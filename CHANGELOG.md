@@ -4,6 +4,15 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 [`Mcrauli/scan2bim-web`](https://github.com/Mcrauli/scan2bim-web/releases):iin;
 sovellus päivittää itsensä sieltä.
 
+## Julkaisematon
+
+- **Vajaan/vaurioituneen syötetiedoston selkovaroitus laajennettu E57/LAS/PTS/XYZ:lle.**
+  Aiemmin vain binääri-PLY tunnisti katkenneen siirron (headerin lupaama pistemäärä
+  vs. tavuista laskettu todellinen). Nyt myös E57 (lukukelvottomat skannit),
+  LAS/LAZ (header point_count vs. luettu) ja PTS/XYZ (lukukelvottomien rivien osuus)
+  varoittavat selkokielellä tai nostavat selkovirheen tyhjästä/vakavasti vajaasta
+  tiedostosta — ei enää äänetöntä osittaista mallia tai kryptistä kaatoa. 144 testiä.
+
 ## v0.9.12 (5.8.2026) — itsepäivityksen varmennus
 
 - Sama korjattu apuprosessi-itsepäivitys kuin v0.9.11; julkaistu jotta korjatun

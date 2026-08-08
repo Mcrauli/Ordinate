@@ -337,13 +337,25 @@ def _load_e57(path: Path, with_colors: bool = False) -> o3d.geometry.PointCloud:
     # eikä sitä voi ilman GT:tä validoida. Putki EI pyydä värejä → detektio
     # ennallaan; VAIN katselin pyytää (harmaan "mössön" korjaus renderöintiin).
     import pye57
-    e57 = pye57.E57(str(path))
+    try:
+        e57 = pye57.E57(str(path))
+        n_scans = e57.scan_count
+    except Exception as exc:  # noqa: BLE001 — avaus epäonnistui = vaurio/vajaa
+        raise ValueError(
+            f"{path.name}: E57-tiedostoa ei voitu avata — mahdollisesti vajaa tai "
+            f"vaurioitunut siirrossa/latauksessa ({type(exc).__name__})."
+        ) from exc
     merged = o3d.geometry.PointCloud()
-    for i in range(e57.scan_count):
+    failed = 0
+    for i in range(n_scans):
         try:
-            data = e57.read_scan(i, colors=with_colors, transform=True, ignore_missing_fields=True)
-        except Exception:
-            data = e57.read_scan(i, colors=with_colors, ignore_missing_fields=True)
+            try:
+                data = e57.read_scan(i, colors=with_colors, transform=True, ignore_missing_fields=True)
+            except Exception:  # noqa: BLE001 — pose-muunnos epäonnistui, koeta ilman
+                data = e57.read_scan(i, colors=with_colors, ignore_missing_fields=True)
+        except Exception:  # noqa: BLE001 — koko skanni lukukelvoton (katkennut siirto?)
+            failed += 1
+            continue
         xyz = np.column_stack([data["cartesianX"], data["cartesianY"], data["cartesianZ"]])
         cloud = o3d.geometry.PointCloud()
         cloud.points = o3d.utility.Vector3dVector(xyz.astype(np.float64))
@@ -354,6 +366,16 @@ def _load_e57(path: Path, with_colors: bool = False) -> o3d.geometry.PointCloud:
                 rgb /= 65535.0 if mx > 255.0 else 255.0
             cloud.colors = o3d.utility.Vector3dVector(np.clip(rgb, 0.0, 1.0))
         merged += cloud
+    if len(merged.points) == 0:
+        raise ValueError(
+            f"{path.name}: E57:stä ei saatu yhtään pistettä ({n_scans} skannia, "
+            f"{failed} lukukelvotonta) — tyhjä tai vaurioitunut tiedosto."
+        )
+    if failed:
+        log.warning(
+            "%s: %d / %d skannia ei voitu lukea (katkennut siirto/lataus?). "
+            "Malli tehdään luetuista skanneista.", path.name, failed, n_scans,
+        )
     return merged
 
 
@@ -380,15 +402,29 @@ def scanner_origins(path: Path) -> list[np.ndarray]:
 
 
 def _load_pts_xyz(path: Path) -> o3d.geometry.PointCloud:
-    lines = path.read_text(encoding="utf-8").splitlines()
+    lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
     rows = []
+    skipped = 0
     for line in lines:
         parts = line.split()
         if len(parts) >= 3:
             try:
                 rows.append([float(parts[0]), float(parts[1]), float(parts[2])])
             except ValueError:
-                continue
+                skipped += 1
+    if not rows:
+        raise ValueError(
+            f"{path.name}: tiedostosta ei löytynyt yhtään pistettä — tyhjä tai "
+            f"vaurioitunut tiedosto."
+        )
+    # Yksittäinen katkennut viimeinen rivi on normaalia; suuri osuus lukukelvottomia
+    # rivejä viittaa vaurioon/keskeytyneeseen siirtoon → varoita selkokielellä.
+    total = len(rows) + skipped
+    if skipped > max(1, int(0.1 * total)):
+        log.warning(
+            "%s: %s / %s riviä oli lukukelvottomia (vaurioitunut tai keskeytynyt "
+            "tiedosto?). Malli tehdään luetuista.", path.name, f"{skipped:,}", f"{total:,}",
+        )
     cloud = o3d.geometry.PointCloud()
     cloud.points = o3d.utility.Vector3dVector(np.array(rows, dtype=np.float64))
     return cloud
@@ -396,8 +432,31 @@ def _load_pts_xyz(path: Path) -> o3d.geometry.PointCloud:
 
 def _load_las(path: Path) -> o3d.geometry.PointCloud:
     import laspy
-    las = laspy.read(str(path))
+    try:
+        las = laspy.read(str(path))
+    except Exception as exc:  # noqa: BLE001 — laspy nostaa vajaasta/vaurioituneesta
+        raise ValueError(
+            f"{path.name}: LAS/LAZ-tiedostoa ei voitu lukea — mahdollisesti vajaa tai "
+            f"vaurioitunut siirrossa/latauksessa ({type(exc).__name__})."
+        ) from exc
+    declared = int(getattr(las.header, "point_count", 0) or 0)
     xyz = np.column_stack([las.x, las.y, las.z])
+    n = len(xyz)
+    if n == 0:
+        raise ValueError(
+            f"{path.name}: LAS/LAZ-tiedostossa ei ole pisteitä — tyhjä tai vaurioitunut."
+        )
+    # Header lupaa point_count pistettä; jos luettu selvästi vähemmän, siirto katkesi.
+    if declared and n < declared:
+        if n < 0.5 * declared or n < 1000:
+            raise ValueError(
+                f"{path.name}: tiedosto on vajaa — headerin mukaan {declared:,} pistettä, "
+                f"luettu vain {n:,}. Siirtyikö/latautuiko tiedosto kokonaan?"
+            )
+        log.warning(
+            "%s: tiedosto on vajaa — %s / %s pistettä (katkennut siirto/lataus?). "
+            "Malli tehdään luetusta osasta.", path.name, f"{n:,}", f"{declared:,}",
+        )
     cloud = o3d.geometry.PointCloud()
     cloud.points = o3d.utility.Vector3dVector(xyz.astype(np.float64))
     return cloud
