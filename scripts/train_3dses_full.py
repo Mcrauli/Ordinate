@@ -241,9 +241,11 @@ def main():
                     help="synteettisiä kalustettuja huoneita (pöydät/tuolit/kalusteet → poista; korvaa 3DSES:n F2)")
     ap.add_argument("--extra-npy", default="",
                     help="pilkuin eroteltuja auto-labeloituja Nx7-npy-skenejä (SAM-auto-labeler, oma data)")
+    ap.add_argument("--no-rgb", action="store_true",
+                    help="pudota rgb (kanavat 6-8) → 13ch väritön, TÄSMÄÄ deployn s3dis_pointnet.onnx (base6+h+geo3+col3)")
     a = ap.parse_args()
-    import torch
-    device = "cuda" if torch.cuda.is_available() else "cpu"; print(f"device={device}", flush=True)
+    # torch imported lazily just before training — block/cache building is pure
+    # numpy, so --build-cache-only can run in a torch-free env.
     rng = np.random.default_rng(13); t0 = time.time()
     if a.cache and Path(a.cache).exists():
         z = np.load(a.cache)
@@ -314,6 +316,14 @@ def main():
             print(f"välimuisti tallennettu: {a.cache}", flush=True)
     if a.build_cache_only:
         print("vain välimuisti pyydetty — lopetetaan.", flush=True); return
+    import torch
+    device = "cuda" if torch.cuda.is_available() else "cpu"; print(f"device={device}", flush=True)
+    if a.no_rgb:
+        # base6 + korkeus + geo3 + col3; rgb (6-8) pois → sama layout kuin
+        # pointnet_filter._classify (feat[6]=height, 7-9=geo, 10-12=col).
+        keep = [0, 1, 2, 3, 4, 5] + list(range(9, tf.shape[2]))
+        tf = tf[:, :, keep]; dvf = dvf[:, :, keep]
+        print(f"rgb pudotettu (6-8) -> {tf.shape[2]} kanavaa (deploy-yhteensopiva, XYZ-only)", flush=True)
     in_ch = tf.shape[2]                           # koko kanavamäärä (base6 + extrat)
     model = FX._train(tf, tl, in_ch, a.epochs, device, f"3DSES-{a.arch}", arch=a.arch,
                       batch=a.batch, augment=a.augment, focal=a.focal)
