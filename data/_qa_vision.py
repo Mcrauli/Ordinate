@@ -4,14 +4,15 @@ import open3d as o3d, numpy as np
 import matplotlib; matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from scan2bim.core.pipeline import Pipeline, PipelineConfig
+from _paths import DATA  # portable dev-tool paths
 
 TOL=1.5
-det=o3d.io.read_point_cloud(r"C:\Users\lauri\scan2bim\data\_cache_apt.ply")
+det=o3d.io.read_point_cloud(str(DATA / "_cache_apt.ply"))
 cfg=PipelineConfig(detector="contour",auto_voxel=False,voxel_size=12.0,
     export_ifc=False,export_dxf=False,export_qa=False)
 m=Pipeline(cfg)._detect(det,Path("apt"))
 
-band=np.asarray(o3d.io.read_point_cloud(r"C:\Users\lauri\scan2bim\data\_qa_band.ply").points)
+band=np.asarray(o3d.io.read_point_cloud(str(DATA / "_qa_band.ply")).points)
 xy=band[:,:2]
 dmin=np.full(len(xy),9e9)
 for w in m.walls:
@@ -36,5 +37,5 @@ for w in m.walls:
 plt.colorbar(sc,label="poikkeama seinäpinnasta (mm, clamp 10)")
 ax.set_aspect("equal")
 ax.set_title(f"1.5mm QA: {100*np.mean(assoc<TOL):.1f}% <1.5mm, mediaani {np.median(assoc):.2f}mm")
-out=r"C:\Users\lauri\scan2bim\data\_qa_heatmap.png"; plt.savefig(out,dpi=100,bbox_inches="tight")
+out=str(DATA / "_qa_heatmap.png"); plt.savefig(out,dpi=100,bbox_inches="tight")
 print("saved",out)

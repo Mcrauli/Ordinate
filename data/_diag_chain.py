@@ -5,6 +5,7 @@ import numpy as np
 import cv2
 
 import scan2bim.core.segmentation.wall_contour as WC
+from _paths import DATA, OUTPUT  # portable dev-tool paths
 
 _vm = WC.WallDetectorContour._vertical_mask
 _c2s = WC.WallDetectorContour._contours_to_segments
@@ -63,10 +64,10 @@ WC._regularize_orthogonal = ro
 
 from scan2bim.core.pipeline import Pipeline, PipelineConfig  # noqa: E402
 
-D = Path(r"C:\Users\lauri\scan2bim\data\_rohbau\site_07")
+D = Path(str(DATA / "_rohbau/site_07"))
 plys = [sc / "cloud.ply" for sc in sorted(p for p in D.iterdir() if p.is_dir())]
 cfg = PipelineConfig(detector="contour", auto_voxel=True, export_ifc=False,
                      export_dxf=False, export_qa=False, semantic_filter_mode="pointnet")
-models = Pipeline(cfg).run_floors(plys, Path(r"C:\Users\lauri\scan2bim\data\output\_rohbau_chain"))
+models = Pipeline(cfg).run_floors(plys, Path(str(OUTPUT / "_rohbau_chain")))
 for i, m in enumerate(models):
     print(f"LOPPU floor_{i}: walls={len(m.walls)} cols={len(m.columns)}")

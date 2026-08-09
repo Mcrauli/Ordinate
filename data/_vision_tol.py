@@ -4,8 +4,9 @@ from pathlib import Path
 from scipy.signal import find_peaks
 import matplotlib; matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-m=json.loads(Path(r"C:\Users\lauri\scan2bim\data\output\_contour_ifc\floor_00\model.json").read_text())
-band=np.asarray(o3d.io.read_point_cloud(r"C:\Users\lauri\scan2bim\data\_qa_band.ply").points)
+from _paths import DATA, OUTPUT  # portable dev-tool paths
+m=json.loads(Path(str(OUTPUT / "_contour_ifc/floor_00/model.json")).read_text())
+band=np.asarray(o3d.io.read_point_cloud(str(DATA / "_qa_band.ply")).points)
 xy=band[:,:2]
 fig,ax=plt.subplots(figsize=(13,13))
 GRID=40.0;x0,y0=xy[:,0].min(),xy[:,1].min()
@@ -33,4 +34,4 @@ for w in m['walls']:
     ax.plot([a[0],b[0]],[a[1],b[1]],"-",lw=3,color=col)
 ax.set_title(f"PAKSUUS-toleranssi: vihrea<1.5mm({g})  keltainen<5mm({y})  punainen>5mm({r})  harmaa=1-puolinen({o})")
 ax.set_aspect("equal")
-out=r"C:\Users\lauri\scan2bim\data\_vision_tol.png";plt.savefig(out,dpi=100,bbox_inches="tight");print("saved",out,f"g={g} y={y} r={r} grey={o}")
+out=str(DATA / "_vision_tol.png");plt.savefig(out,dpi=100,bbox_inches="tight");print("saved",out,f"g={g} y={y} r={r} grey={o}")

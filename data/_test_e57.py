@@ -1,12 +1,13 @@
 import time
 from pathlib import Path
 from scan2bim.core.pipeline import Pipeline, PipelineConfig
+from _paths import DOWNLOADS, OUTPUT  # portable dev-tool paths
 for name in ["gargage.e57"]:
-    p=Path(rf"C:\Users\lauri\Downloads\{name}")
+    p=Path(str(DOWNLOADS / f"{name}"))
     if not p.exists(): print("puuttuu",p); continue
     t0=time.time()
     cfg=PipelineConfig(detector="contour",auto_voxel=True,export_ifc=True,export_dxf=False,export_qa=False)
-    out=Path(rf"C:\Users\lauri\scan2bim\data\output\_e57_{p.stem}")
+    out=Path(str(OUTPUT / f"_e57_{p.stem}"))
     try:
         models=Pipeline(cfg).run_floors([p],out)
         for m in models:

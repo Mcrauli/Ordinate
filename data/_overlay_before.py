@@ -3,8 +3,9 @@ import json, math, numpy as np, open3d as o3d
 from pathlib import Path
 import matplotlib; matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-m=json.loads(Path(r"C:\Users\lauri\scan2bim\data\output\_contour_ifc\floor_00\model.json").read_text())
-band=np.asarray(o3d.io.read_point_cloud(r"C:\Users\lauri\scan2bim\data\_qa_band.ply").points)
+from _paths import DATA, OUTPUT  # portable dev-tool paths
+m=json.loads(Path(str(OUTPUT / "_contour_ifc/floor_00/model.json")).read_text())
+band=np.asarray(o3d.io.read_point_cloud(str(DATA / "_qa_band.ply")).points)
 xy=band[:,:2]
 rs=np.random.RandomState(0); xy=xy[rs.choice(len(xy),min(600000,len(xy)),replace=False)]
 GRID=35.0
@@ -24,4 +25,4 @@ for o in m["openings"]:
     ax.plot(px,py,"s",ms=12,color="lime" if o["opening_type"]=="door" else "orange",mec="k")
 ax.set_title(f'TUOTANTO 0.4.3 vs pistepilvi: {len(m["walls"])} seinaa, {sum(1 for o in m["openings"] if o["opening_type"]=="door")} ovea, {len(m["spaces"])} huonetta')
 ax.set_aspect("equal")
-out=r"C:\Users\lauri\scan2bim\data\_overlay_prod.png";plt.savefig(out,dpi=100,bbox_inches="tight");print("saved",out)
+out=str(DATA / "_overlay_prod.png");plt.savefig(out,dpi=100,bbox_inches="tight");print("saved",out)

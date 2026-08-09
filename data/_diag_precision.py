@@ -2,10 +2,10 @@
 from pathlib import Path
 import open3d as o3d, numpy as np
 from scan2bim.core.pipeline import Pipeline, PipelineConfig
-det=o3d.io.read_point_cloud(r"C:\Users\lauri\scan2bim\data\_cache_apt.ply")
+det=o3d.io.read_point_cloud(str(DATA / "_cache_apt.ply"))
 cfg=PipelineConfig(detector="contour",auto_voxel=False,voxel_size=12.0,export_ifc=False,export_dxf=False,export_qa=False)
 m=Pipeline(cfg)._detect(det,Path("apt"))
-band=np.asarray(o3d.io.read_point_cloud(r"C:\Users\lauri\scan2bim\data\_qa_band.ply").points)
+band=np.asarray(o3d.io.read_point_cloud(str(DATA / "_qa_band.ply")).points)
 xy=band[:,:2]
 rs=np.random.RandomState(0); idx=rs.choice(len(xy),min(400000,len(xy)),replace=False); xy=xy[idx]
 
@@ -35,6 +35,7 @@ print(f"PARAS seinä {w.id}: {len(sd)} pistettä, det_paksuus={w.thickness:.0f} 
 h,edges=np.histogram(sd,bins=120,range=(-60,60))
 centers=0.5*(edges[:-1]+edges[1:])
 from scipy.signal import find_peaks
+from _paths import DATA  # portable dev-tool paths
 pk,_=find_peaks(h,height=h.max()*0.2,distance=3)
 print("  pintapiikit (mm centerlinestä):", [f"{centers[p]:.1f}" for p in pk])
 # kohina: piikin leveys (std lähellä suurinta piikkiä)

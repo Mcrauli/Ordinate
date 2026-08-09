@@ -25,8 +25,9 @@ from pathlib import Path
 
 import numpy as np
 import open3d as o3d
+from _paths import REPO  # portable dev-tool paths
 
-ROOT_MAIN = Path(r"C:\Users\lauri\scan2bim")
+ROOT_MAIN = Path(str(REPO))
 MODEL = ROOT_MAIN / "data" / "output" / "_contour_ifc" / "floor_00" / "model.json"
 BAND = ROOT_MAIN / "data" / "_qa_band.ply"
 OUT_JSON = ROOT_MAIN / "data" / "_corner_qa.json"

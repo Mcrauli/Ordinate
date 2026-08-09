@@ -1,8 +1,9 @@
 from pathlib import Path
 import numpy as np, open3d as o3d
+from _paths import DOWNLOADS, REFERENCE  # portable dev-tool paths
 
-apt = Path(r"C:\Users\lauri\Downloads\raw_scans_apartment\apartment")
-out = Path(r"C:\Users\lauri\scan2bim\reference\Cloud2BIM\output_xyz\apartment.xyz")
+apt = Path(str(DOWNLOADS / "raw_scans_apartment/apartment"))
+out = Path(str(REFERENCE / "Cloud2BIM/output_xyz/apartment.xyz"))
 VOX = 0.015  # m (raaka PLY on jo metreissä)
 total = 0
 with open(out, "w") as f:

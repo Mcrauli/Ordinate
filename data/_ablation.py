@@ -17,18 +17,19 @@ if variant in ("noadopt", "nocut_noadopt"):
     PM._adopt_measured_line = lambda *a, **k: None
 
 from scan2bim.core.pipeline import Pipeline, PipelineConfig  # noqa: E402
+from _paths import DOWNLOADS, OUTPUT  # portable dev-tool paths
 
 SETS = {
-    "apt": sorted(Path(r"C:\Users\lauri\Downloads\raw_scans_apartment\apartment").glob("scan_*.ply")),
-    "apt2": [Path(r"C:\Users\lauri\Downloads\aligned_low_apartment\apt.ply")],
-    "bedroom": [Path(r"C:\Users\lauri\Downloads\aligned_low_bedroom\bedroom.ply")],
-    "garage": [Path(r"C:\Users\lauri\Downloads\gargage.e57")],
+    "apt": sorted(Path(str(DOWNLOADS / "raw_scans_apartment/apartment")).glob("scan_*.ply")),
+    "apt2": [Path(str(DOWNLOADS / "aligned_low_apartment/apt.ply"))],
+    "bedroom": [Path(str(DOWNLOADS / "aligned_low_bedroom/bedroom.ply"))],
+    "garage": [Path(str(DOWNLOADS / "gargage.e57"))],
 }
 for name in sys.argv[2:]:
     cfg = PipelineConfig(detector="contour", auto_voxel=True, export_ifc=False,
                          export_dxf=False, export_qa=False,
                          semantic_filter_mode="pointnet")
-    out = Path(rf"C:\Users\lauri\scan2bim\data\output\_abl_{variant}_{name}")
+    out = Path(str(OUTPUT / f"_abl_{variant}_{name}"))
     for m in Pipeline(cfg).run_floors(SETS[name], out):
         tot = sum(Polygon([(float(x), float(y)) for x, y in s.boundary]).area
                   for s in m.spaces if len(s.boundary) >= 3) / 1e6

@@ -6,6 +6,7 @@ import numpy as np
 import cv2
 
 import scan2bim.core.segmentation.wall_contour as WC
+from _paths import DATA, OUTPUT  # portable dev-tool paths
 
 _vm = WC.WallDetectorContour._vertical_mask
 
@@ -70,7 +71,7 @@ WC.WallDetectorContour._vertical_mask = traced
 
 from scan2bim.core.pipeline import Pipeline, PipelineConfig  # noqa: E402
 
-D = Path(r"C:\Users\lauri\scan2bim\data\_rohbau\site_07\scene_07000\cloud.ply")
+D = Path(str(DATA / "_rohbau/site_07/scene_07000/cloud.ply"))
 cfg = PipelineConfig(detector="contour", auto_voxel=True, export_ifc=False,
                      export_dxf=False, export_qa=False, semantic_filter_mode="pointnet")
-Pipeline(cfg).run_floors([D], Path(r"C:\Users\lauri\scan2bim\data\output\_mask_var"))
+Pipeline(cfg).run_floors([D], Path(str(OUTPUT / "_mask_var")))

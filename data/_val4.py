@@ -6,12 +6,13 @@ import numpy as np
 from shapely.geometry import Polygon
 
 from scan2bim.core.pipeline import Pipeline, PipelineConfig
+from _paths import DATA, DOWNLOADS, OUTPUT  # portable dev-tool paths
 
 SETS = {
-    "apt2":    [Path(r"C:\Users\lauri\Downloads\aligned_low_apartment\apt.ply")],
-    "bedroom": [Path(r"C:\Users\lauri\Downloads\aligned_low_bedroom\bedroom.ply")],
-    "garage":  [Path(r"C:\Users\lauri\Downloads\gargage.e57")],
-    "3dses":   [Path(r"C:\Users\lauri\scan2bim\data\_3dses\_3dses_cloud.ply")],
+    "apt2":    [Path(str(DOWNLOADS / "aligned_low_apartment/apt.ply"))],
+    "bedroom": [Path(str(DOWNLOADS / "aligned_low_bedroom/bedroom.ply"))],
+    "garage":  [Path(str(DOWNLOADS / "gargage.e57"))],
+    "3dses":   [Path(str(DATA / "_3dses/_3dses_cloud.ply"))],
 }
 names = sys.argv[1:] or list(SETS)
 
@@ -22,7 +23,7 @@ for name in names:
     cfg = PipelineConfig(detector="contour", auto_voxel=True, export_ifc=False,
                          export_dxf=False, export_qa=False,
                          semantic_filter_mode="pointnet")
-    out = Path(rf"C:\Users\lauri\scan2bim\data\output\_val_{name}")
+    out = Path(str(OUTPUT / f"_val_{name}"))
     try:
         models = Pipeline(cfg).run_floors(paths, out)
     except Exception as e:

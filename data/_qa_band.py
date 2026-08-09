@@ -2,7 +2,8 @@
 from pathlib import Path
 import open3d as o3d, numpy as np
 from scan2bim.core.geometry.loader import load_point_cloud
-apt=Path(r"C:\Users\lauri\Downloads\raw_scans_apartment\apartment")
+from _paths import DATA, DOWNLOADS  # portable dev-tool paths
+apt=Path(str(DOWNLOADS / "raw_scans_apartment/apartment"))
 # määritä lattia/katto ensin yhdestä skannista
 c0=load_point_cloud(sorted(apt.glob('scan_*.ply'))[0])
 z=np.asarray(c0.points)[:,2]; zmin,zmax=z.min(),z.max()
@@ -13,6 +14,6 @@ for p in sorted(apt.glob('scan_*.ply')):
     pts=np.asarray(c.points); m=(pts[:,2]>=lo)&(pts[:,2]<=hi)
     merged+=c.select_by_index(np.where(m)[0])
     print(p.name, len(merged.points), flush=True)
-out=Path(r"C:\Users\lauri\scan2bim\data\_qa_band.ply")
+out=Path(str(DATA / "_qa_band.ply"))
 o3d.io.write_point_cloud(str(out), merged)
 print("QA-BAND", len(merged.points), "pts (täysi resa) ->", out, f"{out.stat().st_size/1e6:.0f}MB")

@@ -8,9 +8,10 @@ from matplotlib.patches import Polygon
 import open3d as o3d
 from scan2bim.core.pipeline import Pipeline, PipelineConfig
 from scan2bim.core.geometry.loader import load_point_cloud
+from _paths import DATA, DOWNLOADS, OUTPUT  # portable dev-tool paths
 
-SRC = Path(r"C:\Users\lauri\Downloads\aligned_low_apartment\apt.ply")
-OUT = Path(r"C:\Users\lauri\scan2bim\data\output\_apt2_ifc")
+SRC = Path(str(DOWNLOADS / "aligned_low_apartment/apt.ply"))
+OUT = Path(str(OUTPUT / "_apt2_ifc"))
 
 cfg = PipelineConfig(detector="contour", auto_voxel=True, export_ifc=True, export_dxf=False, export_qa=False)
 models = Pipeline(cfg).run_floors([SRC], OUT)
@@ -35,5 +36,5 @@ for w in m["walls"]:
     ax.add_patch(Polygon([a+n*h, b+n*h, b-n*h, a-n*h], closed=True,
                  facecolor="#36c", alpha=0.45, edgecolor="#06c", lw=1))
 ax.set_aspect("equal"); ax.set_title("APT2 (toinen asunto): malli vs pilvi  %d seinaa %d huonetta" % (len(m["walls"]), len(m.get("spaces", []))))
-out = Path(r"C:\Users\lauri\scan2bim\data\_apt2_overlay.png")
+out = Path(str(DATA / "_apt2_overlay.png"))
 plt.savefig(out, dpi=110, bbox_inches="tight"); print("saved", out)

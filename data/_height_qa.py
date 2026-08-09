@@ -15,9 +15,10 @@ from pathlib import Path
 
 import numpy as np
 import open3d as o3d
+from _paths import DOWNLOADS, REPO  # portable dev-tool paths
 
-ROOT = Path(r"C:\Users\lauri\scan2bim")
-APT = Path(r"C:\Users\lauri\Downloads\raw_scans_apartment\apartment")
+ROOT = Path(str(REPO))
+APT = Path(str(DOWNLOADS / "raw_scans_apartment/apartment"))
 MODEL = ROOT / "data" / "output" / "_contour_ifc" / "floor_00" / "model.json"
 ZBAND = ROOT / "data" / "_qa_zband.ply"
 

@@ -11,8 +11,9 @@ import json
 from pathlib import Path
 import numpy as np
 import open3d as o3d
+from _paths import REPO  # portable dev-tool paths
 
-ROOT = Path(r"C:\Users\lauri\scan2bim")
+ROOT = Path(str(REPO))
 MODEL = ROOT / "data" / "output" / "_contour_ifc" / "floor_00" / "model.json"
 SYNTH = ROOT / "data" / "_synth.ply"
 OUT = ROOT / "data" / "output" / "_synth_ifc"

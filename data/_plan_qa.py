@@ -10,8 +10,9 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.patches import Polygon
 import open3d as o3d
+from _paths import REPO  # portable dev-tool paths
 
-ROOT = Path(r"C:\Users\lauri\scan2bim")
+ROOT = Path(str(REPO))
 m = json.loads((ROOT / "data/output/_contour_ifc/floor_00/model.json").read_text())
 xy = np.load(ROOT / "data/_qa_band_xy.npy")
 sub = xy[::40]

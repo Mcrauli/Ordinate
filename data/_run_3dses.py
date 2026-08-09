@@ -7,10 +7,11 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Polygon
 import open3d as o3d
 from scan2bim.core.pipeline import Pipeline, PipelineConfig
+from _paths import DATA, OUTPUT  # portable dev-tool paths
 
-D = Path(r"C:\Users\lauri\scan2bim\data\_3dses")
+D = Path(str(DATA / "_3dses"))
 PLY = D / "_3dses_cloud.ply"
-OUT = Path(r"C:\Users\lauri\scan2bim\data\output\_3dses_ifc")
+OUT = Path(str(OUTPUT / "_3dses_ifc"))
 
 if not PLY.exists():
     parts = []

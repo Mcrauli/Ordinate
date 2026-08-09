@@ -1,10 +1,11 @@
 from pathlib import Path
 from scan2bim.core.pipeline import Pipeline, PipelineConfig
+from _paths import DOWNLOADS, OUTPUT  # portable dev-tool paths
 
 cfg = PipelineConfig(detector="normals", auto_voxel=False, voxel_size=12.0,
                      export_ifc=False, export_dxf=False, export_qa=False)
-src = Path(r"C:\Users\lauri\Downloads\raw_scans_apartment\apartment\scan_06.ply")
-out = Path(r"C:\Users\lauri\scan2bim\data\output\_verify")
+src = Path(str(DOWNLOADS / "raw_scans_apartment/apartment/scan_06.ply"))
+out = Path(str(OUTPUT / "_verify"))
 m = Pipeline(cfg).run([src], out)
 print("\n=== THICKNESSES (mm) ===")
 for w in sorted(m.walls, key=lambda w: -w.confidence):

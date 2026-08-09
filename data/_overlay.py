@@ -4,8 +4,9 @@ import open3d as o3d, numpy as np, math
 import matplotlib; matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from scan2bim.core.pipeline import Pipeline, PipelineConfig
+from _paths import DATA  # portable dev-tool paths
 
-cloud = o3d.io.read_point_cloud(r"C:\Users\lauri\scan2bim\data\_cache_apt.ply")
+cloud = o3d.io.read_point_cloud(str(DATA / "_cache_apt.ply"))
 pts = np.asarray(cloud.points)
 z = pts[:,2]; zmin,zmax = z.min(), z.max(); span=zmax-zmin
 # ovikaista: ~0.3-1.0 lattiasta (oviaukot näkyvät rakoina; ikkuna jättää sillin)
@@ -39,7 +40,7 @@ for o in m.openings:
 ax.set_title(f"Pistepilvi (harmaa) vs detektoidut seinät (cyan) + aukot. "
     f"{len(m.walls)} walls, {sum(1 for o in m.openings if o.opening_type=='door')} doors")
 ax.set_aspect("equal")
-out=r"C:\Users\lauri\scan2bim\data\_overlay.png"; plt.savefig(out,dpi=100,bbox_inches="tight")
+out=str(DATA / "_overlay.png"); plt.savefig(out,dpi=100,bbox_inches="tight")
 print("walls",len(m.walls),"doors",sum(1 for o in m.openings if o.opening_type=='door'),
       "windows",sum(1 for o in m.openings if o.opening_type=='window'))
 print("saved",out)

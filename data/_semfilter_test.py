@@ -8,12 +8,13 @@ import open3d as o3d
 from scan2bim.core.geometry.loader import load_point_cloud
 from scan2bim.core.segmentation.semantic_filter import SemanticFilter
 
-SRC = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(r"C:\Users\lauri\Downloads\aligned_low_bedroom\bedroom.ply")
+SRC = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(str(DOWNLOADS / "aligned_low_bedroom/bedroom.ply"))
 c = load_point_cloud(SRC)
 n0 = len(c.points)
 print(f"sisaan: {n0} pistetta")
 
 import time; t = time.time()
+from _paths import DATA, DOWNLOADS  # portable dev-tool paths
 out = SemanticFilter().filter(c)
 n1 = len(out.points)
 print(f"ulos:   {n1} pistetta  ({100*n1/n0:.0f}% sailytetty)  {time.time()-t:.1f}s")
@@ -25,5 +26,5 @@ for axi, p, title in [(ax[0], pa, f"ENNEN ({n0})"), (ax[1], pb, f"JALKEEN ({n1})
     s = p[::max(1, len(p)//400000)]
     axi.scatter(s[:, 0], s[:, 1], s=0.2, c="0.4", linewidths=0)
     axi.set_aspect("equal"); axi.set_title(title)
-out_png = Path(r"C:\Users\lauri\scan2bim\data\_semfilter.png")
+out_png = Path(str(DATA / "_semfilter.png"))
 plt.savefig(out_png, dpi=90, bbox_inches="tight"); print("saved", out_png)

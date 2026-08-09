@@ -10,8 +10,9 @@ import open3d as o3d
 from shapely.geometry import Polygon
 
 from scan2bim.core.pipeline import Pipeline, PipelineConfig
+from _paths import DATA, OUTPUT  # portable dev-tool paths
 
-D = Path(r"C:\Users\lauri\scan2bim\data\_rohbau")
+D = Path(str(DATA / "_rohbau"))
 site = sys.argv[1] if len(sys.argv) > 1 else "site_07"
 scenes = sys.argv[2:] or [p.name for p in sorted((D / site).iterdir()) if p.is_dir()]
 
@@ -27,7 +28,7 @@ for sc in scenes:
     plys.append(ply)
 
 tag = site if len(scenes) > 1 else f"{site}_{scenes[0]}"
-out = Path(rf"C:\Users\lauri\scan2bim\data\output\_rohbau_{tag}")
+out = Path(str(OUTPUT / f"_rohbau_{tag}"))
 cfg = PipelineConfig(detector="contour", auto_voxel=True, export_ifc=True,
                      export_dxf=False, export_qa=False, semantic_filter_mode="pointnet")
 models = Pipeline(cfg).run_floors(plys, out)

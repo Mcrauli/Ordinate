@@ -14,8 +14,9 @@ import json
 from pathlib import Path
 
 import numpy as np
+from _paths import REPO  # portable dev-tool paths
 
-ROOT = Path(r"C:\Users\lauri\scan2bim")
+ROOT = Path(str(REPO))
 CQ = ROOT / "data" / "_corner_qa.json"
 
 

@@ -2,8 +2,9 @@
 import json, numpy as np, open3d as o3d
 from pathlib import Path
 from scipy.signal import find_peaks
-m=json.loads(Path(r"C:\Users\lauri\scan2bim\data\output\_contour_ifc\floor_00\model.json").read_text())
-band=np.asarray(o3d.io.read_point_cloud(r"C:\Users\lauri\scan2bim\data\_qa_band.ply").points)[:,:2]
+from _paths import DATA, OUTPUT  # portable dev-tool paths
+m=json.loads(Path(str(OUTPUT / "_contour_ifc/floor_00/model.json")).read_text())
+band=np.asarray(o3d.io.read_point_cloud(str(DATA / "_qa_band.ply")).points)[:,:2]
 biases=[]
 for w in m['walls']:
     a=np.array(w['axis'][0],float);b=np.array(w['axis'][1],float);ab=b-a;L=np.linalg.norm(ab)
