@@ -21,10 +21,11 @@ def main() -> None:
 @click.option("--voxel-size", default=20.0, show_default=True, help="Voxel-koko mm")
 @click.option(
     "--detector",
-    type=click.Choice(["ransac", "density"]),
-    default="ransac",
+    type=click.Choice(["contour", "histogram", "ransac", "density"]),
+    default="contour",
     show_default=True,
-    help="Seinädetektori",
+    help="Seinädetektori (oletus contour = tuotannon oletus; iso tila/liiketila "
+         "vaihtaa automaattisesti histogrammiin. ransac/density ovat fallbackeja.)",
 )
 @click.option("--no-ifc", is_flag=True, help="Älä tuota IFC")
 @click.option("--no-dxf", is_flag=True, help="Älä tuota DXF")

@@ -23,7 +23,7 @@ log = logging.getLogger(__name__)
 class PipelineConfig:
     voxel_size: float = 12.0                                   # mm (manuaalinen, kun auto_voxel=False)
     auto_voxel: bool = True            # valitse voxelikoko datasta automaattisesti
-    detector: Literal["ransac", "density", "floorplan", "normals", "contour"] = "contour"
+    detector: Literal["ransac", "density", "floorplan", "normals", "contour", "histogram"] = "contour"
     export_ifc: bool = True
     export_dxf: bool = True
     export_qa: bool = True                                     # QA/LOA-poikkeamaraportti

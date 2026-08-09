@@ -6,12 +6,18 @@ sovellus päivittää itsensä sieltä.
 
 ## Julkaisematon
 
+- **CLI-detektorin oletus korjattu: `ransac` → `contour`.** `scan2bim convert`
+  pakotti `--detector`-oletukseksi `ransac`in (hidas, epädeterministinen fallback)
+  vaikka tuotannon oletus on `contour`; komentorivikäyttäjä sai siis huonomman
+  detektorin eikä voinut edes valita oikeita (`contour`/`histogram`). Nyt oletus =
+  `contour` (sama kuin PipelineConfig ja GUI) ja valinnat kattavat todelliset
+  detektorit. Testi vartioi ettei oletus enää eroa tuotannosta.
 - **Vajaan/vaurioituneen syötetiedoston selkovaroitus laajennettu E57/LAS/PTS/XYZ:lle.**
   Aiemmin vain binääri-PLY tunnisti katkenneen siirron (headerin lupaama pistemäärä
   vs. tavuista laskettu todellinen). Nyt myös E57 (lukukelvottomat skannit),
   LAS/LAZ (header point_count vs. luettu) ja PTS/XYZ (lukukelvottomien rivien osuus)
   varoittavat selkokielellä tai nostavat selkovirheen tyhjästä/vakavasti vajaasta
-  tiedostosta — ei enää äänetöntä osittaista mallia tai kryptistä kaatoa. 144 testiä.
+  tiedostosta — ei enää äänetöntä osittaista mallia tai kryptistä kaatoa. 143 testiä.
 
 ## v0.9.12 (5.8.2026) — itsepäivityksen varmennus
 
