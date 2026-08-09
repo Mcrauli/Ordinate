@@ -6,6 +6,11 @@ sovellus päivittää itsensä sieltä.
 
 ## Julkaisematon
 
+- **IFC ei enää nimeä kehittäjää tekijäksi.** Writer kovakoodasi jokaisen
+  tuotetun IFC:n `IfcPerson`-tekijäksi kehittäjän nimen (Rekola/Lauri) ja
+  sovellusversioksi vanhentuneen `0.1.0`:n → asiakkaan IFC:ssä olisi lukenut
+  väärä henkilö. Nyt tekijyys on neutraali (`IfcPerson.Identification="scan2bim"`,
+  ei henkilön nimeä) ja versio = todellinen sovellusversio.
 - **CLI-detektorin oletus korjattu: `ransac` → `contour`.** `scan2bim convert`
   pakotti `--detector`-oletukseksi `ransac`in (hidas, epädeterministinen fallback)
   vaikka tuotannon oletus on `contour`; komentorivikäyttäjä sai siis huonomman

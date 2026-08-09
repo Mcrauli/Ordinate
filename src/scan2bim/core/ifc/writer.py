@@ -311,11 +311,15 @@ def _floor_elevation(model: StructuralModel) -> float:
 
 
 def _make_owner_history(ifc: ifcopenshell.file) -> ifcopenshell.entity_instance:
+    from scan2bim._version import __version__  # noqa: PLC0415
     org = ifc.createIfcOrganization(Name="scan2bim")
-    person = ifc.createIfcPerson(FamilyName="Rekola", GivenName="Lauri")
+    # ÄLÄ kovakoodaa henkilön nimeä — tämä IFC menee loppuasiakkaille. Tekijyys
+    # merkitään neutraalisti sovellukselle/organisaatiolle (Identification riittää
+    # IfcPerson-WHERE-säännölle). Version = todellinen sovellusversio.
+    person = ifc.createIfcPerson(Identification="scan2bim")
     p_and_o = ifc.createIfcPersonAndOrganization(ThePerson=person, TheOrganization=org)
     app = ifc.createIfcApplication(
-        ApplicationDeveloper=org, Version="0.1.0",
+        ApplicationDeveloper=org, Version=__version__,
         ApplicationFullName="scan2bim", ApplicationIdentifier="scan2bim",
     )
     return ifc.createIfcOwnerHistory(
