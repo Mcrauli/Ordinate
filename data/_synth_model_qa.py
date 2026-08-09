@@ -18,6 +18,8 @@ import open3d as o3d
 
 from scan2bim.core.segmentation.pointnet_filter import PointNetFilter
 
+from _paths import DOWNLOADS  # portable dev-tool paths
+
 # rohbau3d-luokat → odotettu käytös suodattimessa
 _STRUCT = {1: "Ceiling", 2: "SlantCeil", 4: "Floor", 5: "Wall", 6: "Drywall",
            8: "Parapet", 9: "Beam", 10: "Column", 11: "Staircase",
@@ -25,7 +27,7 @@ _STRUCT = {1: "Ceiling", 2: "SlantCeil", 4: "Floor", 5: "Wall", 6: "Drywall",
 _REMOVE = {0: "None/unlabeled", 17: "TGA/MEP"}
 _OPENING = {3, 7, 12, 14}   # aukot — ei pisteitä oikeasti, jätetään mittarin ulkopuolelle
 
-_ROHBAU = Path(r"C:\Users\janir\Downloads\rohbau3d\extracted\site_02")
+_ROHBAU = DOWNLOADS / "rohbau3d" / "extracted" / "site_02"
 
 
 def _load_scene(scene: str, max_pts: int) -> tuple[np.ndarray, np.ndarray]:
