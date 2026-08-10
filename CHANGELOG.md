@@ -4,7 +4,7 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 [`Mcrauli/scan2bim-web`](https://github.com/Mcrauli/scan2bim-web/releases):iin;
 sovellus päivittää itsensä sieltä.
 
-## Julkaisematon
+## v0.9.18 (10.8.2026) — laatukorjaukset (IFC-tekijyys, CLI-detektori, loader-varoitukset)
 
 - **IFC ei enää nimeä kehittäjää tekijäksi.** Writer kovakoodasi jokaisen
   tuotetun IFC:n `IfcPerson`-tekijäksi kehittäjän nimen (Rekola/Lauri) ja
