@@ -29,7 +29,7 @@ FX = _imp("fx", "rohbau_feature_exp.py")
 
 
 def _export_onnx(model, in_ch, out, torch):
-    model.eval()
+    model = model.to("cpu").eval()   # dummy is CPU; keep model+weights on same device
     dummy = torch.zeros(1, 4096, in_ch)
     torch.onnx.export(
         model, dummy, str(out),
