@@ -30,6 +30,21 @@ sovellus päivittää itsensä sieltä.
   — mahdollinen palkki- tai pilarilinja". Kolme uutta testiä; palkkilinjatesti
   kaatuu jos jatkuvuussääntö ablatoidaan pois, ja se tarkistaa erikseen että
   pintatuki on yli kynnyksen (muuten testi ei erottelisi mitään). 165/165.
+  **Mitä liputus on arvoltaan, mitattuna:** kun 8 liputettua seinää poistetaan
+  Rohbau-mallista, kattavuus laskee 0.796 → **0.792** (−0.004) ja tarkkuus
+  nousee 0.510 → **0.918**, ongelmaseiniä 8 → **0**. Ne kahdeksan eivät siis
+  tuoneet kattavuutta käytännössä lainkaan, mutta puolittivat tarkkuuden.
+  | | kattavuus | tarkkuus |
+  |---|---|---|
+  | contour (aiempi kirjattu paras) | 0.653 | 0.951 |
+  | histogrammi (nykytuotanto) | **0.796** | 0.510 |
+  | histogrammi + liputetut poistettu | **0.792** | **0.918** |
+  Yhdistelmä siis voittaa molemmat: kattavuus +0.139 contouriin nähden ja
+  tarkkuus vain −0.033 sen alle. **Malli itsessään ei silti parane** — tämä
+  vaatii että käyttäjä poistaa ne Tarkistus-välilehdellä. Automaattinen hylkäys
+  maksaisi mitatusti vain 0.004 kattavuutta, mutta se on erikseen päätettävä:
+  kauppakeskuksen `wall_ext_010` on aito GT-seinä 417 mm sivussa, eikä sitä saa
+  poistaa automaattisesti.
 - **MITTAUS (ei muutos): iso+korkea kohde reitittyy histogrammille ja tarkkuus
   puolittuu paljaalla rungolla.** Rohbau site_07/scene_07000 on ainoa data jossa
   on per-piste-GT, ja siihen ajettuna nykytuotanto tulostaa diagnostiikkaan
