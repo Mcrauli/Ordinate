@@ -41,6 +41,7 @@ class Wall(Element):
     measured_thickness: float | None = None  # mm — pilvestä mitattu tarkka paksuus (dokumentti)
     support: float | None = None     # 0..1 — pinnasta keilattu osuus (MITATTU, ei detektorin arvio)
     support_offset: float | None = None  # mm — jos tuki puuttuu: kuinka kaukana lähin pinta on
+    continuity: float | None = None  # 0..1 — yhtenäisyys vyötärökorkeudella (palkkilinja = matala)
 
 
 class Slab(Element):

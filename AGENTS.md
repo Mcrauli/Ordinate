@@ -124,6 +124,8 @@ Tarkkuus mitataan erillisillä QA-skripteillä — **aja tuotantomallia (`model.
 | `data/_room_probe.py`, `data/_frag_probe.py`, `data/_tl_probe.py` | Miksi tila hylättiin / onko perimetri pirstoutunut / miten paksuus syntyi |
 | `data/_evidence_probe.py` | Ehdokasmittarit per seinä (pintapeitto, kohina, mitä pinnan takana on) **GT-labeloituna** myymälän `shelf_faces`-totuutta vasten — kertoo erotteleeko mittari ennen kuin se viedään tuotantoon |
 | `data/_evidence_gt.py` | Sama Rohbau3D:n per-piste-GT:tä vasten: jokaiselle detektoidulle seinälle kaistan GT-luokkajakauma **ja** ehdokasmittarit rinnakkain → kynnys valitaan mitatusta välistä |
+| `data/_vprofile_probe.py` | Seinän PYSTYPROFIILI ja VYÖTÄRÖN JATKUVUUS GT-luokan rinnalla — tällä mitattiin että pystyprofiili ei erottele palkkilinjaa mutta jatkuvuus erottelee 7-kertaisella marginaalilla |
+| `data/_ctrl_contour.py` | Kontrolliajo: iso+korkea → histogrammi -auto-reititys patchattuna pois |
 | `data/_wall_view.py` | **Liputettu seinä kuvina**: XY vyötäröltä, poikkileikkaus, mallin pinnalla olevat pisteet. Erottaa HAAMUN (ei mitään) VÄÄRÄSSÄ PAIKASSA olevasta (pinta on, mutta sivussa) — pelkkä `support`-luku ei kerro kumpi |
 | `data/_img_openings_qa.py` | Kuvaohjattu aukkodetektio oikealla kuvallisella E57:llä; vertaa vanhaan moduuliin samoilla seinillä+pilvellä |
 | `data/_cov_check.py`, `data/_support_verify.py` | Pintatuki mille tahansa mallille (väärät hälytykset) / tuotantototeutus vs. koetin samoilla luvuilla |
@@ -172,6 +174,14 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   suuri osa pinnasta on keilattu), ei kysyttävä detektorilta joka sen loi.
   Poikkeus: `column_detector`:n luottamus (kompaktius × pistemäärä) on aitoa
   evidenssiä — se saa jäädä.
+- **Palkkilinjan erottaa VYÖTÄRÖN JATKUVUUS, ei pystyprofiili.** Histogrammi
+  tekee palkiston keskikorkeuden tiheydestä 28 m "seiniä". Niillä on pisteitä
+  joka korkeudella (lattia, katto, palkki, pilarit), joten pintatuki ja
+  pystyprofiili eivät auta — **pystytuki erottelee jopa VÄÄRÄÄN suuntaan**
+  (palkkiseinät 0.92–1.00, aidot 0.63–0.94). Toimiva mittari on pituussuuntainen
+  jatkuvuus 30–70 % korkeudella, 500 mm sarakkeina: aidot 0.50–1.00,
+  palkkiseinät 0.05–0.07 (Rohbau-GT). `Wall.continuity`, kynnys 0.30.
+  Oviaukko ei riitä pudottamaan aitoa seinää alle (testattu).
 - **Pintatuki näkee vain PUUTTUVAN pinnan, ei väärälle pinnalle osunutta
   seinää — ja KYNNYS ON VALIDOITAVA UUDELLEEN KUN DETEKTORI MUUTTUU.**
   Kynnys 0.15 johdettiin v0.9.0:n Rohbau-mallista, jossa valeseinät olivat

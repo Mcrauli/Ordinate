@@ -157,12 +157,24 @@ _SUP_THR = 0.15         # alle tämän = pinnalla ei ole tukea pilvessä
 _SUP_MIN_PTS = 100
 
 
-def _wall_support(w, pts_all: np.ndarray, index) -> float | None:
-    """Kuinka suuri osa seinän pinnasta on oikeasti keilattu (0..1).
+_CONT_COL = 500.0       # mm — sarakkeen leveys jatkuvuutta laskettaessa
+_CONT_MIN_PTS = 5       # pistettä jotta sarake on tuettu
+_CONT_THR = 0.30        # alle tämän = ei yhtenäinen seinä vyötärökorkeudella
 
-    Haamuseinä ja palkista tehty seinä eivät saa pinnalleen pisteitä; aidon
-    seinän pinta on ruudukossa lähes täynnä myös okkluusion kanssa. Mitattu
-    Rohbau-GT:llä: 12 aitoa seinää 0.29–0.49, 6 valeseinää 0.016–0.063.
+
+def _wall_support(w, pts_all: np.ndarray, index) -> tuple[float, float] | None:
+    """(pintatuki, vyötärön jatkuvuus) — molemmat 0..1, samasta kaistaskannauksesta.
+
+    PINTATUKI: kuinka suuri osa seinän pinnasta on keilattu. Haamuseinä ei saa
+    pinnalleen pisteitä.
+
+    JATKUVUUS: kuinka moni 500 mm sarake on tuettu VYÖTÄRÖKORKEUDELLA (30–70 %).
+    Tämä erottaa PALKKILINJAN seinästä: histogrammidetektori tekee palkiston
+    keskikorkeuden tiheydestä 28 m "seiniä", ja niillä on pisteitä joka
+    korkeudella (lattia, katto, palkki, pilarit) — mutta vyötäröllä vain
+    pilarit 8 m välein. Mitattu Rohbau-GT:llä: 6 aitoa seinää 0.50–1.00,
+    6 palkkiseinää 0.05–0.07. Pystytuki EI erottele (aidot 0.63–0.94,
+    palkkiseinät 0.92–1.00 — päinvastoin kuin intuitio sanoo).
     """
     if len(w.axis) < 2:
         return None
@@ -180,7 +192,7 @@ def _wall_support(w, pts_all: np.ndarray, index) -> float | None:
         from scan2bim.core.geometry.xy_index import subset  # noqa: PLC0415
         pts, _ = subset(pts_all, index, p0, u, n, half, 0.0, L)
         if len(pts) < _SUP_MIN_PTS:
-            return 0.0
+            return 0.0, 0.0
 
     rel = pts[:, :2] - p0
     t = rel @ u
@@ -189,12 +201,12 @@ def _wall_support(w, pts_all: np.ndarray, index) -> float | None:
     near = ((t > 0.0) & (t < L) & (np.abs(perp) < half)
             & (z > w.z_min + 100.0) & (z < w.z_min + w.height - 100.0))
     if near.sum() < _SUP_MIN_PTS:
-        return 0.0
+        return 0.0, 0.0
     t, perp, z = t[near], perp[near], z[near]
 
     face = np.abs(np.abs(perp) - w.thickness / 2.0) < _SF_BAND_EXTRA
     if face.sum() < _SUP_MIN_PTS:
-        return 0.0
+        return 0.0, 0.0
     side = perp[face] > 0
     dom = perp[face][side] if side.sum() >= (~side).sum() else perp[face][~side]
     med = float(np.median(dom))
@@ -204,7 +216,16 @@ def _wall_support(w, pts_all: np.ndarray, index) -> float | None:
     nz = max(1, int(w.height / _SUP_CELL))
     ti = np.clip((t[on] / L * nt).astype(np.int64), 0, nt - 1)
     zi = np.clip(((z[on] - w.z_min) / w.height * nz).astype(np.int64), 0, nz - 1)
-    return float(len(np.unique(ti * nz + zi))) / float(nt * nz)
+    support = float(len(np.unique(ti * nz + zi))) / float(nt * nz)
+
+    zr = (z[on] - w.z_min) / w.height
+    waist = (zr > 0.30) & (zr < 0.70)
+    ncol = max(1, int(L / _CONT_COL))
+    if waist.sum() < 50:
+        return support, 0.0
+    ci = np.clip((t[on][waist] / L * ncol).astype(np.int64), 0, ncol - 1)
+    cnt = np.bincount(ci, minlength=ncol)
+    return support, float((cnt >= _CONT_MIN_PTS).mean())
 
 
 _SUP_SEEK = 1000.0      # mm — kuinka kaukaa etsitään todellista pintaa
@@ -251,10 +272,15 @@ def measure_wall_support(model: StructuralModel, cloud) -> None:
         from scan2bim.core.geometry.xy_index import XYIndex  # noqa: PLC0415
         index = XYIndex(pts_all)
     for w in model.walls:
-        s = _wall_support(w, pts_all, index)
-        w.support = None if s is None else round(s, 3)
+        res = _wall_support(w, pts_all, index)
+        if res is None:
+            w.support = w.continuity = w.support_offset = None
+            continue
+        s, c = res
+        w.support = round(s, 3)
+        w.continuity = round(c, 3)
         w.support_offset = None
-        if s is not None and s < _SUP_THR and len(w.axis) >= 2:
+        if (s < _SUP_THR or c < _CONT_THR) and len(w.axis) >= 2:
             w.support_offset = _nearest_surface(w, pts_all, index)
 
 
@@ -267,14 +293,19 @@ def flag_low_confidence(model: StructuralModel) -> list[dict]:
     flags: list[dict] = []
     for w in model.walls:
         if w.support is not None:
-            if w.support < _SUP_THR:
+            weak = w.support < _SUP_THR
+            broken = w.continuity is not None and w.continuity < _CONT_THR
+            if weak or broken:
                 if w.support_offset is not None and w.support_offset >= 100.0:
                     why = f"pinta {w.support_offset:.0f} mm sivussa — siirrä tai poista"
+                elif broken and not weak:
+                    why = (f"ei yhtenäinen seinä ({w.continuity * 100:.0f} % vyötäröstä) "
+                           "— mahdollinen palkki- tai pilarilinja")
                 else:
                     why = f"ei pintaa pilvessä ({w.support * 100:.0f} % keilattu)"
                 flags.append({"id": w.id, "type": "wall", "confidence": round(w.confidence, 3),
-                              "support": w.support, "offset_mm": w.support_offset,
-                              "reason": why})
+                              "support": w.support, "continuity": w.continuity,
+                              "offset_mm": w.support_offset, "reason": why})
         elif w.confidence < _WALL_CONF_THR:
             flags.append({"id": w.id, "type": "wall", "confidence": round(w.confidence, 3),
                           "reason": "detektorin luottamus matala"})

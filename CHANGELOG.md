@@ -5,6 +5,31 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 sovellus päivittää itsensä sieltä.
 
 ## Julkaisematon
+- **Palkkilinjalle tehty valeseinä jää nyt kiinni: Rohbau 2/8 → 8/8, nolla
+  väärää hälytystä.** Edellinen pintatukisääntö näki vain PUUTTUVAN pinnan, ja
+  histogrammidetektorin 28 m valeseinillä pintaa ON — ne istuvat palkiston
+  päällä, jossa on lattia, katto, palkki ja pilarit, eli pisteitä joka
+  korkeudella. Ratkaiseva ero on **pituussuuntainen jatkuvuus vyötäröllä**
+  (30–70 % korkeudesta, 500 mm sarakkeet): aito seinä on yhtenäinen, palkkilinja
+  on pilareita 8 m välein. Mitattu Rohbau-GT:llä: **aidot 0.50–1.00, palkkiseinät
+  0.05–0.07** → kynnys 0.30 istuu 7-kertaiseen väliin.
+  | data | vanha `conf` | pelkkä pintatuki | **tuki + jatkuvuus** |
+  |---|---|---|---|
+  | Rohbau site_07 (8 huonoa / 14) | 1/8 | 2/8 | **8/8, 0 väärää** |
+  | myymälä 72×48 m (24 seinää) | 0 | 0 | **0** |
+  | kauppakeskus 150×100 m (37) | 0 | 1 (oikea) | **1 (oikea)** |
+  | asunto (15) | 1 **väärä** | 0 | **0** |
+  **Hypoteesi jonka mittaus kumosi — älä toista:** oletin että palkkiseinällä on
+  tukea vain katon alla. Päinvastoin: pystytuen osuus on palkkiseinillä
+  **0.92–1.00** ja aidoilla **0.63–0.94**, eli pystyprofiili erottelee väärään
+  suuntaan. Vain vyötärön jatkuvuus toimii (`data/_vprofile_probe.py`).
+  **Liputus, EI hylkäys.** Kauppakeskuksen `wall_ext_010` on GT[1] eli aito
+  100 m ulkoseinä 417 mm sivussa — sen poistaminen hävittäisi oikean seinän.
+  Siksi sama sääntö erottaa yhä kaksi tapausta (`_nearest_surface`): "pinta
+  375 mm sivussa — siirrä tai poista" vs. "ei yhtenäinen seinä (5 % vyötäröstä)
+  — mahdollinen palkki- tai pilarilinja". Kolme uutta testiä; palkkilinjatesti
+  kaatuu jos jatkuvuussääntö ablatoidaan pois, ja se tarkistaa erikseen että
+  pintatuki on yli kynnyksen (muuten testi ei erottelisi mitään). 165/165.
 - **MITTAUS (ei muutos): iso+korkea kohde reitittyy histogrammille ja tarkkuus
   puolittuu paljaalla rungolla.** Rohbau site_07/scene_07000 on ainoa data jossa
   on per-piste-GT, ja siihen ajettuna nykytuotanto tulostaa diagnostiikkaan

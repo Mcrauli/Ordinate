@@ -84,6 +84,69 @@ def test_low_confidence_but_scanned_wall_is_not_flagged():
     assert flag_low_confidence(model) == []
 
 
+def _beam_line_points(length=24000.0, step=50.0, bay=8000.0):
+    """Palkkilinja: palkki katon alla koko matkalta + pilarit 8 m valein.
+
+    Nain histogrammidetektori tekee 28 m "seinia" Rohbaussa. Pisteita on joka
+    korkeudella (palkki ylhaalla, pilarit alhaalla) -> pystytuki on korkea,
+    mutta VYOTAROLLA on vain pilarit.
+    """
+    out = []
+    for sgn in (1.0, -1.0):
+        y = sgn * _T / 2.0
+        # palkki: ylin 20 % korkeudesta, koko pituudelta
+        xs = np.arange(0.0, length, step)
+        zs = np.arange(_H * 0.80, _H - 30.0, step)
+        X, Z = np.meshgrid(xs, zs)
+        out.append(np.column_stack([X.ravel(), np.full(X.size, y), Z.ravel()]))
+        # pilarit: 400 mm leveita, koko korkeudelta
+        zs = np.arange(60.0, _H - 60.0, step)
+        for x0 in np.arange(0.0, length, bay):
+            xs = np.arange(x0, min(x0 + 400.0, length), step)
+            if len(xs) == 0:
+                continue
+            X, Z = np.meshgrid(xs, zs)
+            out.append(np.column_stack([X.ravel(), np.full(X.size, y), Z.ravel()]))
+    return np.vstack(out)
+
+
+def _long_wall(wid="w_line", length=24000.0, conf=1.0):
+    return Wall(
+        id=wid, confidence=conf, classification="wall",
+        source=ElementSource(method="histogram"),
+        axis=[[0.0, 0.0], [length, 0.0]], height=_H, thickness=_T, z_min=0.0,
+    )
+
+
+def test_beam_line_is_flagged_even_though_it_has_support():
+    """Palkkilinjalla ON pintatukea — vain jatkuvuus paljastaa sen."""
+    model = StructuralModel(walls=[_long_wall()])
+    measure_wall_support(model, _cloud(_beam_line_points()))
+    w = model.walls[0]
+    assert w.support > 0.15, f"tuki {w.support} — testi ei erottele jatkuvuutta"
+    assert w.continuity < 0.30, w.continuity
+    flags = flag_low_confidence(model)
+    assert [f["id"] for f in flags] == ["w_line"]
+    assert "yhtenäinen" in flags[0]["reason"]
+
+
+def test_continuous_long_wall_is_not_flagged():
+    model = StructuralModel(walls=[_long_wall("w_solid")])
+    measure_wall_support(model, _cloud(_face_points(0, 0, 24000, 0)))
+    assert model.walls[0].continuity > 0.9, model.walls[0].continuity
+    assert flag_low_confidence(model) == []
+
+
+def test_doorway_gap_does_not_break_continuity():
+    """Oviaukko on reika vyotarolla — se ei saa liputtaa aitoa seinaa."""
+    pts = _face_points(0, 0, 6000, 0)
+    door = (pts[:, 0] > 2500) & (pts[:, 0] < 3500) & (pts[:, 2] < 2100)
+    model = StructuralModel(walls=[_wall("w_door", 0, 0, 6000, 0)])
+    measure_wall_support(model, _cloud(pts[~door]))
+    assert model.walls[0].continuity >= 0.30, model.walls[0].continuity
+    assert flag_low_confidence(model) == []
+
+
 def test_confidence_still_used_when_support_not_measured():
     model = StructuralModel(walls=[_wall("w_x", 0, 0, 3000, 0, conf=0.25)])
     assert model.walls[0].support is None
