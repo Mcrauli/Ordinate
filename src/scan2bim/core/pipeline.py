@@ -1152,13 +1152,19 @@ class Pipeline:
         return preprocess(cloud, voxel_size=self.config.voxel_size)
 
     def _measure_support(self, model: StructuralModel, cloud) -> None:
-        """Pintatuki raakapilvestä → Tarkistus-lista perustuu mittaukseen."""
+        """Pintatuki raakapilvestä → valeseinät pois, loput Tarkistus-listalle."""
         try:
-            from scan2bim.core.qa.deviation import measure_wall_support
+            from scan2bim.core.qa.deviation import measure_wall_support, flag_low_confidence
+            from scan2bim.core.semantics.wall_semantics import prune_unsupported_walls
             measure_wall_support(model, cloud)
-            weak = [w.id for w in model.walls if w.support is not None and w.support < 0.15]
-            if weak:
-                self._progress(f"  Tarkistettavaa: {len(weak)} seinää ilman pintatukea")
+            dropped = prune_unsupported_walls(model)
+            if dropped:
+                self._progress(
+                    f"  Poistettu {len(dropped)} seinää joilla ei ole yhtenäistä "
+                    f"pintaa pilvessä (palkki-/pilarilinja)")
+            left = [f for f in flag_low_confidence(model) if f["type"] == "wall"]
+            if left:
+                self._progress(f"  Tarkistettavaa: {len(left)} seinää")
         except Exception as e:
             self._progress(f"  Pintatuen mittaus ohitettu: {e}")
 

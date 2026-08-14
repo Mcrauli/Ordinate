@@ -147,6 +147,57 @@ def test_doorway_gap_does_not_break_continuity():
     assert flag_low_confidence(model) == []
 
 
+def _displaced_face_points(x0, y0, x1, y1, off, step=50.0):
+    """Aito seina, mutta mallin akseli on `off` mm sivussa oikeasta pinnasta."""
+    pts = _face_points(x0, y0, x1, y1, step=step)
+    pts[:, 1] += off
+    return pts
+
+
+def test_beam_line_is_pruned_from_the_model():
+    from scan2bim.core.semantics.wall_semantics import prune_unsupported_walls
+    model = StructuralModel(walls=[_long_wall("w_line"), _wall("w_real", 0, 9000, 6000, 9000)])
+    pts = np.vstack([_beam_line_points(), _face_points(0, 9000, 6000, 9000)])
+    measure_wall_support(model, _cloud(pts))
+    assert prune_unsupported_walls(model) == ["w_line"]
+    assert [w.id for w in model.walls] == ["w_real"]
+
+
+def test_displaced_real_wall_is_kept_for_review_not_pruned():
+    """Kauppakeskuksen wall_ext_010: aito GT-seina 375 mm sivussa — EI saa poistua."""
+    from scan2bim.core.semantics.wall_semantics import prune_unsupported_walls
+    model = StructuralModel(walls=[_wall("w_moved", 0, 0, 6000, 0)])
+    measure_wall_support(model, _cloud(_displaced_face_points(0, 0, 6000, 0, 500.0)))
+    w = model.walls[0]
+    assert w.support_offset is not None and w.support_offset >= 250.0, w.support_offset
+    assert prune_unsupported_walls(model) == []
+    assert [f["id"] for f in flag_low_confidence(model)] == ["w_moved"]
+
+
+def test_pruning_takes_the_openings_with_it():
+    """Muuten IFC:hen jaisi aukko jonka seinaa ei ole."""
+    from scan2bim.schemas.model import Opening
+    from scan2bim.core.semantics.wall_semantics import prune_unsupported_walls
+    model = StructuralModel(
+        walls=[_long_wall("w_line")],
+        openings=[Opening(id="op_0", confidence=0.9, source=ElementSource(method="opening"),
+                          opening_type="door", wall_id="w_line", position_along=1000.0,
+                          width=900.0, sill_height=0.0, opening_height=2100.0)],
+    )
+    measure_wall_support(model, _cloud(_beam_line_points()))
+    assert prune_unsupported_walls(model) == ["w_line"]
+    assert model.openings == []
+
+
+def test_good_model_is_untouched_by_pruning():
+    from scan2bim.core.semantics.wall_semantics import prune_unsupported_walls
+    model = StructuralModel(walls=[_wall("w_a", 0, 0, 6000, 0), _wall("w_b", 0, 4000, 6000, 4000)])
+    pts = np.vstack([_face_points(0, 0, 6000, 0), _face_points(0, 4000, 6000, 4000)])
+    measure_wall_support(model, _cloud(pts))
+    assert prune_unsupported_walls(model) == []
+    assert len(model.walls) == 2
+
+
 def test_confidence_still_used_when_support_not_measured():
     model = StructuralModel(walls=[_wall("w_x", 0, 0, 3000, 0, conf=0.25)])
     assert model.walls[0].support is None

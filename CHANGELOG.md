@@ -5,6 +5,23 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 sovellus päivittää itsensä sieltä.
 
 ## Julkaisematon
+- **Palkkilinjalle tehty valeseinä POISTETAAN nyt automaattisesti — Rohbaun
+  tarkkuus 0.510 → 0.918.** Pelkkä liputus vaati että käyttäjä klikkaa ne pois;
+  nyt `prune_unsupported_walls` pudottaa ne ennen IFC:n kirjoitusta.
+  Sääntö on kaksiosainen, ja **siirtymäraja on se joka tekee siitä turvallisen**:
+  poistetaan vain kun jatkuvuus < 0.15 **JA** lähin pinta on alle 250 mm päässä.
+  Mitattu ero on iso: palkkiseinien lähin pinta on 14–108 mm (= palkin oma
+  pinta), kun taas AITO seinä väärässä paikassa löytää vastineensa 375–825 mm
+  päästä. Siksi kauppakeskuksen `wall_ext_010` — aito GT-seinä 375 mm sivussa —
+  jää malliin ja tarkistuslistalle sen sijaan että katoaisi.
+  | data | seiniä | poistettu | tulos |
+  |---|---|---|---|
+  | Rohbau site_07 | 14 | **6** | kattavuus 0.796 → **0.792**, tarkkuus 0.510 → **0.918**, ongelmaseiniä 8 → 2 |
+  | myymälä 72×48 m | 9 | **0** | 9/9 GT-seinää, 0 hyllyvaleseinää, pilarit 34/34 (ennallaan) |
+  | kauppakeskus 150×100 m | 37 | **0** | ennallaan, aito siirtynyt seinä säilyy |
+  | asunto | 15 | **0** | ennallaan |
+  Aukot siivotaan poistetun seinän mukana, muuten IFC:hen jäisi aukkoja joiden
+  seinää ei ole (GUI:n oma poisto ei tätä tee). Neljä uutta testiä. 169/169.
 - **Palkkilinjalle tehty valeseinä jää nyt kiinni: Rohbau 2/8 → 8/8, nolla
   väärää hälytystä.** Edellinen pintatukisääntö näki vain PUUTTUVAN pinnan, ja
   histogrammidetektorin 28 m valeseinillä pintaa ON — ne istuvat palkiston

@@ -624,3 +624,32 @@ def remove_shelf_front_walls(walls, dist_lo=300.0, dist_hi=1500.0,
                 remove.add(i)
                 break
     return [w for k, w in enumerate(walls) if k not in remove]
+
+
+_PRUNE_CONT = 0.15         # jatkuvuus vyötäröllä — alle tämän ei ole yhtenäinen seinä
+_PRUNE_OFFSET = 250.0      # mm — tätä kauempana oleva pinta = seinä on SIIRTYNYT, ei valhe
+
+
+def prune_unsupported_walls(model) -> list[str]:
+    """Poista seinät joilla ei ole yhtenäistä pintaa EIKÄ siirtynyttä vastinetta.
+
+    Histogrammidetektori tekee palkiston keskikorkeuden tiheydestä pitkiä
+    "seiniä". Mitattu Rohbau-GT:llä: niiden jatkuvuus on 0.053–0.070 ja lähin
+    pinta 14–108 mm päässä (= palkin oma pinta), kun aidot seinät ovat
+    0.50–1.00. Poisto maksoi kattavuutta 0.796 → 0.792 ja nosti tarkkuuden
+    0.510 → 0.918.
+
+    Siirtymärajan takia AITO seinä väärässä paikassa EI poistu: kauppakeskuksen
+    `wall_ext_010` on GT-seinä 375 mm sivussa → jää tarkistuslistalle.
+    Palauttaa poistettujen id:t. Aukot siivotaan mukana, muuten IFC:hen jäisi
+    aukkoja joiden seinää ei ole.
+    """
+    drop = [w.id for w in model.walls
+            if w.continuity is not None and w.continuity < _PRUNE_CONT
+            and (w.support_offset is None or w.support_offset < _PRUNE_OFFSET)]
+    if not drop:
+        return []
+    gone = set(drop)
+    model.walls = [w for w in model.walls if w.id not in gone]
+    model.openings = [o for o in model.openings if o.wall_id not in gone]
+    return drop
