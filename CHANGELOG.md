@@ -83,6 +83,13 @@ sovellus päivittää itsensä sieltä.
   `wall_ext_010` — 99.8 m perimetriseinä jonka nimellisillä pinnoilla on 0
   pistettä mutta ±600 mm:n sisällä 593 152, eli ~375 mm sivussa. Nämä ovat
   ajamatta nykykoodilla.
+  **Varmennettu visionilla** (`data/_wall_view.py`): vyötäröleikkauksessa on
+  yhtenäinen pinta −525 mm akselista koko 99.8 m matkalta, mallin pinnat
+  (±150 mm) ovat tyhjässä ilmassa, ja ne 2907 "pinnalla" olevaa pistettä ovat
+  lattiaa ja kattoa (z≈0 ja z≈8.5 m). Ei siis haamu vaan aito seinä väärässä
+  paikassa — eron näkee vain kuvasta, `support` on kummassakin tapauksessa 0.
+  Vertailuksi `wall_000`: mallin pinnat istuvat tiheällä pisteviivalla,
+  31 481 pistettä koko korkeudelta ja koko pituudelta.
   Hinta mitattu: **6.2 s / 32 M pistettä / 37 seinää**, sama XYIndex-kaistahaku
   jota QA jo käyttää. Viisi uutta testiä; haamuseinätestit kaatuvat jos
   pintatukisääntö ablatoidaan pois. 148/148 testiä läpi.

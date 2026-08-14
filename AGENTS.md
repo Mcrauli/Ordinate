@@ -124,6 +124,8 @@ Tarkkuus mitataan erillisillä QA-skripteillä — **aja tuotantomallia (`model.
 | `data/_room_probe.py`, `data/_frag_probe.py`, `data/_tl_probe.py` | Miksi tila hylättiin / onko perimetri pirstoutunut / miten paksuus syntyi |
 | `data/_evidence_probe.py` | Ehdokasmittarit per seinä (pintapeitto, kohina, mitä pinnan takana on) **GT-labeloituna** myymälän `shelf_faces`-totuutta vasten — kertoo erotteleeko mittari ennen kuin se viedään tuotantoon |
 | `data/_evidence_gt.py` | Sama Rohbau3D:n per-piste-GT:tä vasten: jokaiselle detektoidulle seinälle kaistan GT-luokkajakauma **ja** ehdokasmittarit rinnakkain → kynnys valitaan mitatusta välistä |
+| `data/_wall_view.py` | **Liputettu seinä kuvina**: XY vyötäröltä, poikkileikkaus, mallin pinnalla olevat pisteet. Erottaa HAAMUN (ei mitään) VÄÄRÄSSÄ PAIKASSA olevasta (pinta on, mutta sivussa) — pelkkä `support`-luku ei kerro kumpi |
+| `data/_img_openings_qa.py` | Kuvaohjattu aukkodetektio oikealla kuvallisella E57:llä; vertaa vanhaan moduuliin samoilla seinillä+pilvellä |
 | `data/_cov_check.py`, `data/_support_verify.py` | Pintatuki mille tahansa mallille (väärät hälytykset) / tuotantototeutus vs. koetin samoilla luvuilla |
 
 **Käytä visionia aina tarkkuusvertailuissa.** Kuvat: `data/_*.png`.
@@ -674,9 +676,20 @@ katto/pilari/ovi/ikkuna vs. pöytä/tuoli/hylly/clutter). Avoin pretrained-malli
 Uusi `SemanticFilter`-esivaihe: pilvi → suodatettu pilvi → nykyinen pipeline
 (minimaalinen muutos). Validointi: 3DSES (per-piste-labelit + CAD).
 
-**Testidata:** `data/_3dses/` (Zenodo 13323342, TLS npy Nx7 + CAD .obj),
-`Downloads/aligned_low_{apartment,bedroom}`, `gargage.e57`. Rohbau3D (GitHub,
-kalustamaton runko) = paras puhdas tarkkuustesti, ei vielä ladattu.
+**Testidata — MIKÄÄN EI OLE GITISSÄ** (`.gitignore`: `data/*.ply`, `*.npy`,
+`data/_rohbau/`, `data/_3dses/`), eikä release-asseteissa. Jokainen kone lataa
+omansa; `data/_paths.py` etsii ne `~/Downloads`:sta tai `SCAN2BIM_DOWNLOADS`:sta.
+Kirjaa tähän jokainen uusi setti + sen LÄHDE, muuten kukaan ei tiedä mistä sen saa.
+
+| data | sijainti | lähde / lisenssi |
+|---|---|---|
+| Rohbau3D site_07 (kalustamaton runko, **per-piste-GT**) | `data/_rohbau/` | open-data.unibw.de doi:10.60776/ZWJFI4, **MIT** — paras puhdas tarkkuustesti, turvallinen myös myyntimateriaaliin |
+| 3DSES (TLS npy Nx7 + CAD .obj) | `data/_3dses/` | Zenodo 13323342, **CC BY-SA 4.0** → ShareAlike-riski, ei myyntikuviin |
+| synteettinen myymälä/kauppakeskus + `.gt.json` | `data/_retail_{s,l}.ply` | oma (`data/_synth_retail.py`), lisenssivapaa |
+| `gargage.e57` (27.8 M, 1 skanni; images2D on mutta 0 kelvollista asemaa) | `~/Downloads` | oma/asiakkaan — omistajuus selvittämättä |
+| `parking-lot-updated.e57` (285 kuvaa, 1 asema) | `~/Downloads` | oma/asiakkaan — **ainoa paikallinen kuvallinen E57**, kuvaohjatun aukkodetektion testi |
+| `aligned_low_{apartment,bedroom}`, `raw_scans_apartment` | `~/Downloads` | oma/asiakkaan — omistajuus selvittämättä |
+| **Matterport-aula** (46 M, 9 asemaa) | **VAIN toisella koneella** | lähdettä ei ole kirjattu; ei gitissä eikä releaseissa. Moni AGENTS/CHANGELOG-mittaus nojaa siihen — jos tarvitset, kopioi se koneelta jolla se on |
 
 ## Työskentelyn konventiot
 
