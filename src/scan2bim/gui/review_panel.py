@@ -65,17 +65,18 @@ class ReviewPanel(QtWidgets.QWidget):
                 total += 1
                 kind = f["type"]
                 fi_txt = f"K{fi} · " if len(self._models) > 1 else ""
-                label = f"{fi_txt}{_TYPE_FI.get(kind, kind)} · luottamus {f['confidence']:.2f}"
+                why = f.get("reason") or f"luottamus {f['confidence']:.2f}"
+                label = f"{fi_txt}{_TYPE_FI.get(kind, kind)} · {why}"
                 it = QtWidgets.QListWidgetItem(label)
                 it.setData(QtCore.Qt.ItemDataRole.UserRole, (fi, kind, f["id"]))
                 self._list.addItem(it)
         self._list.blockSignals(False)
         if total == 0:
-            self._info.setText("Ei tarkistettavia — kaikki elementit ylittävät "
-                               "luottamuskynnyksen. ✓")
+            self._info.setText("Ei tarkistettavia — jokaisella seinällä on mitattu "
+                               "tuki pistepilvessä. ✓")
         else:
             self._info.setText(
-                f"{total} elementtiä kannattaa tarkistaa (matala luottamus). "
+                f"{total} elementtiä kannattaa tarkistaa. "
                 "Klikkaa → korostuu pohjassa. Poista virheelliset → puhtaampi IFC."
             )
         self._del_btn.setEnabled(False)

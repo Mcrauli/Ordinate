@@ -122,6 +122,9 @@ Tarkkuus mitataan erillisillä QA-skripteillä — **aja tuotantomallia (`model.
 | `data/_col_probe.py` | **Mikä portti hylkää minkäkin GT-pilarin.** `cache` tallentaa `detect_columns`:n syötteet kerran (~9 min), `gates` tutkii portit sekunneissa — porttien säätö ei vaadi putkiajoa |
 | `data/_col_view.py` | **Pilariehdokas kuvina**: XY vyötäröltä, XY katon alta, pystyleikkaus. Erottaa hormin kaapista ja seinän paksunnoksen aidosta pilarista, kun mittaluvut eivät riitä |
 | `data/_room_probe.py`, `data/_frag_probe.py`, `data/_tl_probe.py` | Miksi tila hylättiin / onko perimetri pirstoutunut / miten paksuus syntyi |
+| `data/_evidence_probe.py` | Ehdokasmittarit per seinä (pintapeitto, kohina, mitä pinnan takana on) **GT-labeloituna** myymälän `shelf_faces`-totuutta vasten — kertoo erotteleeko mittari ennen kuin se viedään tuotantoon |
+| `data/_evidence_gt.py` | Sama Rohbau3D:n per-piste-GT:tä vasten: jokaiselle detektoidulle seinälle kaistan GT-luokkajakauma **ja** ehdokasmittarit rinnakkain → kynnys valitaan mitatusta välistä |
+| `data/_cov_check.py`, `data/_support_verify.py` | Pintatuki mille tahansa mallille (väärät hälytykset) / tuotantototeutus vs. koetin samoilla luvuilla |
 
 **Käytä visionia aina tarkkuusvertailuissa.** Kuvat: `data/_*.png`.
 
@@ -150,6 +153,36 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
 
 ## Kovalla työllä opitut asiat — ÄLÄ keksi uudelleen
 
+- **`confidence` EI kelpaa laatusignaaliksi — se on kokoproxy.** `wall_contour`
+  antaa `0.80 + pituus/20000`, `wall_density` `pituus/5000`, aukot
+  `leveys × korkeus`, laatat pinta-alan. Siis **mitä pidempi elementti, sitä
+  korkeampi luottamus** — ja pahimmat valeseinät ovat pitkiä: myymälän 44.7 m
+  hyllyvaleseinä saa 1.0, mallin alin arvo on 0.862 ja QA:n kynnys 0.40.
+  Seuraus: liiketilamalleissa TARKISTA-lista oli tyhjä vaikka virheet tiedetään.
+  Elementin epäilyttävyys on **mitattava pilvestä** (`Wall.support` = kuinka
+  suuri osa pinnasta on keilattu), ei kysyttävä detektorilta joka sen loi.
+  Poikkeus: `column_detector`:n luottamus (kompaktius × pistemäärä) on aitoa
+  evidenssiä — se saa jäädä.
+- **Pintatuki näkee vain PUUTTUVAN pinnan, ei väärälle pinnalle osunutta
+  seinää — ja KYNNYS ON VALIDOITAVA UUDELLEEN KUN DETEKTORI MUUTTUU.**
+  Kynnys 0.15 johdettiin v0.9.0:n Rohbau-mallista, jossa valeseinät olivat
+  aidosti tyhjiä (aidot 0.289–0.485, valeet 0.016–0.063 → 6/6). v0.9.18:n
+  malli samasta datasta tuottaa eri virhepopulaation: kuusi 28 m seinää
+  PALKKIEN päällä (GT-puhtaus 0.03–0.11), ja koska palkki on aito keilattu
+  pinta, niiden peitto 0.179–0.248 menee päällekkäin aitojen 0.212–0.427
+  kanssa — **mikään kynnys ei erota niitä**, ja sääntö putoaa 2/8:aan.
+  Virhepopulaatio vaihtuu detektorin mukana; mitattu erottelu ei siirry
+  versiosta toiseen ilman uutta ajoa. Sama juurisyy kuin hyllyfrontissa:
+  pinta on oikea, paikka on väärä. Sen näkee vain semantiikka (palkkiluokkaa
+  malli ei tunnista) tai konteksti.
+- **PINTAKOHTAINEN mittari ei erota hyllyä seinästä — konteksti erottaa.**
+  Testattu neljä (pintapeitto, pinnan kohina, mitä pinnan takana on,
+  takapisteiden osuus) myymälän `shelf_faces`-GT:tä vasten: hylly osuu joka
+  mittarilla aitojen seinien jakauman SISÄÄN (tuki 0.972 vs aidot 0.924–1.0).
+  Hyllyn etupinta ON taso siinä missä seinäkin. Älä siis yritä ratkaista tätä
+  pinnan omasta geometriasta. Toimiva erottelu käyttää SUHDETTA toiseen
+  elementtiin — `remove_shelf_front_walls` katsoo onko ulkopuolella pitkä
+  yhdensuuntainen perimetriseinä 300–1500 mm päässä — tai semantiikkaa.
 - **Pilarin irrallisuus: VAPAA KAARI + IRTI SEINÄSTÄ, ei sektorien määrä.**
   `_waist_isolated` luki ennen montako 24 kulmasektorista on täynnä (raja 4).
   Se ei erottele mitään olennaista: myymälässä gondoli seisoo pilarin molemmin
@@ -464,6 +497,18 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   voi jakaa skanneja, tämän voi. Ei koordinaatteja.
 
 ## Tunnetut rajoitukset
+
+- **ISO E57 EI LATAUDU LAINKAAN — kaistaluku on vain PLY:lle.**
+  `streaming.load_floor_slice` lukee lohkoissa vain kun `path.suffix == ".ply"`
+  ja pisteitä on ≥40 M; kaikki muu menee `load_point_cloud`-polkua, ja
+  `loader._load_e57` lukee jokaisen skannin ja **yhdistää ne kokonaisuudessaan
+  muistiin** ennen kuin z-kaistaa on edes rajattu. Mitattu `gargage.e57`:llä:
+  0.56 GB tiedosto → 27.8 M pistettä, huippu-RSS **2.79 GB** (≈5 GB RSS per
+  tiedosto-GB). Lineaarisesti **32 GB e57 ≈ 1.6 mrd pistettä ≈ 159 GB RSS**.
+  Korjaus on rajattu: `read_scan` lukee jo skanni kerrallaan, joten z-rajaus +
+  voxelointi/otanta on tehtävä skannin sisällä ennen yhdistämistä — sama kuvio
+  kuin `_load_ply_band`:ssa. Tätä EI voi validoida pienellä tiedostolla:
+  yhtäpitävyys kyllä, muistihyöty ei.
 
 - **Kattavuuden katto on PYSTYMASKISSA, ei sen jälkeisessä ketjussa.** Mitattu
   Rohbau site_07/scene_07000: maski 8031 px ≈ 36 m seinää → 60.3 m segmenttejä

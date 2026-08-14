@@ -888,6 +888,7 @@ class Pipeline:
 
         self._progress(f"Seinädetektio ({self.config.detector})…")
         model = self._detect(cloud, input_path, refine_cloud=refine_cloud)
+        self._measure_support(model, refine_cloud)
 
         self._progress("Tallennetaan JSON…")
         model.save(output_dir / "model.json")
@@ -1078,6 +1079,7 @@ class Pipeline:
             model = self._detect(cloud, source, refine_cloud=refine_cloud, thick_cloud=thick_cloud)
             model.metadata.floor_index = floor_idx
             model.metadata.floor_count = len(floors)
+            self._measure_support(model, refine_cloud)
 
             floor_dir = output_dir / f"floor_{floor_idx:02d}"
             floor_dir.mkdir(exist_ok=True)
@@ -1142,6 +1144,17 @@ class Pipeline:
     def _preprocess(self, cloud):
         from scan2bim.core.geometry.preprocess import preprocess
         return preprocess(cloud, voxel_size=self.config.voxel_size)
+
+    def _measure_support(self, model: StructuralModel, cloud) -> None:
+        """Pintatuki raakapilvestä → Tarkistus-lista perustuu mittaukseen."""
+        try:
+            from scan2bim.core.qa.deviation import measure_wall_support
+            measure_wall_support(model, cloud)
+            weak = [w.id for w in model.walls if w.support is not None and w.support < 0.15]
+            if weak:
+                self._progress(f"  Tarkistettavaa: {len(weak)} seinää ilman pintatukea")
+        except Exception as e:
+            self._progress(f"  Pintatuen mittaus ohitettu: {e}")
 
     def _semantic_filter(self, cloud):
         """Vaihe 2: poista kalusteet/krääsä ennen detektiota."""

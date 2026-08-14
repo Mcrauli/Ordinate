@@ -39,6 +39,8 @@ class Wall(Element):
     thickness: float                 # mm — toimitusarvo (snäpätty vakioon)
     z_min: float = 0.0               # mm — seinän alin piste (lattiaan vertailua varten)
     measured_thickness: float | None = None  # mm — pilvestä mitattu tarkka paksuus (dokumentti)
+    support: float | None = None     # 0..1 — pinnasta keilattu osuus (MITATTU, ei detektorin arvio)
+    support_offset: float | None = None  # mm — jos tuki puuttuu: kuinka kaukana lähin pinta on
 
 
 class Slab(Element):

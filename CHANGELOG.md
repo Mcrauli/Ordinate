@@ -4,6 +4,46 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 [`Mcrauli/scan2bim-web`](https://github.com/Mcrauli/scan2bim-web/releases):iin;
 sovellus päivittää itsensä sieltä.
 
+## Julkaisematon
+- **Tarkistus-lista mittaa nyt pilveä, ei kysy detektorilta.** Vika oli
+  mittarissa, ei kynnyksessä: `confidence` on kokoproxy (`wall_contour`:
+  `0.80 + pituus/20000`, `wall_density`: `pituus/5000`, aukoilla
+  `leveys × korkeus`), joten **mitä pidempi elementti, sitä varmempi** — ja
+  pahimmat valeseinät ovat pitkiä. Seuraus oli mitattavissa: 65 mallin otoksessa
+  kauppakeskus (37 seinää + 174 pilaria) ja myymälä (24 + 34) liputtivat
+  molemmat **0 elementtiä**, vaikka virheet tiedettiin.
+  Tilalle `Wall.support`: kuinka suuri osa seinän pinnasta on oikeasti keilattu
+  (200 mm ruudukko pinnan ±80 mm kaistassa). Kun tuki alittaa 0.15,
+  `_nearest_surface` erottaa vielä kaksi tapausta, koska toimenpide on eri:
+  "pinta 442 mm sivussa — siirrä tai poista" vs. "ei pintaa pilvessä".
+  **Mitattu nykykoodilla (v0.9.18) Rohbau3D:n per-piste-GT:tä vasten**,
+  site_07/scene_07000, 14 seinää joista GT:n mukaan 8 virheellistä:
+  | sääntö | liputti | oikein | vääriä |
+  |---|---|---|---|
+  | vanha `conf < 0.40` | 1 | 1/8 | 0 |
+  | uusi `tuki < 0.15` | 2 | **2/8** | **0** |
+  Parannus on siis aito mutta pieni, ja **raja tulee vastaan mitattavasti**:
+  kuusi 28 m valeseinää istuu PALKKIEN päällä (GT-puhtaus 0.03–0.11) ja palkki
+  on aito keilattu pinta, joten niiden peitto on 0.179–0.248 — päällekkäin
+  aitojen seinien (0.212–0.427) kanssa. **Mikään peittokynnys ei erota niitä.**
+  Sama juurisyy kuin hyllyfrontissa: pinta on oikea, paikka on väärä.
+  Historiallinen huomio: v0.9.0:n Rohbau-mallilla sama sääntö nappasi 6/6,
+  koska silloin virheet olivat aidosti tyhjiä seiniä. **Kynnys on validoitava
+  uudelleen aina kun detektori muuttuu** — virhepopulaatio vaihtuu sen mukana.
+  Vanhalla v0.9.0-pohjalla mitattiin lisäksi: asunnon v0.8.8-haamuseinä
+  liputtui oikein (vanha sääntö missasi sen kokonaan), v0.9.0-asunnon **väärä**
+  hälytys (`wall_ext_002`, tuki 0.31) poistui, ja kauppakeskuksesta löytyi
+  `wall_ext_010` — 99.8 m perimetriseinä jonka nimellisillä pinnoilla on 0
+  pistettä mutta ±600 mm:n sisällä 593 152, eli ~375 mm sivussa. Nämä ovat
+  ajamatta nykykoodilla.
+  Hinta mitattu: **6.2 s / 32 M pistettä / 37 seinää**, sama XYIndex-kaistahaku
+  jota QA jo käyttää. Viisi uutta testiä; haamuseinätestit kaatuvat jos
+  pintatukisääntö ablatoidaan pois. 148/148 testiä läpi.
+  **Ei korvaa `remove_shelf_front_walls`-sääntöä** eikä yritä: pintakohtaiset
+  mittarit eivät erota hyllyn etupintaa seinästä (hylly tuki 0.972, aidot
+  0.924–1.0; sama kohinalla ja pinnan takaisella tilalla). Erottelu vaatii
+  kontekstin tai semantiikan.
+
 ## v0.9.18 (10.8.2026) — laatukorjaukset (IFC-tekijyys, CLI-detektori, loader-varoitukset)
 
 - **IFC ei enää nimeä kehittäjää tekijäksi.** Writer kovakoodasi jokaisen

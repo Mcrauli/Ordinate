@@ -152,21 +152,144 @@ def wall_surface_accuracy(model: StructuralModel, cloud) -> list[dict]:
     return out
 
 
+_SUP_CELL = 200.0       # mm — pintaruudun koko peittoa laskettaessa
+_SUP_THR = 0.15         # alle tämän = pinnalla ei ole tukea pilvessä
+_SUP_MIN_PTS = 100
+
+
+def _wall_support(w, pts_all: np.ndarray, index) -> float | None:
+    """Kuinka suuri osa seinän pinnasta on oikeasti keilattu (0..1).
+
+    Haamuseinä ja palkista tehty seinä eivät saa pinnalleen pisteitä; aidon
+    seinän pinta on ruudukossa lähes täynnä myös okkluusion kanssa. Mitattu
+    Rohbau-GT:llä: 12 aitoa seinää 0.29–0.49, 6 valeseinää 0.016–0.063.
+    """
+    if len(w.axis) < 2:
+        return None
+    p0 = np.array(w.axis[0], float)
+    p1 = np.array(w.axis[1], float)
+    L = float(np.linalg.norm(p1 - p0))
+    if L < 1.0 or w.height < 1.0:
+        return None
+    u = (p1 - p0) / L
+    n = np.array([-u[1], u[0]])
+    half = w.thickness / 2.0 + 2.5 * _SF_BAND_EXTRA
+
+    pts = pts_all
+    if index is not None:
+        from scan2bim.core.geometry.xy_index import subset  # noqa: PLC0415
+        pts, _ = subset(pts_all, index, p0, u, n, half, 0.0, L)
+        if len(pts) < _SUP_MIN_PTS:
+            return 0.0
+
+    rel = pts[:, :2] - p0
+    t = rel @ u
+    perp = rel @ n
+    z = pts[:, 2]
+    near = ((t > 0.0) & (t < L) & (np.abs(perp) < half)
+            & (z > w.z_min + 100.0) & (z < w.z_min + w.height - 100.0))
+    if near.sum() < _SUP_MIN_PTS:
+        return 0.0
+    t, perp, z = t[near], perp[near], z[near]
+
+    face = np.abs(np.abs(perp) - w.thickness / 2.0) < _SF_BAND_EXTRA
+    if face.sum() < _SUP_MIN_PTS:
+        return 0.0
+    side = perp[face] > 0
+    dom = perp[face][side] if side.sum() >= (~side).sum() else perp[face][~side]
+    med = float(np.median(dom))
+
+    on = np.abs(perp - med) < _SF_BAND_EXTRA
+    nt = max(1, int(L / _SUP_CELL))
+    nz = max(1, int(w.height / _SUP_CELL))
+    ti = np.clip((t[on] / L * nt).astype(np.int64), 0, nt - 1)
+    zi = np.clip(((z[on] - w.z_min) / w.height * nz).astype(np.int64), 0, nz - 1)
+    return float(len(np.unique(ti * nz + zi))) / float(nt * nz)
+
+
+_SUP_SEEK = 1000.0      # mm — kuinka kaukaa etsitään todellista pintaa
+
+
+def _nearest_surface(w, pts_all: np.ndarray, index) -> float | None:
+    """Onko seinä VÄÄRÄSSÄ PAIKASSA vai onko sitä ollenkaan?
+
+    Palauttaa etäisyyden mallin pinnalta lähimpään todelliseen pintakeskittymään,
+    tai None jos mitään ei ole. Ero ratkaisee toimenpiteen: siirrä vai poista.
+    """
+    p0 = np.array(w.axis[0], float)
+    p1 = np.array(w.axis[1], float)
+    L = float(np.linalg.norm(p1 - p0))
+    u = (p1 - p0) / L
+    n = np.array([-u[1], u[0]])
+
+    pts = pts_all
+    if index is not None:
+        from scan2bim.core.geometry.xy_index import subset  # noqa: PLC0415
+        pts, _ = subset(pts_all, index, p0, u, n, _SUP_SEEK, 0.0, L)
+    if len(pts) < _SUP_MIN_PTS:
+        return None
+    rel = pts[:, :2] - p0
+    t = rel @ u
+    perp = rel @ n
+    z = pts[:, 2]
+    sel = ((t > 0.0) & (t < L) & (np.abs(perp) < _SUP_SEEK)
+           & (z > w.z_min + 100.0) & (z < w.z_min + w.height - 100.0))
+    if sel.sum() < _SUP_MIN_PTS:
+        return None
+    hist, edges = np.histogram(perp[sel], bins=40, range=(-_SUP_SEEK, _SUP_SEEK))
+    peak = 0.5 * (edges[hist.argmax()] + edges[hist.argmax() + 1])
+    return round(abs(abs(float(peak)) - w.thickness / 2.0), 1)
+
+
+def measure_wall_support(model: StructuralModel, cloud) -> None:
+    """Kirjaa jokaiselle seinälle MITATUN pintatuen (`Wall.support`)."""
+    pts_all = np.asarray(cloud.points)
+    if len(pts_all) == 0:
+        return
+    index = None
+    if len(pts_all) >= 300_000 and len(model.walls) >= 3:
+        from scan2bim.core.geometry.xy_index import XYIndex  # noqa: PLC0415
+        index = XYIndex(pts_all)
+    for w in model.walls:
+        s = _wall_support(w, pts_all, index)
+        w.support = None if s is None else round(s, 3)
+        w.support_offset = None
+        if s is not None and s < _SUP_THR and len(w.axis) >= 2:
+            w.support_offset = _nearest_surface(w, pts_all, index)
+
+
 def flag_low_confidence(model: StructuralModel) -> list[dict]:
-    """Elementit jotka kannattaa tarkistaa manuaalisesti Solibrissa."""
+    """Elementit jotka kannattaa tarkistaa manuaalisesti Solibrissa.
+
+    Seinillä ratkaisee MITATTU pintatuki jos se on laskettu; detektorin oma
+    `confidence` on kokoproxy (pituus) eikä se erota valeseinää aidosta.
+    """
     flags: list[dict] = []
     for w in model.walls:
-        if w.confidence < _WALL_CONF_THR:
-            flags.append({"id": w.id, "type": "wall", "confidence": round(w.confidence, 3)})
+        if w.support is not None:
+            if w.support < _SUP_THR:
+                if w.support_offset is not None and w.support_offset >= 100.0:
+                    why = f"pinta {w.support_offset:.0f} mm sivussa — siirrä tai poista"
+                else:
+                    why = f"ei pintaa pilvessä ({w.support * 100:.0f} % keilattu)"
+                flags.append({"id": w.id, "type": "wall", "confidence": round(w.confidence, 3),
+                              "support": w.support, "offset_mm": w.support_offset,
+                              "reason": why})
+        elif w.confidence < _WALL_CONF_THR:
+            flags.append({"id": w.id, "type": "wall", "confidence": round(w.confidence, 3),
+                          "reason": "detektorin luottamus matala"})
     for op in getattr(model, "openings", []):
         if op.confidence < _OPENING_CONF_THR:
-            flags.append({"id": op.id, "type": op.opening_type, "confidence": round(op.confidence, 3)})
+            flags.append({"id": op.id, "type": op.opening_type, "confidence": round(op.confidence, 3),
+                          "reason": "aukko pieni tai heikosti rajattu"})
     for col in getattr(model, "columns", None) or []:
         if col.confidence < _COLUMN_CONF_THR:
-            flags.append({"id": col.id, "type": "column", "confidence": round(col.confidence, 3)})
+            flags.append({"id": col.id, "type": "column", "confidence": round(col.confidence, 3),
+                          "reason": "pitkänomainen tai harva — ei kompakti pilari"})
     for bm in getattr(model, "beams", None) or []:
         if bm.confidence < _BEAM_CONF_THR:
-            flags.append({"id": bm.id, "type": "beam", "confidence": round(bm.confidence, 3)})
+            flags.append({"id": bm.id, "type": "beam", "confidence": round(bm.confidence, 3),
+                          "reason": "heikko palkki — mahdollista kattokrääsää"})
     return flags
 
 
