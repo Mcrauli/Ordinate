@@ -5,6 +5,29 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 sovellus päivittää itsensä sieltä.
 
 ## Julkaisematon
+- **Kuvaohjattu aukkodetektio: testit + 15.9 s → 0.08 s, kun kuvien dekoodaus
+  osoittautui käyttämättömäksi.** `image_openings.py` oli ainoa detektori ilman
+  yhtään testiä, vaikka se kirjoittaa asiakkaan IFC:hen ikkunoita ja aktivoituu
+  juuri isoilla E57-keilauksilla. Seitsemän testiä synteettisellä seinällä ja
+  asemalla: läpinäkyvä aukko löytyy ikkunana, lattiaan asti ulottuva ovena,
+  maalattu umpiseinä ei tuota mitään, kaluste edessä (okkluusio >60 %) ohittaa
+  seinän, vino asema (cosang <0.6) ei kelpaa, lyhyt seinä ohitetaan, ja
+  kuvaton E57 on no-op. Testeissä on hampaat: syvyyspuskurin ablaatio pudottaa
+  löydöt nollaan.
+  Testejä kirjoittaessa paljastui että **panoraama ei vaikuta tulokseen
+  lainkaan**. `equi` laskettiin (`H, W = equi.shape[:2]`) mutta `H`/`W` eivät
+  esiinny sen jälkeen missään — päätös tulee kokonaan pistepilven
+  syvyyspuskurista. Todennettu korvaamalla panoraama mustalla 4×8-kuvalla:
+  sama aukko, samat mitat (`2280 / 1440 / 980 / 1040 mm`). Kuvia siis
+  tarvitaan vain asemien SIJAINTIIN ja piirteen porttina, ei pikseleinä, joten
+  `_load_stations` lukee enää poset eikä pura JPEGejä, ja `_equirect` +
+  `_quat_to_R` poistuivat. **Mitattu `parking-lot-updated.e57` (285 kuvaa):
+  asemat identtiset (1 → 1, sama translaatio 4 desimaalin tarkkuudella),
+  aika 15.90 s → 0.08 s.**
+- **Poistettu kuollut koodi `gui/pano_view.py` + `gui/photo_view.py`.**
+  Panoraamavälilehti poistettiin jo commitissa `6bc8cd5` ("keep viewer modules
+  as detection libs"), mutta mikään ei importannut niitä: `image_openings.py`
+  tekee oman käsittelynsä. ~600 riviä joka meni exeen mukana turhaan.
 - **Iso E57 luetaan lohkoissa — ennen 32 GB tiedosto ei olisi latautunut
   lainkaan.** `loader._load_e57` luki jokaisen skannin `read_scan`illa ja
   yhdisti ne kokonaisuudessaan muistiin ennen kuin z-kaistaa oli edes rajattu,

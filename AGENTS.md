@@ -153,6 +153,13 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
 
 ## Kovalla työllä opitut asiat — ÄLÄ keksi uudelleen
 
+- **"Kuvaohjattu" aukkodetektio EI käytä kuvien pikseleitä.** `image_openings.py`
+  päättää kokonaan pistepilven syvyyspuskurista: näkeekö skannerin säde
+  seinätason ohi. Kuvia tarvitaan vain skanneriasemien SIJAINTIIN (pose) ja
+  piirteen porttina (`.e57` + `images2D`, muuten no-op). Todennettu
+  korvaamalla panoraama mustalla 4×8-kuvalla → sama aukko, samat mitat.
+  Älä siis lisää siihen kuvapohjaista logiikkaa olettaen että panoraama on
+  jo olemassa — sitä ei enää rakenneta (maksoi 15.9 s / 285 kuvaa).
 - **`confidence` EI kelpaa laatusignaaliksi — se on kokoproxy.** `wall_contour`
   antaa `0.80 + pituus/20000`, `wall_density` `pituus/5000`, aukot
   `leveys × korkeus`, laatat pinta-alan. Siis **mitä pidempi elementti, sitä
