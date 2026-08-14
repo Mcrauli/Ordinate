@@ -507,6 +507,26 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
 
 ## Tunnetut rajoitukset
 
+- **`_looks_like_retail` on tosiasiassa "ISO JA KORKEA", ei liiketila — ja se
+  puolittaa tarkkuuden paljaalla rungolla.** Ehto on pohja-ala + vapaa korkeus
+  ≥4.5 m; Rohbau site_07:n ~10 m betonirunko täyttää sen ja reitittyy
+  histogrammidetektorille ("liiketila → histogrammi", näkyy diagnostiikassa).
+  **Mitattu `data/_rohbau_qa.py`:llä samalla datalla, kontrolliajo
+  `data/_ctrl_contour.py` (auto-reititys patchattu pois):**
+  | detektori | kattavuus | tarkkuus | ongelmaseiniä |
+  |---|---|---|---|
+  | histogrammi (auto, tuotanto) | **0.796** | **0.510** | 8 / 14 |
+  | contour (auto pois) | 0.653 | **0.951** | 4 / 18 |
+  Contourin luvut toistavat kirjatut 0.96/0.65 → mittari on kunnossa.
+  Kuusi 28 m valeseinää istuu PALKEILLA (GT Beam 93–96 %): histogrammi lukee
+  palkiston keskikorkeuden tiheydestä seinälinjoiksi. Kauppa on siis kattavuus
+  +0.14 vs tarkkuus −0.44.
+  **ÄLÄ korjaa tätä sokkona:** trigger on validoitu Matterport-aulalla (46 M,
+  9 asemaa), jota ei ole tässä repossa eikä useimmilla koneilla — sen tapauksen
+  rikkominen ei näy millään paikallisella datalla. Korjaus vaatii että aula on
+  saatavilla, tai että liiketilaisuudelle keksitään ehto joka EROTTAA
+  big-boxin paljaasta rungosta (korkeus+ala ei erota).
+
 - **ISO E57 luetaan lohkoissa (≥40 M pistettä) — ja se MUUTTAA TULOSTA hieman.**
   `read_scan` varaa koko skannin kerralla, ja iso keilaus on **yksi** skanni,
   joten per-skanni-rajaus ei auta. Mitattu `gargage.e57`: 0.56 GB → 27.8 M

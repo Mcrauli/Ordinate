@@ -5,6 +5,22 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 sovellus päivittää itsensä sieltä.
 
 ## Julkaisematon
+- **MITTAUS (ei muutos): iso+korkea kohde reitittyy histogrammille ja tarkkuus
+  puolittuu paljaalla rungolla.** Rohbau site_07/scene_07000 on ainoa data jossa
+  on per-piste-GT, ja siihen ajettuna nykytuotanto tulostaa diagnostiikkaan
+  "liiketila → histogrammi-detektori": `_looks_like_retail` on käytännössä
+  "pohja-ala + korkeus ≥4.5 m", jonka ~10 m betonirunko täyttää. Kontrolliajo
+  samalla koodilla auto-reititys patchattuna pois (`data/_ctrl_contour.py`):
+  | detektori | kattavuus | tarkkuus | ongelmaseiniä |
+  |---|---|---|---|
+  | histogrammi (auto, tuotanto) | **0.796** | **0.510** | 8 / 14 |
+  | contour (auto pois) | 0.653 | **0.951** | 4 / 18 |
+  Contour toistaa aiemmin kirjatut 0.96 ja 0.65 → mittari ei ole rikki, ero on
+  aito. Kuusi 28 m valeseinää istuu PALKEILLA (GT Beam 93–96 %). Kauppa on
+  kattavuus +0.14 vs. tarkkuus −0.44.
+  **Ei korjattu tässä**, koska trigger on validoitu Matterport-aulalla jota ei
+  ole tässä repossa eikä tällä koneella — sen rikkominen ei näkyisi missään
+  paikallisessa testissä. Ks. AGENTS.md "Tunnetut rajoitukset".
 - **Kuvaohjattu aukkodetektio: testit + 15.9 s → 0.08 s, kun kuvien dekoodaus
   osoittautui käyttämättömäksi.** `image_openings.py` oli ainoa detektori ilman
   yhtään testiä, vaikka se kirjoittaa asiakkaan IFC:hen ikkunoita ja aktivoituu
