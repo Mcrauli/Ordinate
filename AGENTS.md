@@ -719,7 +719,7 @@ Kirjaa tähän jokainen uusi setti + sen LÄHDE, muuten kukaan ei tiedä mistä 
 | `gargage.e57` (27.8 M, 1 skanni; images2D on mutta 0 kelvollista asemaa) | `~/Downloads` | oma/asiakkaan — omistajuus selvittämättä |
 | `parking-lot-updated.e57` (285 kuvaa, 1 asema) | `~/Downloads` | oma/asiakkaan — **ainoa paikallinen kuvallinen E57**, kuvaohjatun aukkodetektion testi |
 | `aligned_low_{apartment,bedroom}`, `raw_scans_apartment` | `~/Downloads` | oma/asiakkaan — omistajuus selvittämättä |
-| **Matterport-aula** (46 M, 9 asemaa) | **VAIN toisella koneella** | lähdettä ei ole kirjattu; ei gitissä eikä releaseissa. Moni AGENTS/CHANGELOG-mittaus nojaa siihen — jos tarvitset, kopioi se koneelta jolla se on |
+| **Matterport-aula** (9 asemaa, 58.3 M pistettä, 54 skybox-kuvaa) | `~/Downloads/matterport_lobby.e57` | **Matterportin JULKINEN näytetiedosto**, lataa uudelleen: `https://static.matterport.com/misc/UoqjwziqrZs-Aon_Lobby.e57` (1.15 GB, "Aon Lobby"). Ainoa data jossa on sekä kuvat ETTÄ yli 40 M pistettä → testaa kuvaohjatun aukkodetektion JA e57-lohkoluvun |
 
 ## Työskentelyn konventiot
 

@@ -5,6 +5,25 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 sovellus päivittää itsensä sieltä.
 
 ## Julkaisematon
+- **Matterport-aula löytyi ja se sulki kaksi avointa validointiaukkoa.** Tiedosto
+  ei ollut kadonnut vaan se on Matterportin JULKINEN näytetiedosto:
+  `https://static.matterport.com/misc/UoqjwziqrZs-Aon_Lobby.e57` (1.15 GB,
+  "Aon Lobby"). 9 asemaa, 58.3 M pistettä, 54 skybox-kuvaa — täsmää AGENTS.md:n
+  merkintään "46 M pistettä, 9 asemaa" (46.6 M invalidien karsinnan jälkeen).
+  Lähde on nyt kirjattu `AGENTS.md`:n testidatatauluun.
+  1. **E57-lohkoluku sai ensimmäisen oikean testinsä.** 58.3 M > 40 M raja, eli
+     ajo kulki uutta polkua: läpi **7.7 min, huippumuisti 6.8 GB**, 18 seinää,
+     6 tilaa, 5 pilaria, 3 aukkoa. Aiemmin lohkoluku oli todennettu vain
+     yhtäpitävyydellä 27.8 M tiedostolla, jossa se ei koskaan aktivoitunut.
+  2. **Kuvaohjatun aukkodetektion refaktorointi on nyt todennettu oikealla
+     datalla.** Vanha ja uusi `detect_image_openings` samoilla seinillä ja
+     pilvellä: **täsmälleen samat 2 aukkoa** (ovi `wall_ext_000` 3360×2260 mm,
+     ikkuna `wall_003` 2460×1460 mm), samat luvut kaikilta osin. Aika
+     **23.21 s → 14.45 s**. Aiemmin tämä nojasi vain siihen että panoraaman
+     korvaaminen mustalla kuvalla ei muuttanut tulosta synteettisellä datalla.
+  **Rajoitus:** aulassa ei ole ground truthia, joten se todentaa yhtäpitävyyden
+  ja sen että putki toimii — muttei ratkaise onko histogrammi- vai
+  contour-detektori siellä parempi. Se vaatisi vision-tarkastelun tai GT:n.
 - **Väärässä paikassa oleva seinä napsautetaan mitatulle pinnalle:
   kauppakeskuksen 99.8 m ulkoseinä 417 mm → 29 mm.** `support == 0` ei kerro
   onko kyse haamusta vai aidosta seinästä väärässä paikassa, ja ero ratkaisee
