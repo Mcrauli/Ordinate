@@ -653,3 +653,81 @@ def prune_unsupported_walls(model) -> list[str]:
     model.walls = [w for w in model.walls if w.id not in gone]
     model.openings = [o for o in model.openings if o.wall_id not in gone]
     return drop
+
+
+_SNAP_SEEK = 1000.0        # mm — kuinka kaukaa siirtynyttä vastinetta etsitään
+_SNAP_BAND = 60.0          # mm — kaista huipun ympärillä
+_SNAP_MIN_CONT = 0.80      # vastineen jatkuvuus: alle tämän ei ole seinä vaan sirpale
+_SNAP_MIN_SHIFT = 30.0     # mm — pienempi siirto kuuluu pintalukitukselle
+_SNAP_MIN_COL_PTS = 5      # pistettä jotta sarake on tuettu
+_SNAP_PAIR_TOL = 80.0      # mm — kuinka tarkasti vastapinnan on oltava paksuuden päässä
+
+
+def snap_displaced_walls(model, cloud) -> list[tuple[str, float]]:
+    """Siirrä pinnattomat seinät mitatulle pinnalle. Palauttaa (id, siirto mm).
+
+    `support == 0` ei kerro onko kyse haamusta vai aidosta seinästä väärässä
+    paikassa. Ero on mitattavissa: aidolla on vyötärökorkeudella YHDENSUUNTAINEN
+    ja JATKUVA vastine (kauppakeskuksen 99.8 m ulkoseinä: 388 mm, jatkuvuus
+    1.00), haamulla ei ole mitään (Rohbaun perimetritynkät: ei vastinetta
+    ±1000 mm). Siirto tehdään vain kun vastine on lähes koko pituudelta, joten
+    sirpale ei vedä seinää mukanaan.
+
+    Tämä on eri asia kuin `_align_faces_to_surface_median`, joka hienosäätää jo
+    ~oikeassa paikassa olevaa seinää 25 mm katolla. Tässä seinä on satoja
+    millejä pielessä, eikä nykyinen sijainti ole menettämisen arvoinen.
+    """
+    pts = np.asarray(cloud.points)
+    if len(pts) == 0:
+        return []
+    moved: list[tuple[str, float]] = []
+    for w in model.walls:
+        if getattr(w, "support", None) is None or w.support > 0.0 or len(w.axis) < 2:
+            continue
+        p0 = np.array(w.axis[0], float)
+        p1 = np.array(w.axis[1], float)
+        L = float(np.linalg.norm(p1 - p0))
+        if L < 1.0 or w.height < 1.0:
+            continue
+        u = (p1 - p0) / L
+        n = np.array([-u[1], u[0]])
+        rel = pts[:, :2] - p0
+        t = rel @ u
+        perp = rel @ n
+        z = pts[:, 2]
+        sel = ((t > 0.0) & (t < L) & (np.abs(perp) < _SNAP_SEEK)
+               & (z > w.z_min + 0.30 * w.height) & (z < w.z_min + 0.70 * w.height))
+        if sel.sum() < 200:
+            continue
+        tp, pp = t[sel], perp[sel]
+        hist, edges = np.histogram(pp, bins=80, range=(-_SNAP_SEEK, _SNAP_SEEK))
+        peak = 0.5 * (edges[hist.argmax()] + edges[hist.argmax() + 1])
+        on = np.abs(pp - peak) < _SNAP_BAND
+        if on.sum() < 100:
+            continue
+        ncol = max(1, int(L / 500.0))
+        ci = np.clip((tp[on] / L * ncol).astype(np.int64), 0, ncol - 1)
+        if float((np.bincount(ci, minlength=ncol) >= _SNAP_MIN_COL_PTS).mean()) < _SNAP_MIN_CONT:
+            continue
+        # Kaksipuolinen seinä: jos vastapinta löytyy ~paksuuden päästä, akseli
+        # kuuluu pintojen PUOLIVÄLIIN. Muuten mallin väärä pinta osuisi lähimmälle
+        # keilatulle pinnalle ja seinä jäisi kokonaisen paksuuden verran sivuun.
+        rest = pp[~on]
+        peak2 = None
+        if len(rest) > 100:
+            h2, e2 = np.histogram(rest, bins=80, range=(-_SNAP_SEEK, _SNAP_SEEK))
+            cand = 0.5 * (e2[h2.argmax()] + e2[h2.argmax() + 1])
+            if (abs(abs(cand - peak) - w.thickness) < _SNAP_PAIR_TOL
+                    and int((np.abs(rest - cand) < _SNAP_BAND).sum()) >= 100):
+                peak2 = float(cand)
+        if peak2 is not None:
+            shift = 0.5 * (float(peak) + peak2)
+        else:
+            shift = float(peak) - np.sign(peak) * (w.thickness / 2.0)
+        if abs(shift) < _SNAP_MIN_SHIFT:
+            continue
+        d = n * shift
+        w.axis = [[float(p0[0] + d[0]), float(p0[1] + d[1])],
+                  [float(p1[0] + d[0]), float(p1[1] + d[1])]]
+        moved.append((w.id, shift))
+    return moved

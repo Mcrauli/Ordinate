@@ -5,6 +5,27 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 sovellus päivittää itsensä sieltä.
 
 ## Julkaisematon
+- **Väärässä paikassa oleva seinä napsautetaan mitatulle pinnalle:
+  kauppakeskuksen 99.8 m ulkoseinä 417 mm → 29 mm.** `support == 0` ei kerro
+  onko kyse haamusta vai aidosta seinästä väärässä paikassa, ja ero ratkaisee
+  toimenpiteen. Mitattu erottelija: löytyykö vyötärökorkeudelta ±1000 mm sisältä
+  YHDENSUUNTAINEN ja JATKUVA vastine.
+  | seinä | GT | vastine ±1000 mm | toimenpide |
+  |---|---|---|---|
+  | kauppakeskus `wall_ext_010` | aito, 417 mm sivussa | **388 mm, jatkuvuus 1.00** | siirretään |
+  | Rohbau `wall_ext_001` / `_007` | tyhjä (0 GT-pistettä) | **ei vastinetta** | jää tarkistuslistalle |
+  Tulos GT:tä vasten (`data/_retail_qa.py`): **GT01 lateraalivirhe 416.8 → 29.3 mm**,
+  ja GT00/GT02/GT03 sekä löytyneet 9/9, hyllyvaleseinät ja ylimääräiset
+  **bitilleen ennallaan**. Seinän pintatuki 0.000 → 1.0, eikä se ole enää
+  tarkistuslistalla. Myymälä, asunto ja Rohbau: 0 siirrettyä.
+  Tämä on eri asia kuin `_align_faces_to_surface_median`, joka hienosäätää jo
+  ~oikeassa paikassa olevaa seinää 25 mm katolla; tässä seinä on satoja millejä
+  pielessä eikä nykyinen sijainti ole säilyttämisen arvoinen. Siirto tehdään vain
+  kun vastine on ≥80 % pituudelta, joten sirpale ei vedä seinää mukanaan.
+  Kaksipuolinen seinä osaa asettua pintojen PUOLIVÄLIIN — ilman sitä mallin väärä
+  pinta osuisi lähimmälle keilatulle pinnalle ja seinä jäisi kokonaisen paksuuden
+  verran sivuun (mitattu synteettisellä: 187 mm jäännös). Viisi uutta testiä,
+  174/174.
 - **Palkkilinjalle tehty valeseinä POISTETAAN nyt automaattisesti — Rohbaun
   tarkkuus 0.510 → 0.918.** Pelkkä liputus vaati että käyttäjä klikkaa ne pois;
   nyt `prune_unsupported_walls` pudottaa ne ennen IFC:n kirjoitusta.

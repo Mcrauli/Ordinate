@@ -198,6 +198,92 @@ def test_good_model_is_untouched_by_pruning():
     assert len(model.walls) == 2
 
 
+def _snap(model, cloud):
+    from scan2bim.core.semantics.wall_semantics import snap_displaced_walls
+    return snap_displaced_walls(model, cloud)
+
+
+def _one_sided_points(x0, y0, x1, y1, face_y, step=50.0):
+    """Yksipuolinen ulkoseina: VAIN sisapinta keilattu (kuten oikeassa datassa)."""
+    a = np.array([x0, y0], float)
+    b = np.array([x1, y1], float)
+    L = float(np.linalg.norm(b - a))
+    u = (b - a) / L
+    n = np.array([-u[1], u[0]])
+    t = np.arange(0.0, L, step)
+    z = np.arange(60.0, _H - 60.0, step)
+    tt, zz = np.meshgrid(t, z)
+    xy = a + tt.ravel()[:, None] * u + face_y * n
+    return np.column_stack([xy, zz.ravel()])
+
+
+def test_displaced_one_sided_wall_is_snapped_onto_its_surface():
+    """Kauppakeskuksen 99.8 m ULKOseina oli 417 mm sivussa -> 29 mm.
+
+    Yksipuolinen: vain sisapinta on keilattu, joten mallin pinta kuuluu sille.
+    """
+    face = 500.0                      # keilattu pinta 500 mm mallin akselista
+    model = StructuralModel(walls=[_wall("w_moved", 0, 0, 12000, 0)])
+    cloud = _cloud(_one_sided_points(0, 0, 12000, 0, face))
+    measure_wall_support(model, cloud)
+    assert model.walls[0].support == 0.0
+    moved = _snap(model, cloud)
+    assert len(moved) == 1 and moved[0][0] == "w_moved"
+    # akselin pitaa siirtya niin etta PINTA (akseli + t/2) osuu keilatulle tasolle
+    y = model.walls[0].axis[0][1]
+    assert abs((y + _T / 2.0) - face) < 60.0, f"pinta {y + _T/2.0}, odotettu ~{face}"
+    measure_wall_support(model, cloud)
+    assert model.walls[0].support > 0.9
+    assert flag_low_confidence(model) == []
+
+
+def test_two_sided_displaced_wall_improves_but_lands_within_half_a_thickness():
+    """TUNNETTU RAJOITUS: napsautus kohdistaa YHDEN pinnan, ei kahden keskikohtaa.
+
+    Kaksipuolisella siirtyneella seinalla jaannos on enintaan puoli paksuutta —
+    yha selvasti parempi kuin satojen millien virhe, mutta ei nolla. Oikea
+    mitattu tapaus (yksipuolinen ulkoseina) osuu tarkasti.
+    """
+    off = 500.0
+    model = StructuralModel(walls=[_wall("w_two", 0, 0, 12000, 0)])
+    cloud = _cloud(_displaced_face_points(0, 0, 12000, 0, off))
+    measure_wall_support(model, cloud)
+    assert _snap(model, cloud)
+    err = abs(model.walls[0].axis[0][1] - off)
+    assert err <= _T / 2.0 + 15.0, err
+    assert err < off / 2.0, "siirto ei parantanut riittavasti"
+
+
+def test_phantom_without_a_counterpart_is_not_snapped():
+    """Rohbaun perimetritynka: ei vastinetta -> ei saa siirtaa mihinkaan."""
+    model = StructuralModel(walls=[
+        _wall("w_real", 0, 0, 6000, 0),
+        _wall("w_ghost", 0, 9000, 6000, 9000),
+    ])
+    cloud = _cloud(_face_points(0, 0, 6000, 0))
+    measure_wall_support(model, cloud)
+    assert _snap(model, cloud) == []
+
+
+def test_fragment_counterpart_does_not_drag_the_wall():
+    """Lyhyt sirpale ei ole seina — jatkuvuusehto estaa siirron."""
+    pts = _displaced_face_points(0, 0, 12000, 0, 500.0)
+    frag = pts[pts[:, 0] < 2000.0]           # vain 17 % pituudesta
+    model = StructuralModel(walls=[_wall("w_frag", 0, 0, 12000, 0)])
+    cloud = _cloud(frag)
+    measure_wall_support(model, cloud)
+    assert _snap(model, cloud) == []
+
+
+def test_supported_wall_is_never_moved():
+    model = StructuralModel(walls=[_wall("w_ok", 0, 0, 6000, 0)])
+    cloud = _cloud(_face_points(0, 0, 6000, 0))
+    measure_wall_support(model, cloud)
+    before = [list(p) for p in model.walls[0].axis]
+    assert _snap(model, cloud) == []
+    assert [list(p) for p in model.walls[0].axis] == before
+
+
 def test_confidence_still_used_when_support_not_measured():
     model = StructuralModel(walls=[_wall("w_x", 0, 0, 3000, 0, conf=0.25)])
     assert model.walls[0].support is None

@@ -1155,8 +1155,20 @@ class Pipeline:
         """Pintatuki raakapilvestä → valeseinät pois, loput Tarkistus-listalle."""
         try:
             from scan2bim.core.qa.deviation import measure_wall_support, flag_low_confidence
-            from scan2bim.core.semantics.wall_semantics import prune_unsupported_walls
+            from scan2bim.core.semantics.wall_semantics import (
+                prune_unsupported_walls, snap_displaced_walls,
+            )
             measure_wall_support(model, cloud)
+            # Pinnaton seinä jolla ON jatkuva vastine = aito seinä väärässä
+            # paikassa → siirretään, ei poisteta. Mitataan uudelleen korjatusta
+            # sijainnista, jotta tarkistuslista näkee todellisen tilanteen.
+            moved = snap_displaced_walls(model, cloud)
+            if moved:
+                worst = max(abs(s) for _, s in moved)
+                self._progress(
+                    f"  Siirretty {len(moved)} seinää mitatulle pinnalle "
+                    f"(suurin {worst:.0f} mm)")
+                measure_wall_support(model, cloud)
             dropped = prune_unsupported_walls(model)
             if dropped:
                 self._progress(
