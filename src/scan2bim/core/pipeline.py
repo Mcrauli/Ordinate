@@ -1025,14 +1025,20 @@ class Pipeline:
             # — se on leveämpi ja vie mittauksen eri korkeudelle → epäsuhta mittariin.
             from scan2bim.core.geometry.loader import (
                 load_point_cloud as _lpc, ply_z_range, ply_autoscale_factor,
+                e57_z_range, _e57_is_chunkable,
             )
             _zr = None
-            if paths[0].suffix.lower() == ".ply":
+            _sfx = paths[0].suffix.lower()
+            if _sfx == ".ply":
                 # Iso PLY: z-alue lohkoluvulla, ei koko tiedostoa muistiin.
                 _rng = ply_z_range(paths[0])
                 if _rng is not None:
                     _sc = ply_autoscale_factor(paths[0])
                     _zr = (_rng[0] * _sc, _rng[1] * _sc)
+            elif _sfx == ".e57" and _e57_is_chunkable(paths[0]):
+                # Sama e57:lle — muuten koko tiedosto ladattaisiin pelkän
+                # z-alueen takia, ennen kuin kaistalukua ehditään käyttää.
+                _zr = e57_z_range(paths[0])
             if _zr is None:
                 _z0 = np.asarray(_lpc(paths[0]).points)[:, 2]
                 _zr = (float(_z0.min()), float(_z0.max()))

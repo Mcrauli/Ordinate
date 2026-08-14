@@ -498,17 +498,21 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
 
 ## Tunnetut rajoitukset
 
-- **ISO E57 EI LATAUDU LAINKAAN — kaistaluku on vain PLY:lle.**
-  `streaming.load_floor_slice` lukee lohkoissa vain kun `path.suffix == ".ply"`
-  ja pisteitä on ≥40 M; kaikki muu menee `load_point_cloud`-polkua, ja
-  `loader._load_e57` lukee jokaisen skannin ja **yhdistää ne kokonaisuudessaan
-  muistiin** ennen kuin z-kaistaa on edes rajattu. Mitattu `gargage.e57`:llä:
-  0.56 GB tiedosto → 27.8 M pistettä, huippu-RSS **2.79 GB** (≈5 GB RSS per
-  tiedosto-GB). Lineaarisesti **32 GB e57 ≈ 1.6 mrd pistettä ≈ 159 GB RSS**.
-  Korjaus on rajattu: `read_scan` lukee jo skanni kerrallaan, joten z-rajaus +
-  voxelointi/otanta on tehtävä skannin sisällä ennen yhdistämistä — sama kuvio
-  kuin `_load_ply_band`:ssa. Tätä EI voi validoida pienellä tiedostolla:
-  yhtäpitävyys kyllä, muistihyöty ei.
+- **ISO E57 luetaan lohkoissa (≥40 M pistettä) — ja se MUUTTAA TULOSTA hieman.**
+  `read_scan` varaa koko skannin kerralla, ja iso keilaus on **yksi** skanni,
+  joten per-skanni-rajaus ei auta. Mitattu `gargage.e57`: 0.56 GB → 27.8 M
+  pistettä, huippu-RSS 2.79 GB (≈5 GB per tiedosto-GB) → **32 GB ≈ 1.6 mrd
+  pistettä ≈ 159 GB RSS** eli ei latautuisi lainkaan. Sama libE57-lukija
+  palvelee lohkoittain (`libe57.CompressedVectorReader` puskureilla), ja
+  `e57_band_chunks` tuottaa **täsmälleen saman pistejoukon** kuin koko luku
+  (todennettu: 449 240 = 449 240, järjestetyt taulukot identtiset), huippu
+  2.79 → 0.60 GB.
+  **MUTTA päästä päähän tulos ei ole identtinen:** voxelointi tapahtuu
+  lohkorajoilla ja kerroshistogrammi luetaan desimoituna (`read_e57_z`), joten
+  kerrosraja siirtyy senttejä — mitattu gargage.e57: kaista 2.60 → 2.57 m ja
+  malli **11 → 9 seinää**. Siksi lohkoluku on portitettu samalla säännöllä kuin
+  PLY:llä (≥40 M pistettä): tiedostot jotka latautuvat jo nyt EIVÄT saa uutta
+  polkua. Älä laske rajaa "koska se on nopeampi".
 
 - **Kattavuuden katto on PYSTYMASKISSA, ei sen jälkeisessä ketjussa.** Mitattu
   Rohbau site_07/scene_07000: maski 8031 px ≈ 36 m seinää → 60.3 m segmenttejä

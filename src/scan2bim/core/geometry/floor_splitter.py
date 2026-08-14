@@ -123,7 +123,8 @@ def _split_tall_slice(z: np.ndarray, lo: float, hi: float) -> list[tuple[float, 
 def detect_floors_from_files(paths: list[Path], sample_step: int = 1) -> list[tuple[float, float]]:
     """Käy tiedostot läpi, kerää vain Z-koordinaatit, tunnistaa kerrokset."""
     from scan2bim.core.geometry.loader import (
-        load_point_cloud, read_ply_z, ply_autoscale_factor,
+        load_point_cloud, read_ply_z, ply_autoscale_factor, read_e57_z,
+        _e57_is_chunkable,
     )
     all_z: list[np.ndarray] = []
     for path in paths[::max(sample_step, 1)]:
@@ -133,6 +134,15 @@ def detect_floors_from_files(paths: list[Path], sample_step: int = 1) -> list[tu
                 z = read_ply_z(path)
                 if z is not None and len(z) > 0:
                     all_z.append(z * ply_autoscale_factor(path))
+                    continue
+            except Exception:
+                pass
+        # E57 samoin: read_scan varaisi koko skannin, ja iso keilaus on yksi skanni.
+        elif path.suffix.lower() == ".e57" and _e57_is_chunkable(path):
+            try:
+                z = read_e57_z(path)
+                if z is not None and len(z) > 0:
+                    all_z.append(z)
                     continue
             except Exception:
                 pass

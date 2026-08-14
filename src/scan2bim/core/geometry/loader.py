@@ -245,6 +245,163 @@ def ply_autoscale_factor(path: Path) -> float:
     return 1000.0 if span.max() < 200.0 else 1.0
 
 
+_E57_CHUNK = 4_000_000
+
+
+def _e57_scan_chunks(e57, index: int, chunk: int):
+    """Yhden skannin pisteet LOHKOISSA (N,3) — pose sovellettuna, invalidit pois.
+
+    `read_scan` varaa koko skannin kerralla; iso keilaus on yksi 1 mrd pisteen
+    skanni, jolloin sitä ei voi ladata lainkaan. Sama libE57-lukija palvelee
+    lohkoittain: `reader.read()` täyttää puskurin ja palauttaa määrän.
+    Palauttaa heti None-tyhjänä jos skanni ei ole karteesinen (kutsuja
+    palautuu koko skannin lukuun, jota EI muuteta).
+    """
+    header = e57.get_header(index)
+    xyz_fields = ["cartesianX", "cartesianY", "cartesianZ"]
+    if not all(f in header.point_fields for f in xyz_fields):
+        return
+    valid = "cartesianInvalidState"
+    fields = xyz_fields + ([valid] if valid in header.point_fields else [])
+    data, buffers = e57.make_buffers(fields, chunk)
+    reader = header.points.reader(buffers)
+    pose = header.has_pose()
+    try:
+        while True:
+            got = reader.read()
+            if got == 0:
+                break
+            xyz = np.column_stack([data[f][:got] for f in xyz_fields])
+            if valid in data:
+                xyz = xyz[~data[valid][:got].astype("?")]
+            if pose and len(xyz):
+                xyz = e57.to_global(xyz, header.rotation, header.translation)
+            yield xyz
+    finally:
+        reader.close()
+
+
+_E57_BIG = 40_000_000   # sama raja kuin PLY:llä: tätä pienempi luetaan kerralla
+
+
+def _e57_is_chunkable(path: Path) -> bool:
+    """Onko tämä e57 sekä LOHKOTTAVISSA että niin iso että se pitää lohkoa.
+
+    Lohkoluku EI ole tulokseltaan neutraali: voxelointi tapahtuu lohkorajoilla
+    ja kerroshistogrammi luetaan desimoituna, joten kerrosraja voi siirtyä
+    senttejä (mitattu gargage.e57: kaista 2.60 → 2.57 m, malli 11 → 9 seinää).
+    Siksi sitä käytetään VAIN kun koko tiedosto ei muuten mahtuisi muistiin —
+    täsmälleen sama sääntö kuin `_big_ply`:llä."""
+    try:
+        import pye57
+        e57 = pye57.E57(str(path))
+        if not all(
+            all(f in e57.get_header(i).point_fields
+                for f in ("cartesianX", "cartesianY", "cartesianZ"))
+            for i in range(e57.scan_count)
+        ):
+            return False
+        return sum(e57.get_header(i).point_count
+                   for i in range(e57.scan_count)) >= _E57_BIG
+    except Exception:  # noqa: BLE001 — ei lohkottavissa = käytä koko skannin lukua
+        return False
+
+
+def e57_autoscale_factor(path: Path) -> float:
+    """Metri→mm-kerroin (_autoscale sama sääntö) lukematta koko tiedostoa."""
+    import pye57
+    e57 = pye57.E57(str(path))
+    for xyz in _e57_scan_chunks(e57, 0, min(_E57_CHUNK, 1_000_000)):
+        if len(xyz) == 0:
+            continue
+        span = xyz.max(axis=0) - xyz.min(axis=0)
+        return 1000.0 if span.max() < 200.0 else 1.0
+    return 1.0
+
+
+def e57_xyz_chunks(path: Path, chunk: int = _E57_CHUNK):
+    """Kaikki pisteet lohkoissa (N,3), MM-skaalattuna ja pose sovellettuna."""
+    import pye57
+    scale = e57_autoscale_factor(path)
+    e57 = pye57.E57(str(path))
+    for i in range(e57.scan_count):
+        for xyz in _e57_scan_chunks(e57, i, chunk):
+            if len(xyz) == 0:
+                continue
+            if scale != 1.0:
+                xyz *= scale
+            yield xyz
+
+
+def e57_point_count(path: Path) -> int:
+    import pye57
+    e57 = pye57.E57(str(path))
+    return sum(e57.get_header(i).point_count for i in range(e57.scan_count))
+
+
+def e57_band_chunks(path: Path, z_lo: float, z_hi: float, chunk: int = _E57_CHUNK):
+    """Z-kaistan pisteet lohkoissa (mm), kaikista skanneista. z-rajat MM:einä."""
+    for xyz in e57_xyz_chunks(path, chunk):
+        keep = (xyz[:, 2] >= z_lo) & (xyz[:, 2] <= z_hi)
+        if keep.any():
+            yield xyz[keep]
+
+
+def read_e57_z(path: Path, max_keep: int = 8_000_000) -> np.ndarray | None:
+    """Vain Z (mm) lohkoluvulla, desimoituna — kerrostunnistuksen histogrammille."""
+    total = e57_point_count(path)
+    step = max(1, total // max(max_keep, 1))
+    out: list[np.ndarray] = []
+    for xyz in e57_xyz_chunks(path):
+        out.append(xyz[::step, 2].astype(np.float32))
+    if not out:
+        return np.zeros((0,), dtype=np.float32)
+    return np.concatenate(out)
+
+
+def e57_z_range(path: Path) -> tuple[float, float] | None:
+    """Kaistarajojen laskentaan: min/max Z (mm) ilman koko tiedostoa muistiin."""
+    lo, hi = np.inf, -np.inf
+    for xyz in e57_xyz_chunks(path):
+        z = xyz[:, 2]
+        lo = min(lo, float(z.min()))
+        hi = max(hi, float(z.max()))
+    if not np.isfinite(lo):
+        return None
+    return lo, hi
+
+
+def read_e57_xyz_band(
+    path: Path, z_lo: float, z_hi: float, max_points: int = 0
+) -> np.ndarray | None:
+    """Kaista täysresana, satunnaisohennus kattoon — KAKSI PASSIA kuten PLY:llä.
+
+    Ensin lasketaan kaistan pisteet, sitten täytetään esivarattu taulukko. Näin
+    huippumuisti on yksi lohko + valmis taulukko, eikä koko kaistaa pidetä
+    listassa (32 GB skannin kaista ei mahtuisi)."""
+    total = 0
+    for xyz in e57_band_chunks(path, z_lo, z_hi):
+        total += len(xyz)
+    if total == 0:
+        return np.zeros((0, 3), dtype=np.float64)
+
+    keep = total if max_points <= 0 else min(total, max_points)
+    prob = keep / total
+    rng = np.random.default_rng(0)
+    out = np.empty((keep, 3), dtype=np.float64)
+
+    filled = 0
+    for xyz in e57_band_chunks(path, z_lo, z_hi):
+        if filled >= keep:
+            break
+        if prob < 1.0:
+            xyz = xyz[rng.random(len(xyz)) < prob]
+        take = min(len(xyz), keep - filled)
+        out[filled:filled + take] = xyz[:take]
+        filled += take
+    return out[:filled]
+
+
 def read_ply_z(
     path: Path, max_keep: int = 8_000_000, chunk: int = 4_000_000
 ) -> np.ndarray | None:

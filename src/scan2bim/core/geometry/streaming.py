@@ -55,6 +55,28 @@ def _load_ply_band(
     gen = ply_band_chunks(path, z_lo / scale, z_hi / scale)
     if gen is None:
         return None
+    return _accumulate_voxeled(gen, scale, voxel_size)
+
+
+def _load_e57_band(
+    path, z_lo, z_hi, voxel_size, max_points, n_paths,
+    read_e57_xyz_band, e57_band_chunks,
+) -> o3d.geometry.PointCloud:
+    """Lataa E57:n Z-kaistan MUISTIRAJATUSTI — sama kaksi moodia kuin PLY:llä.
+
+    e57_band_chunks palauttaa jo MM-skaalatut pisteet (pose sovellettuna), joten
+    z-rajoja ei jaeta skaalalla eikä lohkoja skaalata uudelleen."""
+    mp = 0 if max_points <= 0 else max(1, max_points // max(n_paths, 1))
+    if voxel_size <= 0.0 or mp > 0:
+        raw = read_e57_xyz_band(path, z_lo, z_hi, max_points=mp)
+        c = o3d.geometry.PointCloud()
+        c.points = o3d.utility.Vector3dVector(raw)
+        return c
+    return _accumulate_voxeled(e57_band_chunks(path, z_lo, z_hi), 1.0, voxel_size)
+
+
+def _accumulate_voxeled(gen, scale: float, voxel_size: float) -> o3d.geometry.PointCloud:
+    """Kasaa kaistalohkot voxeloiden — koko kaistaa ei pidetä muistissa."""
 
     def _voxel(arr: np.ndarray) -> np.ndarray:
         if len(arr) == 0:
@@ -125,7 +147,7 @@ def load_floor_slice(
     """
     from scan2bim.core.geometry.loader import (
         load_point_cloud, read_ply_xyz_band, ply_band_chunks, ply_autoscale_factor,
-        _ply_dtype,
+        _ply_dtype, _e57_is_chunkable, e57_band_chunks, read_e57_xyz_band,
     )
 
     merged = o3d.geometry.PointCloud()
@@ -137,18 +159,30 @@ def load_floor_slice(
         # Iso binääri-PLY luetaan LOHKOISSA (muistirajattu). PIENI PLY (< 40M
         # pistettä) ja muut formaatit: koko tiedosto o3d:llä = validoitu polku,
         # jota EI muuteta. Raja koskee vain jättiskanneja jotka muuten kaataisivat
-        # muistin. (E57 lukee jo skanneittain.)
+        # muistin.
         slice_cloud: o3d.geometry.PointCloud | None = None
+        _suffix = path.suffix.lower()
         _big_ply = False
-        if path.suffix.lower() == ".ply":
+        if _suffix == ".ply":
             _dt = _ply_dtype(path)
             _big_ply = _dt is not None and _dt[1] >= 40_000_000
-        if _big_ply:
+        # E57: `read_scan` varaa koko skannin kerralla, ja iso keilaus on YKSI
+        # skanni (mitattu 0.56 GB → 27.8 M pistettä, 2.79 GB RSS ≈ 5 GB per
+        # tiedosto-GB) → 32 GB tiedosto ei latautuisi lainkaan. Sama libE57-
+        # lukija palvelee lohkoittain.
+        _big_e57 = _suffix == ".e57" and _e57_is_chunkable(path)
+        if _big_ply or _big_e57:
             try:
-                slice_cloud = _load_ply_band(
-                    path, z_lo, z_hi, voxel_size, max_points, len(paths),
-                    read_ply_xyz_band, ply_band_chunks, ply_autoscale_factor,
-                )
+                if _big_ply:
+                    slice_cloud = _load_ply_band(
+                        path, z_lo, z_hi, voxel_size, max_points, len(paths),
+                        read_ply_xyz_band, ply_band_chunks, ply_autoscale_factor,
+                    )
+                else:
+                    slice_cloud = _load_e57_band(
+                        path, z_lo, z_hi, voxel_size, max_points, len(paths),
+                        read_e57_xyz_band, e57_band_chunks,
+                    )
             except Exception as e:
                 if progress_cb:
                     progress_cb(f"  VAROITUS: {path.name} kaistaluku epäonnistui — {e}")

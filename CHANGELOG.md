@@ -5,6 +5,30 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 sovellus päivittää itsensä sieltä.
 
 ## Julkaisematon
+- **Iso E57 luetaan lohkoissa — ennen 32 GB tiedosto ei olisi latautunut
+  lainkaan.** `loader._load_e57` luki jokaisen skannin `read_scan`illa ja
+  yhdisti ne kokonaisuudessaan muistiin ennen kuin z-kaistaa oli edes rajattu,
+  ja `streaming.load_floor_slice`:n lohkoluku koski vain `.ply`:tä. Mitattu
+  `gargage.e57`:llä: 0.56 GB → 27.8 M pistettä, huippu-RSS **2.79 GB** eli
+  ≈5 GB per tiedosto-GB → **32 GB e57 ≈ 1.6 mrd pistettä ≈ 159 GB RSS.**
+  Per-skanni-rajaus ei olisi auttanut: iso keilaus on **yksi** skanni
+  (gargage 27.8 M / 1 skanni). Sama libE57-lukija palvelee lohkoittain, joten
+  `_e57_scan_chunks` täyttää kiinteän puskurin toistuvasti
+  (`libe57.CompressedVectorReader`), soveltaa posen ja pudottaa invalidit;
+  `e57_band_chunks` suodattaa z-kaistan, `read_e57_xyz_band` täyttää
+  esivaratun taulukon kahdella passilla (kuten PLY), `read_e57_z` ja
+  `e57_z_range` hoitavat kerrostunnistuksen ja kaistarajat lataamatta
+  tiedostoa — molemmat latasivat ennen koko pilven pelkän Z:n takia.
+  **Yhtäpitävyys todennettu, ei päätelty:** kaistan pistejoukko on identtinen
+  koko lukuun nähden (449 240 = 449 240, järjestetyt taulukot samat), ja
+  huippumuisti 2.79 → **0.60 GB**.
+  **Portitettu ≥40 M pisteeseen, sama sääntö kuin PLY:llä, koska lohkoluku ei
+  ole tulokseltaan neutraali:** voxelointi tapahtuu lohkorajoilla ja
+  kerroshistogrammi luetaan desimoituna → kerrosraja siirtyy senttejä. A/B
+  samalla koodilla gargage.e57:llä: kaista −2.21…2.60 m → −2.21…**2.57** m ja
+  malli 11 seinää / 2 tilaa / 14 pilaria → **9 / 1 / 15**. Tiedostot jotka
+  latautuvat jo nyt pitävät siis validoidun polkunsa (gargage 27.8 M < 40 M).
+  Seitsemän testiä; pose-testi kaatuu jos posen sovellus ablatoidaan pois.
 - **Tarkistus-lista mittaa nyt pilveä, ei kysy detektorilta.** Vika oli
   mittarissa, ei kynnyksessä: `confidence` on kokoproxy (`wall_contour`:
   `0.80 + pituus/20000`, `wall_density`: `pituus/5000`, aukoilla
