@@ -5,6 +5,20 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 sovellus päivittää itsensä sieltä.
 
 ## Julkaisematon
+- **Muisti mitattu uudelleen v0.9.18:lla: 38.3 min / 12.9 GB.** Luku 13.1 GB oli
+  v0.9.0:sta, ja väliin mahtui ~80 committia (histogrammidetektori, hyllyfrontin
+  poisto, pilarikorjaus, semanttisen suodattimen auto-valinta) — mikään niistä
+  ei liikuttanut huippua. Sama halli (150×100 m, 32.0 M pistettä,
+  `data/_scale_run.py data/_retail_l.ply`): **v0.9.0 42.5 min / 13.1 GB →
+  v0.9.18 38.3 min / 12.9 GB**, huippu yhä `Semanttinen suodatin`issa, kaikki
+  muut vaiheet ≤3.5 GB. **Uusi havainto:** suodattimen osuus AJASTA on noussut
+  51 % → **77 %** (1767 s / 2298 s), koska detektiovaiheet ovat nopeutuneet
+  eikä suodatin. Se on siis nyt sekä muistin ETTÄ ajan ainoa hallitseva vaihe.
+  **Ei suoraa vertailua mallista:** v0.9.18 tuottaa samasta datasta 9 seinää /
+  174 pilaria / 7 tilaa, kun v0.9.0 tuotti 37 / 97 / 2 — putki tekee eri työn,
+  joten vertailukelpoinen on vain resurssiluku. Johtopäätös ennallaan: 12.9 GB
+  ei jätä varaa 16 GB:n koneella, ja ainoa jäljellä oleva keino on suodattimen
+  ajaminen XY-ruuduittain, mikä muuttaa tulosta ruutujen rajoilla.
 - **Haamuseinät poistuvat nyt itsestään: Rohbaun ongelmaseinät 2 → 0.**
   `prune_unsupported_walls` säästi kaiken minkä `support_offset >= 250 mm`,
   koska iso etäisyys tulkittiin SIIRTYNEEKSI aidoksi seinäksi. Mitattu vika:

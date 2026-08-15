@@ -236,7 +236,12 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   150×100 m hallilla (32 M pistettä): huippu 15.9 GB, ja jokainen muu vaihe
   jäi ≤5.8 GB. Suodatin on myös 51 % ajasta. Älä optimoi muuta ennen kuin
   `_scale_run.py` sanoo huipun syntyneen muualla — **huipun ARVO ei kerro mitä
-  korjata, sen PAIKKA kertoo**.
+  korjata, sen PAIKKA kertoo**. **Uusintamittaus v0.9.18 (15.8.): 38.3 min /
+  12.9 GB** (v0.9.0: 42.5 min / 13.1 GB) — huippu yhä samassa vaiheessa, mutta
+  suodattimen osuus AJASTA on noussut 51 % → **77 %** (1767 s / 2298 s). Muut
+  vaiheet ≤3.5 GB. Muisti ei siis liikkunut, ja kymmenen välissä tehtyä
+  detektoriparannusta ei sitä muuta: riippuvuus rakennuksen 30 mm voxelien
+  määrään on rakenteellinen, ei hukkaa.
 - **Muistin syö transientti, ei residentti.** Askeleen jälkeinen RSS ei näytä
   sitä: `column()` jättää 0.37 GB mutta käy 2.9 GB:ssä, `geometric()` 2.2 GB:ssä.
   Kaksi toistuvaa syytä: (1) `.astype(np.float64)` kopioi ehdoitta myös kun
