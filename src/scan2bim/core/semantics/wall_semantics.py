@@ -640,7 +640,9 @@ def prune_unsupported_walls(model) -> list[str]:
     0.510 → 0.918.
 
     Siirtymärajan takia AITO seinä väärässä paikassa EI poistu: kauppakeskuksen
-    `wall_ext_010` on GT-seinä 375 mm sivussa → jää tarkistuslistalle.
+    `wall_ext_010` on GT-seinä 375 mm sivussa → jää tarkistuslistalle. Raja
+    pitää vain jos `support_offset` on mitattu vyötäröltä — koko korkeudelta
+    haettuna lattian roina antoi haamullekin offsetin ja suojasi sen.
     Palauttaa poistettujen id:t. Aukot siivotaan mukana, muuten IFC:hen jäisi
     aukkoja joiden seinää ei ole.
     """

@@ -5,6 +5,26 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 sovellus päivittää itsensä sieltä.
 
 ## Julkaisematon
+- **Haamuseinät poistuvat nyt itsestään: Rohbaun ongelmaseinät 2 → 0.**
+  `prune_unsupported_walls` säästi kaiken minkä `support_offset >= 250 mm`,
+  koska iso etäisyys tulkittiin SIIRTYNEEKSI aidoksi seinäksi. Mitattu vika:
+  `_nearest_surface` haki lähintä pintaa KOKO seinän korkeudelta, joten 10 m
+  korkeassa kerroksessa histogrammin huippu osui lattian ja katon roinaan.
+  Rohbaun `wall_ext_001` sai näin offsetin 442 mm ja `wall_ext_007` 825 mm,
+  vaikka **kummallakaan ei ollut yhtään pistettä vyötärökorkeudella** — GT
+  vahvistaa molemmat tyhjiksi (GT-puhtaus 0.00, luokka TYHJÄ). Haku siirretty
+  samaan vyötärökaistaan (30–70 % korkeudesta) jolla jatkuvuus ja napsautus jo
+  mittaavat, ja huipulta vaaditaan jatkuvuus — muuten metrin roinakasa 24 m
+  seinän vieressä riittää suojaamaan haamun (yksikkötesti, offset oli 275 mm).
+  Aito lyhyt seinä erottuu selvästi: `wall_ext_008` on vyötäröllä 63 754
+  pistettä, haamuilla 0. Rohbau: **ongelmaseiniä 2 → 0**, kattavuus 0.792 ja
+  tarkkuus 0.918 ennallaan (haamut olivat tyhjiä, eivät siis liikuttaneet
+  pistepohjaisia lukuja — ne olivat malliin jääneitä valeobjekteja).
+  **Ei vääriä poistoja:** kontrolliajo `data/_ctrl_waist.py` (vanha koko
+  korkeuden haku patchattuna takaisin) antaa kolmella muulla aineistolla
+  täsmälleen saman seinäjoukon — myymälä 9 → 9, kauppakeskus 9 → 9, asunto
+  13 → 13. Kauppakeskuksen aito siirtynyt `wall_ext_010` säilyy, koska sen
+  vastine on jatkuva pinta vyötäröllä (jatkuvuus 1.00).
 - **Matterport-aula löytyi ja se sulki kaksi avointa validointiaukkoa.** Tiedosto
   ei ollut kadonnut vaan se on Matterportin JULKINEN näytetiedosto:
   `https://static.matterport.com/misc/UoqjwziqrZs-Aon_Lobby.e57` (1.15 GB,

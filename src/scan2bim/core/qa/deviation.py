@@ -160,6 +160,8 @@ _SUP_MIN_PTS = 100
 _CONT_COL = 500.0       # mm — sarakkeen leveys jatkuvuutta laskettaessa
 _CONT_MIN_PTS = 5       # pistettä jotta sarake on tuettu
 _CONT_THR = 0.30        # alle tämän = ei yhtenäinen seinä vyötärökorkeudella
+_WAIST_LO = 0.30        # vyötärökaista osuutena seinän korkeudesta — lattia ja
+_WAIST_HI = 0.70        # katto rajautuvat pois, seinä erottuu roinasta
 
 
 def _wall_support(w, pts_all: np.ndarray, index) -> tuple[float, float] | None:
@@ -219,7 +221,7 @@ def _wall_support(w, pts_all: np.ndarray, index) -> tuple[float, float] | None:
     support = float(len(np.unique(ti * nz + zi))) / float(nt * nz)
 
     zr = (z[on] - w.z_min) / w.height
-    waist = (zr > 0.30) & (zr < 0.70)
+    waist = (zr > _WAIST_LO) & (zr < _WAIST_HI)
     ncol = max(1, int(L / _CONT_COL))
     if waist.sum() < 50:
         return support, 0.0
@@ -229,6 +231,7 @@ def _wall_support(w, pts_all: np.ndarray, index) -> tuple[float, float] | None:
 
 
 _SUP_SEEK = 1000.0      # mm — kuinka kaukaa etsitään todellista pintaa
+_SUP_BAND = 60.0        # mm — kaista huipun ympärillä jatkuvuutta laskettaessa
 
 
 def _nearest_surface(w, pts_all: np.ndarray, index) -> float | None:
@@ -236,6 +239,13 @@ def _nearest_surface(w, pts_all: np.ndarray, index) -> float | None:
 
     Palauttaa etäisyyden mallin pinnalta lähimpään todelliseen pintakeskittymään,
     tai None jos mitään ei ole. Ero ratkaisee toimenpiteen: siirrä vai poista.
+
+    Etsitään VYÖTÄRÖKORKEUDELTA ja vaaditaan JATKUVA huippu — samoin kuin
+    jatkuvuus ja napsautus mittaavat. Koko korkeudelta haettuna löytyy lattian
+    ja katon roina: mitattu Rohbaussa (kerros 10 m), jossa kaksi haamua sai
+    näin offsetin 442 ja 825 mm vaikka vyötäröllä ei ollut yhtään pistettä,
+    eikä siirtymäraja enää erottanut niitä aidosta siirtyneestä seinästä.
+    Aidolla lyhyellä seinällä (`wall_ext_008`) vyötäröllä on 63 754 pistettä.
     """
     p0 = np.array(w.axis[0], float)
     p1 = np.array(w.axis[1], float)
@@ -254,11 +264,16 @@ def _nearest_surface(w, pts_all: np.ndarray, index) -> float | None:
     perp = rel @ n
     z = pts[:, 2]
     sel = ((t > 0.0) & (t < L) & (np.abs(perp) < _SUP_SEEK)
-           & (z > w.z_min + 100.0) & (z < w.z_min + w.height - 100.0))
+           & (z > w.z_min + _WAIST_LO * w.height) & (z < w.z_min + _WAIST_HI * w.height))
     if sel.sum() < _SUP_MIN_PTS:
         return None
     hist, edges = np.histogram(perp[sel], bins=40, range=(-_SUP_SEEK, _SUP_SEEK))
     peak = 0.5 * (edges[hist.argmax()] + edges[hist.argmax() + 1])
+    on = np.abs(perp[sel] - peak) < _SUP_BAND
+    ncol = max(1, int(L / _CONT_COL))
+    ci = np.clip((t[sel][on] / L * ncol).astype(int), 0, ncol - 1)
+    if float((np.bincount(ci, minlength=ncol) >= _CONT_MIN_PTS).mean()) < _CONT_THR:
+        return None
     return round(abs(abs(float(peak)) - w.thickness / 2.0), 1)
 
 

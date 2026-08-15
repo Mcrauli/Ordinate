@@ -126,6 +126,8 @@ Tarkkuus mitataan erillisillä QA-skripteillä — **aja tuotantomallia (`model.
 | `data/_evidence_gt.py` | Sama Rohbau3D:n per-piste-GT:tä vasten: jokaiselle detektoidulle seinälle kaistan GT-luokkajakauma **ja** ehdokasmittarit rinnakkain → kynnys valitaan mitatusta välistä |
 | `data/_vprofile_probe.py` | Seinän PYSTYPROFIILI ja VYÖTÄRÖN JATKUVUUS GT-luokan rinnalla — tällä mitattiin että pystyprofiili ei erottele palkkilinjaa mutta jatkuvuus erottelee 7-kertaisella marginaalilla |
 | `data/_ctrl_contour.py` | Kontrolliajo: iso+korkea → histogrammi -auto-reititys patchattuna pois |
+| `data/_prune_probe.py` | Seinän tuki, jatkuvuus, offset, **vastineen jatkuvuus** ja GT-luokka rinnakkain — tällä erotettiin haamu siirtyneestä seinästä |
+| `data/_ctrl_waist.py` | Kontrolliajo: `_nearest_surface` palautettuna koko korkeuden hakuun → mitkä seinät vyötärörajaus poistaa LISÄÄ |
 | `data/_wall_view.py` | **Liputettu seinä kuvina**: XY vyötäröltä, poikkileikkaus, mallin pinnalla olevat pisteet. Erottaa HAAMUN (ei mitään) VÄÄRÄSSÄ PAIKASSA olevasta (pinta on, mutta sivussa) — pelkkä `support`-luku ei kerro kumpi |
 | `data/_img_openings_qa.py` | Kuvaohjattu aukkodetektio oikealla kuvallisella E57:llä; vertaa vanhaan moduuliin samoilla seinillä+pilvellä |
 | `data/_cov_check.py`, `data/_support_verify.py` | Pintatuki mille tahansa mallille (väärät hälytykset) / tuotantototeutus vs. koetin samoilla luvuilla |
@@ -182,6 +184,18 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   jatkuvuus 30–70 % korkeudella, 500 mm sarakkeina: aidot 0.50–1.00,
   palkkiseinät 0.05–0.07 (Rohbau-GT). `Wall.continuity`, kynnys 0.30.
   Oviaukko ei riitä pudottamaan aitoa seinää alle (testattu).
+- **Etäisyys "lähimpään pintaan" on mitattava VYÖTÄRÖLTÄ, muuten lattian roina
+  antaa haamullekin osoitteen.** `_nearest_surface` erottaa SIIRTYNEEN seinän
+  HAAMUSTA, ja `prune_unsupported_walls` säästää kaiken minkä offset ≥ 250 mm.
+  Koko korkeudelta haettuna histogrammin argmax osui 10 m kerroksessa lattiaan
+  ja kattoon: Rohbaun `wall_ext_001` sai offsetin 442 mm ja `wall_ext_007`
+  825 mm, vaikka **kummallakaan ei ollut yhtään pistettä vyötärökorkeudella**
+  (GT: molemmat TYHJÄ, puhtaus 0.00) — eli siirtymäraja suojasi juuri ne jotka
+  sen piti paljastaa. Vyötärökaistalla (30–70 %) ero on karkea: aito lyhyt
+  `wall_ext_008` 63 754 pistettä, haamut 0. Lisäksi huipulta on vaadittava
+  jatkuvuus, koska metrin roinakasa 24 m seinän vieressä riittää muuten
+  antamaan uskottavan offsetin (275 mm). **Sama kaista kaikkiin kolmeen**
+  (tuki, jatkuvuus, pintahaku) — `_WAIST_LO`/`_WAIST_HI`.
 - **Pintatuki näkee vain PUUTTUVAN pinnan, ei väärälle pinnalle osunutta
   seinää — ja KYNNYS ON VALIDOITAVA UUDELLEEN KUN DETEKTORI MUUTTUU.**
   Kynnys 0.15 johdettiin v0.9.0:n Rohbau-mallista, jossa valeseinät olivat

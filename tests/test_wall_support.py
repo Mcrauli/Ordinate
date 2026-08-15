@@ -12,6 +12,7 @@ from scan2bim.schemas.model import ElementSource, StructuralModel, Wall
 
 _H = 2700.0
 _T = 200.0
+_PRUNE_CONT_MAX = 0.15
 
 
 def _wall(wid, x0, y0, x1, y1, conf=1.0):
@@ -172,6 +173,31 @@ def test_displaced_real_wall_is_kept_for_review_not_pruned():
     assert w.support_offset is not None and w.support_offset >= 250.0, w.support_offset
     assert prune_unsupported_walls(model) == []
     assert [f["id"] for f in flag_low_confidence(model)] == ["w_moved"]
+
+
+def _clutter_blob(x0, y, n=4000, seed=0):
+    """Tavarakasa seinan vieressa: paljon pisteita, mutta vain metrin matkalla."""
+    rng = np.random.default_rng(seed)
+    return np.column_stack([
+        rng.uniform(x0, x0 + 1000.0, n),
+        rng.normal(y, 25.0, n),
+        rng.uniform(200.0, _H - 200.0, n),
+    ])
+
+
+def test_phantom_next_to_clutter_is_pruned_not_saved_by_its_offset():
+    """Mitattu Rohbau: wall_ext_001/007 saivat offsetin 442/825 mm PELKASTA
+    kohinasta, joten siirtymaraja suojeli haamua. Vastineen pitaa olla
+    jatkuva pinta, ei mika tahansa histogrammihuippu.
+    """
+    from scan2bim.core.semantics.wall_semantics import prune_unsupported_walls
+    model = StructuralModel(walls=[_long_wall("w_phantom")])
+    cloud = _cloud(_clutter_blob(3000.0, 400.0))
+    measure_wall_support(model, cloud)
+    w = model.walls[0]
+    assert w.support == 0.0 and w.continuity < _PRUNE_CONT_MAX, (w.support, w.continuity)
+    assert w.support_offset is None, f"kohinahuippu raportoitiin pintana: {w.support_offset}"
+    assert prune_unsupported_walls(model) == ["w_phantom"]
 
 
 def test_pruning_takes_the_openings_with_it():
