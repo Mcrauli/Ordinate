@@ -128,6 +128,8 @@ Tarkkuus mitataan erillisillä QA-skripteillä — **aja tuotantomallia (`model.
 | `data/_ctrl_contour.py` | Kontrolliajo: iso+korkea → histogrammi -auto-reititys patchattuna pois |
 | `data/_prune_probe.py` | Seinän tuki, jatkuvuus, offset, **vastineen jatkuvuus** ja GT-luokka rinnakkain — tällä erotettiin haamu siirtyneestä seinästä |
 | `data/_ctrl_waist.py` | Kontrolliajo: `_nearest_surface` palautettuna koko korkeuden hakuun → mitkä seinät vyötärörajaus poistaa LISÄÄ |
+| `data/_density_probe.py` | **Kestääkö mittari harvan skannin**: harventaa saman pilven 1/1…1/5000 ja ajaa tuen, jatkuvuuden ja karsinnan uudelleen. Erottaa oikeat poistot (GT-haamut) vääristä |
+| `data/_cont_rule_probe.py` | Vertaa jatkuvuussääntöjä (kiinteä 5 / ≥1 / suhteellinen) eri tiheyksillä ja tulostaa erottelun aito−palkki — tällä valittiin suhteellinen sääntö |
 | `data/_ctrl_snapgate.py` | Kontrolliajo: napsautusportti vanhalla (`support == 0`) vs nykyisellä ehdolla, seinien akselit ja GT-luvut rinnakkain — tällä eristettiin kaksi regressiota |
 | `data/_lobby_ab.py` | Aulan A/B: auto-reititys vs pakotettu contour, kuva + mitatut tuki/jatkuvuus-luvut. `--plot-only` piirtää uudelleen ajamatta putkea |
 | `data/_lobby_cov.py` | Sama A/B kahdesta suunnasta **ilman GT:tä**: tuki (tarkkuuden suunta) ja kaistan lunastettu osuus (kattavuuden suunta), nimittäjä sama molemmille |
@@ -187,6 +189,23 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   jatkuvuus 30–70 % korkeudella, 500 mm sarakkeina: aidot 0.50–1.00,
   palkkiseinät 0.05–0.07 (Rohbau-GT). `Wall.continuity`, kynnys 0.30.
   Oviaukko ei riitä pudottamaan aitoa seinää alle (testattu).
+- **ABSOLUUTTINEN pistemäärä kynnyksenä sitoo mittarin keilaustiheyteen — ja
+  harvalla skannilla se POISTAA aitoja seiniä.** Jatkuvuus vaati 5 pistettä /
+  500 mm sarake. `data/_density_probe.py` (sama pilvi harvennettuna): karsinta
+  murtui **1/250:llä** ja poisti kaksi GT-aitoa seinää; `data/_cont_rule_probe.py`
+  näytti syyn — erottelu aito−palkki romahti **0.94 → 0.00**, kun suhteellinen
+  sääntö (≥ 10 % sarakkeiden keskiarvosta) piti sen **0.79**:ssä. Korjattuna
+  0 väärää poistoa aina **1/5000** asti (5 465 pistettä koko 822 m² kohteelle).
+  Kolme sääntöä joita kannattaa soveltaa kaikkiin uusiin mittareihin:
+  1. **Kynnys suhteessa dataan, ei absoluuttiseen pistemäärään.**
+  2. **"Liian vähän dataa" ei saa palauttaa samaa arvoa kuin "todistetusti
+     huono"** — jatkuvuuden `0.0` oli karsintakäsky; nyt epävarma on `None`,
+     jolloin elementti jää tarkistuslistalle eikä poistu.
+  3. **Kun mittari ei voi todistaa mitään, älä anna sen päättää.** Alle 4 m
+     seinässä on liian vähän sarakkeita; sen kohtalo ratkaistaan sillä onko
+     paikalla MITÄÄN (pisteet ±1 m vyötäröllä). Se on tyhjä vs ei-tyhjä eikä
+     tiheyskynnys: Rohbaun haamuilla 0 joka tiheydellä, aidoilla lyhyillä
+     63 754 / 46 581 → 36 / 27 vielä 1/2500:lla.
 - **Siirron saa hyväksyä vain jos MITATTU tuki paranee — "lähin tiheä huippu"
   ei ole sama kuin "oikea paikka".** Napsautusportin levennys `support == 0` →
   `< 0.50` (tarpeen, koska aulan `wall_007` on 842 mm sivussa mutta sitä

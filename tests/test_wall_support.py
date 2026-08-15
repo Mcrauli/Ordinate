@@ -155,6 +155,63 @@ def _displaced_face_points(x0, y0, x1, y1, off, step=50.0):
     return pts
 
 
+def _thin(pts, factor, seed=0):
+    rng = np.random.default_rng(seed)
+    keep = rng.permutation(len(pts))[: max(1, len(pts) // factor)]
+    return pts[keep]
+
+
+def test_sparse_scan_does_not_turn_a_real_wall_into_a_beam_line():
+    """Karsinta ei saa riippua KEILAUSTIHEYDESTA — muuten harva skanni poistaa
+    aitoja seinia. Mitattu Rohbaulla: 1/250 harvennus poisti kaksi GT-aitoa
+    seinaa, ja synteettisesti erottelu (aito - palkki) romahti 0.94 -> 0.00.
+    """
+    from scan2bim.core.semantics.wall_semantics import prune_unsupported_walls
+    sparse = _thin(_face_points(0, 0, 24000, 0), 250)
+    model = StructuralModel(walls=[_long_wall("w_sparse")])
+    measure_wall_support(model, _cloud(sparse))
+    # ennen: 0.0 (= palkkilinja, poisto). Raja 0.30 on liputuskynnys.
+    assert model.walls[0].continuity >= 0.30, model.walls[0].continuity
+    assert prune_unsupported_walls(model, _cloud(sparse)) == []
+
+
+def test_beam_line_is_still_caught_when_the_scan_is_sparse():
+    """Erottelun on sailyttava molempiin suuntiin, ei vain 'ala poista'."""
+    from scan2bim.core.semantics.wall_semantics import prune_unsupported_walls
+    model = StructuralModel(walls=[_long_wall("w_line")])
+    measure_wall_support(model, _cloud(_thin(_beam_line_points(), 50)))
+    assert model.walls[0].continuity < _PRUNE_CONT_MAX, model.walls[0].continuity
+    assert prune_unsupported_walls(model) == ["w_line"]
+
+
+def test_short_wall_is_never_pruned_because_it_cannot_prove_a_beam_line():
+    """Sama syy kuin napsautuksessa: 1.0 m seinassa on kaksi saraketta, joten
+    jatkuvuus ei todista kumpaankaan suuntaan. Palkkilinjat ovat aina pitkia
+    (Rohbaussa 28 m) — lyhyiden suojaaminen ei siis maksa mitaan.
+    """
+    from scan2bim.core.semantics.wall_semantics import prune_unsupported_walls
+    sparse = _thin(_face_points(0, 0, 1000, 0), 100)
+    model = StructuralModel(walls=[_wall("w_tiny", 0, 0, 1000, 0)])
+    measure_wall_support(model, _cloud(sparse))
+    assert prune_unsupported_walls(model, _cloud(sparse)) == []
+
+
+def test_short_phantom_is_still_pruned_when_the_place_is_truly_empty():
+    """Suoja ei saa pelastaa Rohbaun 3.0 m ja 2.0 m perimetrihaamuja: niiden
+    ymparilla on 0 pistetta ±1 m vyotarolla JOKA tiheydella, kun aidoilla
+    lyhyilla on 63 754 / 46 581 taydella pilvella ja yha 36 / 27 kun pilvi on
+    harvennettu 1/2500:aan. Ero on tyhja vs ei-tyhja, ei tiheyskynnys.
+    """
+    from scan2bim.core.semantics.wall_semantics import prune_unsupported_walls
+    real = _face_points(0, 0, 6000, 0)
+    model = StructuralModel(walls=[
+        _wall("w_real", 0, 0, 6000, 0),
+        _wall("w_stub", 0, 30000, 2000, 30000),      # kaukana, ei mitaan ymparilla
+    ])
+    measure_wall_support(model, _cloud(real))
+    assert prune_unsupported_walls(model, _cloud(real)) == ["w_stub"]
+
+
 def test_beam_line_is_pruned_from_the_model():
     from scan2bim.core.semantics.wall_semantics import prune_unsupported_walls
     model = StructuralModel(walls=[_long_wall("w_line"), _wall("w_real", 0, 9000, 6000, 9000)])

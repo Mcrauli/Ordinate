@@ -1169,7 +1169,7 @@ class Pipeline:
                     f"  Siirretty {len(moved)} seinää mitatulle pinnalle "
                     f"(suurin {worst:.0f} mm)")
                 measure_wall_support(model, cloud)
-            dropped = prune_unsupported_walls(model)
+            dropped = prune_unsupported_walls(model, cloud)
             if dropped:
                 self._progress(
                     f"  Poistettu {len(dropped)} seinää joilla ei ole yhtenäistä "

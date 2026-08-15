@@ -5,6 +5,36 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 sovellus päivittää itsensä sieltä.
 
 ## Julkaisematon
+- **Laatumittarit eivät enää riipu keilaustiheydestä: karsinta kestää 1/5000
+  harvennuksen ilman yhtään väärää poistoa (ennen murtui 1/250:llä).** Tuki,
+  jatkuvuus ja karsinta nojasivat ABSOLUUTTISIIN pistemääriin (5 pistettä /
+  500 mm sarake, 100 pistettä kaistassa, 50 vyötärölllä), jotka oli viritetty
+  tiheillä keilauksilla. Harvalla skannilla aito seinä putosi kynnyksen alle ja
+  karsiutui PALKKILINJANA — siis väärä POISTO, ei vain puuttuva lippu.
+  `data/_density_probe.py` harventaa saman pilven ja ajaa mittarit uudelleen:
+  | harvennus | pisteitä | ennen | jälkeen |
+  |---|---|---|---|
+  | 1/100 | 273,298 | 0 väärää | 0 |
+  | 1/250 | 109,319 | **2 väärää poistoa** | 0 |
+  | 1/1000 | 27,329 | 2 | 0 |
+  | 1/5000 | 5,465 | 6 (koko malli) | **0** |
+  Kolme korjausta, kukin omalla mittauksellaan:
+  1. **Sarakkeen tuki on suhteellinen** (`_column_continuity`): sarake on
+     tuettu jos siinä on ≥ 10 % sarakkeiden keskiarvosta. `data/_cont_rule_probe.py`
+     mittasi erottelun aito−palkki eri tiheyksillä: kiinteä 5 pistettä romahti
+     1/250:llä **0.94 → 0.00**, suhteellinen sääntö piti **0.79**. Palkkilinja
+     erottuu yhä, koska sen pisteet kasautuvat pilarisarakkeisiin.
+  2. **"Ei tarpeeksi arvioitavaksi" ≠ "palkkilinja".** Kolme porttia palautti
+     jatkuvuuden `0.0` kun pisteitä oli alle 100 — se on karsintakäsky. Nyt ne
+     erottavat "ei mitään" (haamu) ja "liian vähän" (`continuity = None`,
+     ei karsita, näkyy tarkistuslistalla).
+  3. **Lyhyttä seinää ei karsita jos paikalla on jotain.** Alle 4 m seinässä on
+     liian vähän sarakkeita todistamaan mitään suuntaan. Erottelijaksi mitattiin
+     pisteet ±1 m vyötäröllä, ja se on tyhjä vs ei-tyhjä — **ei tiheyskynnys**:
+     Rohbaun perimetrihaamuilla 0 pistettä JOKA tiheydellä, aidoilla lyhyillä
+     63 754 / 46 581 täydellä pilvellä ja yhä 36 / 27 kun pilvi on 1/2500.
+  Rohbau ennallaan täydellä tiheydellä (0.792 / 0.918, 0 ongelmaseinää),
+  myymälä 9, kauppakeskus 9, asunto 13.
 - **Siirtynyt seinä napsautetaan nyt myös silloin kun sitä raapaisee jokin —
   ja siirto hyväksytään vasta jos MITATTU tuki paranee.** Ehto oli
   `support == 0`, joten aulan `wall_007` (8.8 m, oikea pinta 842 mm sivussa)

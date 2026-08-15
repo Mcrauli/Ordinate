@@ -154,11 +154,16 @@ def wall_surface_accuracy(model: StructuralModel, cloud) -> list[dict]:
 
 _SUP_CELL = 200.0       # mm — pintaruudun koko peittoa laskettaessa
 _SUP_THR = 0.15         # alle tämän = pinnalla ei ole tukea pilvessä
-_SUP_MIN_PTS = 100
+_SUP_MIN_PTS = 100      # pintahaun (`_nearest_surface`) oma minimi
+_SUP_MIN_JUDGE = 10     # tätä vähemmällä seinän kaistassa ei ole mitään —
+                        # EI kynnys tiheydelle, vaan "onko pisteitä lainkaan"
 
 
 _CONT_COL = 500.0       # mm — sarakkeen leveys jatkuvuutta laskettaessa
-_CONT_MIN_PTS = 5       # pistettä jotta sarake on tuettu
+_CONT_REL = 0.10        # sarake on tuettu jos siinä on tämä osuus sarakkeiden
+                        # KESKIARVOSTA — suhteellinen, jotta harva skanni ei
+                        # muuta aitoa seinää palkkilinjaksi
+_CONT_MIN_WAIST = 10    # alle tämän vyötäröpisteen jatkuvuutta ei väitetä
 _CONT_THR = 0.30        # alle tämän = ei yhtenäinen seinä vyötärökorkeudella
 _WAIST_LO = 0.30        # vyötärökaista osuutena seinän korkeudesta — lattia ja
 _WAIST_HI = 0.70        # katto rajautuvat pois, seinä erottuu roinasta
@@ -193,7 +198,7 @@ def _wall_support(w, pts_all: np.ndarray, index) -> tuple[float, float] | None:
     if index is not None:
         from scan2bim.core.geometry.xy_index import subset  # noqa: PLC0415
         pts, _ = subset(pts_all, index, p0, u, n, half, 0.0, L)
-        if len(pts) < _SUP_MIN_PTS:
+        if len(pts) < _SUP_MIN_JUDGE:
             return 0.0, 0.0
 
     rel = pts[:, :2] - p0
@@ -202,12 +207,12 @@ def _wall_support(w, pts_all: np.ndarray, index) -> tuple[float, float] | None:
     z = pts[:, 2]
     near = ((t > 0.0) & (t < L) & (np.abs(perp) < half)
             & (z > w.z_min + 100.0) & (z < w.z_min + w.height - 100.0))
-    if near.sum() < _SUP_MIN_PTS:
+    if near.sum() < _SUP_MIN_JUDGE:
         return 0.0, 0.0
     t, perp, z = t[near], perp[near], z[near]
 
     face = np.abs(np.abs(perp) - w.thickness / 2.0) < _SF_BAND_EXTRA
-    if face.sum() < _SUP_MIN_PTS:
+    if face.sum() < _SUP_MIN_JUDGE:
         return 0.0, 0.0
     side = perp[face] > 0
     dom = perp[face][side] if side.sum() >= (~side).sum() else perp[face][~side]
@@ -223,11 +228,25 @@ def _wall_support(w, pts_all: np.ndarray, index) -> tuple[float, float] | None:
     zr = (z[on] - w.z_min) / w.height
     waist = (zr > _WAIST_LO) & (zr < _WAIST_HI)
     ncol = max(1, int(L / _CONT_COL))
-    if waist.sum() < 50:
-        return support, 0.0
+    if waist.sum() < _CONT_MIN_WAIST:
+        return support, None
     ci = np.clip((t[on][waist] / L * ncol).astype(np.int64), 0, ncol - 1)
     cnt = np.bincount(ci, minlength=ncol)
-    return support, float((cnt >= _CONT_MIN_PTS).mean())
+    return support, _column_continuity(cnt)
+
+
+def _column_continuity(cnt: np.ndarray) -> float:
+    """Osuus sarakkeista joissa on pintaa — KEILAUSTIHEYDESTÄ riippumatta.
+
+    Kiinteä raja (ennen: 5 pistettä/sarake) sitoo mittarin skannin tiheyteen:
+    mitattu Rohbaulla, että 1/250 harvennus poisti kaksi GT-aitoa seinää, ja
+    synteettisesti erottelu aito−palkki romahti 0.94 → 0.00 samalla kun
+    suhteellinen sääntö piti sen 0.79:ssä. Palkkilinja erottuu yhä, koska sen
+    pisteet kasautuvat pilarisarakkeisiin: keskiarvo nousee ja tyhjät sarakkeet
+    jäävät tyhjiksi.
+    """
+    thr = max(1.0, _CONT_REL * float(cnt.mean()))
+    return float((cnt >= thr).mean())
 
 
 _SUP_SEEK = 1000.0      # mm — kuinka kaukaa etsitään todellista pintaa
@@ -272,7 +291,7 @@ def _nearest_surface(w, pts_all: np.ndarray, index) -> float | None:
     on = np.abs(perp[sel] - peak) < _SUP_BAND
     ncol = max(1, int(L / _CONT_COL))
     ci = np.clip((t[sel][on] / L * ncol).astype(int), 0, ncol - 1)
-    if float((np.bincount(ci, minlength=ncol) >= _CONT_MIN_PTS).mean()) < _CONT_THR:
+    if _column_continuity(np.bincount(ci, minlength=ncol)) < _CONT_THR:
         return None
     return round(abs(abs(float(peak)) - w.thickness / 2.0), 1)
 
@@ -293,7 +312,7 @@ def measure_wall_support(model: StructuralModel, cloud) -> None:
             continue
         s, c = res
         w.support = round(s, 3)
-        w.continuity = round(c, 3)
+        w.continuity = None if c is None else round(c, 3)
         w.support_offset = None
         if (s < _SUP_THR or c < _CONT_THR) and len(w.axis) >= 2:
             w.support_offset = _nearest_surface(w, pts_all, index)

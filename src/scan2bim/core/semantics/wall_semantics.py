@@ -628,9 +628,41 @@ def remove_shelf_front_walls(walls, dist_lo=300.0, dist_hi=1500.0,
 
 _PRUNE_CONT = 0.15         # jatkuvuus vyötäröllä — alle tämän ei ole yhtenäinen seinä
 _PRUNE_OFFSET = 250.0      # mm — tätä kauempana oleva pinta = seinä on SIIRTYNYT, ei valhe
+_PRUNE_MIN_LEN = 4000.0    # mm — lyhyt seinä ei voi todistaa palkkilinjaa
+_PRUNE_MIN_NB = 10         # pistettä ±1 m vyötäröllä: alle tämän paikka on tyhjä
 
 
-def prune_unsupported_walls(model) -> list[str]:
+def _waist_neighbours(w, pts) -> int | None:
+    """Pisteitä ±1000 mm seinästä vyötärökorkeudella — onko täällä MITÄÄN.
+
+    Tämä erottaa haamun harvasta skannista ilman tiheyskynnystä: mitattu
+    Rohbaulla, että perimetrihaamuilla luku on 0 JOKA tiheydellä, kun aidoilla
+    lyhyillä seinillä se on 63 754 / 46 581 täydellä pilvellä ja yhä 36 / 27
+    kun pilvi on harvennettu 1/2500:aan.
+    """
+    if pts is None or len(pts) == 0 or len(w.axis) < 2:
+        return None
+    p0 = np.array(w.axis[0], float)
+    p1 = np.array(w.axis[1], float)
+    L = float(np.linalg.norm(p1 - p0))
+    if L < 1.0 or w.height < 1.0:
+        return None
+    u = (p1 - p0) / L
+    n = np.array([-u[1], u[0]])
+    rel = pts[:, :2] - p0
+    t, perp, z = rel @ u, rel @ n, pts[:, 2]
+    sel = ((t > 0.0) & (t < L) & (np.abs(perp) < _SNAP_SEEK)
+           & (z > w.z_min + 0.30 * w.height) & (z < w.z_min + 0.70 * w.height))
+    return int(sel.sum())
+
+
+def _axis_length(w) -> float:
+    if len(w.axis) < 2:
+        return 0.0
+    return float(np.linalg.norm(np.array(w.axis[1], float) - np.array(w.axis[0], float)))
+
+
+def prune_unsupported_walls(model, cloud=None) -> list[str]:
     """Poista seinät joilla ei ole yhtenäistä pintaa EIKÄ siirtynyttä vastinetta.
 
     Histogrammidetektori tekee palkiston keskikorkeuden tiheydestä pitkiä
@@ -639,6 +671,14 @@ def prune_unsupported_walls(model) -> list[str]:
     0.50–1.00. Poisto maksoi kattavuutta 0.796 → 0.792 ja nosti tarkkuuden
     0.510 → 0.918.
 
+    LYHYTTÄ seinää ei poisteta (`_PRUNE_MIN_LEN`, 4 m) JOS sillä on lainkaan
+    pintatukea: siinä on liian vähän 500 mm sarakkeita jotta jatkuvuus
+    todistaisi kumpaankaan suuntaan, ja palkkilinjat ovat aina pitkiä
+    (Rohbaussa 28 m). Mitattu: harvennussarjassa 1/2500 poistui kaksi GT-aitoa
+    lyhyttä seinää (2.0 m ja 1.0 m). Suoja EI koske täysin tyhjää seinää
+    (`support == 0`) — Rohbaun 3.0 m ja 2.0 m perimetrihaamut ovat lyhyitä,
+    ja niiden pinnalla ei ole yhtään pistettä.
+
     Siirtymärajan takia AITO seinä väärässä paikassa EI poistu: kauppakeskuksen
     `wall_ext_010` on GT-seinä 375 mm sivussa → jää tarkistuslistalle. Raja
     pitää vain jos `support_offset` on mitattu vyötäröltä — koko korkeudelta
@@ -646,9 +686,19 @@ def prune_unsupported_walls(model) -> list[str]:
     Palauttaa poistettujen id:t. Aukot siivotaan mukana, muuten IFC:hen jäisi
     aukkoja joiden seinää ei ole.
     """
-    drop = [w.id for w in model.walls
-            if w.continuity is not None and w.continuity < _PRUNE_CONT
-            and (w.support_offset is None or w.support_offset < _PRUNE_OFFSET)]
+    pts = np.asarray(cloud.points) if cloud is not None else None
+    drop = []
+    for w in model.walls:
+        if w.continuity is None or w.continuity >= _PRUNE_CONT:
+            continue
+        if w.support_offset is not None and w.support_offset >= _PRUNE_OFFSET:
+            continue
+        if _axis_length(w) < _PRUNE_MIN_LEN:
+            nb = _waist_neighbours(w, pts)
+            empty = (not w.support) if nb is None else (nb < _PRUNE_MIN_NB)
+            if not empty:
+                continue
+        drop.append(w.id)
     if not drop:
         return []
     gone = set(drop)
@@ -661,7 +711,6 @@ _SNAP_SEEK = 1000.0        # mm — kuinka kaukaa siirtynyttä vastinetta etsit�
 _SNAP_BAND = 60.0          # mm — kaista huipun ympärillä
 _SNAP_MIN_CONT = 0.80      # vastineen jatkuvuus: alle tämän ei ole seinä vaan sirpale
 _SNAP_MIN_SHIFT = 30.0     # mm — pienempi siirto kuuluu pintalukitukselle
-_SNAP_MIN_COL_PTS = 5      # pistettä jotta sarake on tuettu
 _SNAP_MIN_COLS = 8         # sarakkeita (= 4 m) jotta jatkuvuus todistaa jotain
 _SNAP_MIN_GAIN = 0.10      # siirto hyväksytään vain jos MITATTU tuki paranee tällä
 _SNAP_PAIR_TOL = 80.0      # mm — kuinka tarkasti vastapinnan on oltava paksuuden päässä
@@ -728,7 +777,8 @@ def snap_displaced_walls(model, cloud) -> list[tuple[str, float]]:
         if ncol < _SNAP_MIN_COLS:
             continue
         ci = np.clip((tp[on] / L * ncol).astype(np.int64), 0, ncol - 1)
-        if float((np.bincount(ci, minlength=ncol) >= _SNAP_MIN_COL_PTS).mean()) < _SNAP_MIN_CONT:
+        from scan2bim.core.qa.deviation import _column_continuity  # noqa: PLC0415
+        if _column_continuity(np.bincount(ci, minlength=ncol)) < _SNAP_MIN_CONT:
             continue
         # Kaksipuolinen seinä: jos vastapinta löytyy ~paksuuden päästä, akseli
         # kuuluu pintojen PUOLIVÄLIIN. Muuten mallin väärä pinta osuisi lähimmälle
