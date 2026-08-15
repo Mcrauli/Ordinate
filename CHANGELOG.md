@@ -5,6 +5,30 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 sovellus päivittää itsensä sieltä.
 
 ## Julkaisematon
+- **Histogrammireititys mitattu vihdoin Matterport-aulalla — se ostaa
+  kattavuutta 12× huonommalla vaihtokurssilla kuin contour.** Reitityksen
+  trigger `_looks_like_retail` oli kirjattu "validoiduksi aulalla jota ei ole
+  tässä repossa", eli sokea kohta. Aula on nyt paikallisesti, joten A/B ajettiin
+  (`data/_lobby_ab.py`, `data/_lobby_cov.py`); aulassa ei ole GT:tä, joten
+  tuomarina on pilvi itse — TUKI on tarkkuuden suunta, kaistan LUNASTETTU osuus
+  kattavuuden suunta, ja nimittäjä on molemmille sama.
+  | reititys | seiniä | seinäpituus | tuki med | lunastettu | tuki < 0.25 |
+  |---|---|---|---|---|---|
+  | auto = histogrammi | 17 | 120.9 m | 0.41 | 0.631 | 5 kpl / 24.2 m |
+  | contour (auto pois) | 13 | 50.0 m | 0.60 | 0.564 | 2 kpl / 5.4 m |
+  Histogrammi tuottaa 70.9 m lisää seinää ja saa siitä +6.7 pros.yks.
+  lunastettuja pisteitä (0.09 pp/m); contourin oma kurssi on 1.13 pp/m.
+  Sama kauppa kuin Rohbau-GT:llä (kattavuus +0.14 / tarkkuus −0.44), nyt
+  itsenäisesti toisella aineistolla ja ilman GT:tä.
+  **Reititystä EI käännetty**, koska histogrammi löytää aulan pitkät hyvin
+  tuetut perimetriseinät jotka contour menettää (19.6 m tuki 0.64, 15.7 m 0.51,
+  9.8 m 0.79, 9.3 m 0.92 — contourin pisin on 9.4 m). Korjattava on siis
+  histogrammin heikko häntä, ei reititys. **Nykyinen karsinta ei yllä siihen:**
+  heikot ovat *jatkuvia mutta tuettomia* (`wall_007` tuki 0.17 / jatkuvuus
+  0.94), ja karsinta katsoo jatkuvuutta; kaikilla viidellä `support_offset` on
+  `None`, eli pintaa ei löydy metrinkään säteeltä eikä kyse ole siirtymästä.
+  Tuen kynnyksen nosto 0.15 → ~0.25 nappaisi ne, mutta se vaatii Rohbau-GT-
+  validoinnin — kynnystä ei saa johtaa aineistosta jossa ei ole totuutta.
 - **Muisti mitattu uudelleen v0.9.18:lla: 38.3 min / 12.9 GB.** Luku 13.1 GB oli
   v0.9.0:sta, ja väliin mahtui ~80 committia (histogrammidetektori, hyllyfrontin
   poisto, pilarikorjaus, semanttisen suodattimen auto-valinta) — mikään niistä

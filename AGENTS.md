@@ -128,6 +128,8 @@ Tarkkuus mitataan erillisillä QA-skripteillä — **aja tuotantomallia (`model.
 | `data/_ctrl_contour.py` | Kontrolliajo: iso+korkea → histogrammi -auto-reititys patchattuna pois |
 | `data/_prune_probe.py` | Seinän tuki, jatkuvuus, offset, **vastineen jatkuvuus** ja GT-luokka rinnakkain — tällä erotettiin haamu siirtyneestä seinästä |
 | `data/_ctrl_waist.py` | Kontrolliajo: `_nearest_surface` palautettuna koko korkeuden hakuun → mitkä seinät vyötärörajaus poistaa LISÄÄ |
+| `data/_lobby_ab.py` | Aulan A/B: auto-reititys vs pakotettu contour, kuva + mitatut tuki/jatkuvuus-luvut. `--plot-only` piirtää uudelleen ajamatta putkea |
+| `data/_lobby_cov.py` | Sama A/B kahdesta suunnasta **ilman GT:tä**: tuki (tarkkuuden suunta) ja kaistan lunastettu osuus (kattavuuden suunta), nimittäjä sama molemmille |
 | `data/_wall_view.py` | **Liputettu seinä kuvina**: XY vyötäröltä, poikkileikkaus, mallin pinnalla olevat pisteet. Erottaa HAAMUN (ei mitään) VÄÄRÄSSÄ PAIKASSA olevasta (pinta on, mutta sivussa) — pelkkä `support`-luku ei kerro kumpi |
 | `data/_img_openings_qa.py` | Kuvaohjattu aukkodetektio oikealla kuvallisella E57:llä; vertaa vanhaan moduuliin samoilla seinillä+pilvellä |
 | `data/_cov_check.py`, `data/_support_verify.py` | Pintatuki mille tahansa mallille (väärät hälytykset) / tuotantototeutus vs. koetin samoilla luvuilla |
@@ -550,11 +552,27 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   Kuusi 28 m valeseinää istuu PALKEILLA (GT Beam 93–96 %): histogrammi lukee
   palkiston keskikorkeuden tiheydestä seinälinjoiksi. Kauppa on siis kattavuus
   +0.14 vs tarkkuus −0.44.
-  **ÄLÄ korjaa tätä sokkona:** trigger on validoitu Matterport-aulalla (46 M,
-  9 asemaa), jota ei ole tässä repossa eikä useimmilla koneilla — sen tapauksen
-  rikkominen ei näy millään paikallisella datalla. Korjaus vaatii että aula on
-  saatavilla, tai että liiketilaisuudelle keksitään ehto joka EROTTAA
-  big-boxin paljaasta rungosta (korkeus+ala ei erota).
+  **AULA ON NYT MITATTU (15.8.), ja se osoittaa samaan suuntaan.** Tiedosto on
+  julkinen näyte (ks. testidatataulu), joten trigger ei ole enää sokea kohta.
+  `data/_lobby_ab.py` + `data/_lobby_cov.py`, sama pilvi molemmille, ei GT:tä:
+  | reititys | seiniä | seinäpituus | tuki med | lunastettu | tuki < 0.25 |
+  |---|---|---|---|---|---|
+  | auto = histogrammi | 17 | **120.9 m** | 0.41 | 0.631 | 5 kpl / **24.2 m** |
+  | contour (auto pois) | 13 | 50.0 m | **0.60** | 0.564 | 2 kpl / 5.4 m |
+  Histogrammi ostaa **+6.7 pros.yks. lunastettuja pisteitä 70.9 lisämetrillä**
+  seinää — marginaalinen vaihtokurssi 0.09 pp/m, kun contourin oma on 1.13
+  pp/m eli **12× parempi**. Sama kauppa kuin Rohbaussa (kattavuus ylös,
+  tarkkuus alas), nyt ilman GT:tä ja itsenäisesti.
+  **Mutta EI yksipuolisesti:** histogrammi löytää aulan pitkät HYVIN tuetut
+  perimetriseinät jotka contour menettää (19.6 m / tuki 0.64, 15.7 m / 0.51,
+  9.8 m / 0.79, 9.3 m / 0.92; contourin pisin on 9.4 m). Oikea korjaus ei siis
+  ole reitityksen kääntäminen vaan histogrammin heikkojen tuotosten karsinta.
+  **Nykyinen karsinta ei osu näihin:** ne ovat *jatkuvia mutta tuettomia*
+  (`wall_007` tuki 0.17 / jatkuvuus 0.94), ja `prune_unsupported_walls` katsoo
+  jatkuvuutta. Kaikilla viidellä `support_offset is None` → pintaa ei ole
+  metrinkään säteellä, eli kyse ei ole siirtymästä. Tuen kynnyksen nosto
+  0.15 → ~0.25 nappaisi ne, **mutta se on validoitava Rohbau-GT:tä vasten
+  ennen tuotantoa** — aulassa ei ole GT:tä eikä kynnystä saa johtaa siitä.
 
 - **ISO E57 luetaan lohkoissa (≥40 M pistettä) — ja se MUUTTAA TULOSTA hieman.**
   `read_scan` varaa koko skannin kerralla, ja iso keilaus on **yksi** skanni,
