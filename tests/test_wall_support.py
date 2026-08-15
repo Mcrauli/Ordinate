@@ -280,6 +280,53 @@ def test_two_sided_displaced_wall_improves_but_lands_within_half_a_thickness():
     assert err < off / 2.0, "siirto ei parantanut riittavasti"
 
 
+def test_partly_supported_wall_is_still_snapped_onto_its_real_surface():
+    """Mitattu aulassa: `wall_007` tuki 0.17 mutta oikea pinta 842 mm sivussa.
+
+    Vanha ehto `support == 0` ohitti sen, koska mallin pinnalla sattui olemaan
+    hajapisteita. Siirtyneisyys ei katoa siita etta seinaa raapaisee jokin.
+    """
+    off = 500.0
+    model = StructuralModel(walls=[_wall("w_part", 0, 0, 12000, 0)])
+    scatter = _face_points(0, 0, 12000, 0, step=400.0)      # harva raapaisu mallin pinnalla
+    real = _one_sided_points(0, 0, 12000, 0, off, step=40.0)  # tiheä oikea pinta
+    cloud = _cloud(np.vstack([scatter, real]))
+    measure_wall_support(model, cloud)
+    w = model.walls[0]
+    assert 0.0 < w.support < 0.50, w.support
+    moved = _snap(model, cloud)
+    assert [i for i, _ in moved] == ["w_part"], moved
+    assert abs((model.walls[0].axis[0][1] + _T / 2.0) - off) < 60.0
+
+
+def test_well_supported_wall_is_not_snapped_even_if_something_lies_beside_it():
+    """Yli puoliksi keilattu pinta on jo oikeassa paikassa — sita ei sarjeta."""
+    model = StructuralModel(walls=[_wall("w_ok", 0, 0, 12000, 0)])
+    cloud = _cloud(np.vstack([_face_points(0, 0, 12000, 0),
+                              _one_sided_points(0, 0, 12000, 0, 600.0, step=40.0)]))
+    measure_wall_support(model, cloud)
+    assert model.walls[0].support >= 0.50, model.walls[0].support
+    before = [list(p) for p in model.walls[0].axis]
+    assert _snap(model, cloud) == []
+    assert [list(p) for p in model.walls[0].axis] == before
+
+
+def test_short_wall_is_never_snapped_because_it_cannot_prove_a_counterpart():
+    """Rohbaun GT-aito `wall_ext_011` (1.0 m) hyppasi 400 mm ja tuki putosi
+    0.212 -> 0.155: 500 mm sarakkeilla lyhyeen seinaan mahtuu kaksi saraketta,
+    joten jatkuvuusehto 0.80 tayttyy milla tahansa laiskalla. Kattavuus 0.792
+    -> 0.749 ja tarkkuus 0.918 -> 0.905 Rohbau-GT:lla.
+    """
+    model = StructuralModel(walls=[_wall("w_short", 0, 0, 1000, 0)])
+    blob = _clutter_blob(0.0, 400.0, n=3000, seed=1)
+    blob = blob[blob[:, 0] < 1000.0]
+    cloud = _cloud(blob)
+    measure_wall_support(model, cloud)
+    before = [list(p) for p in model.walls[0].axis]
+    assert _snap(model, cloud) == []
+    assert [list(p) for p in model.walls[0].axis] == before
+
+
 def test_phantom_without_a_counterpart_is_not_snapped():
     """Rohbaun perimetritynka: ei vastinetta -> ei saa siirtaa mihinkaan."""
     model = StructuralModel(walls=[

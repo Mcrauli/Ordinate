@@ -128,6 +128,7 @@ Tarkkuus mitataan erillisillä QA-skripteillä — **aja tuotantomallia (`model.
 | `data/_ctrl_contour.py` | Kontrolliajo: iso+korkea → histogrammi -auto-reititys patchattuna pois |
 | `data/_prune_probe.py` | Seinän tuki, jatkuvuus, offset, **vastineen jatkuvuus** ja GT-luokka rinnakkain — tällä erotettiin haamu siirtyneestä seinästä |
 | `data/_ctrl_waist.py` | Kontrolliajo: `_nearest_surface` palautettuna koko korkeuden hakuun → mitkä seinät vyötärörajaus poistaa LISÄÄ |
+| `data/_ctrl_snapgate.py` | Kontrolliajo: napsautusportti vanhalla (`support == 0`) vs nykyisellä ehdolla, seinien akselit ja GT-luvut rinnakkain — tällä eristettiin kaksi regressiota |
 | `data/_lobby_ab.py` | Aulan A/B: auto-reititys vs pakotettu contour, kuva + mitatut tuki/jatkuvuus-luvut. `--plot-only` piirtää uudelleen ajamatta putkea |
 | `data/_lobby_cov.py` | Sama A/B kahdesta suunnasta **ilman GT:tä**: tuki (tarkkuuden suunta) ja kaistan lunastettu osuus (kattavuuden suunta), nimittäjä sama molemmille |
 | `data/_wall_view.py` | **Liputettu seinä kuvina**: XY vyötäröltä, poikkileikkaus, mallin pinnalla olevat pisteet. Erottaa HAAMUN (ei mitään) VÄÄRÄSSÄ PAIKASSA olevasta (pinta on, mutta sivussa) — pelkkä `support`-luku ei kerro kumpi |
@@ -186,6 +187,23 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   jatkuvuus 30–70 % korkeudella, 500 mm sarakkeina: aidot 0.50–1.00,
   palkkiseinät 0.05–0.07 (Rohbau-GT). `Wall.continuity`, kynnys 0.30.
   Oviaukko ei riitä pudottamaan aitoa seinää alle (testattu).
+- **Siirron saa hyväksyä vain jos MITATTU tuki paranee — "lähin tiheä huippu"
+  ei ole sama kuin "oikea paikka".** Napsautusportin levennys `support == 0` →
+  `< 0.50` (tarpeen, koska aulan `wall_007` on 842 mm sivussa mutta sitä
+  raapaisee jokin, tuki 0.17) regressoi Rohbaun **0.792/0.918 → 0.749/0.905**.
+  Kaksi eri juurisyytä, molemmat mitattu `data/_ctrl_snapgate.py`:llä:
+  (1) **lyhyt seinä ei voi todistaa vastinettaan** — 500 mm sarakkeilla 1.0 m
+  seinään mahtuu kaksi saraketta, joten jatkuvuusehto 0.80 täyttyy millä
+  tahansa läiskällä, ja GT-aito `wall_ext_011` hyppäsi 400 mm oman tukensa
+  pudotessa 0.212 → 0.155 (`_SNAP_MIN_COLS` = 8 ≈ 4 m);
+  (2) **hyvin tuettu seinä löytää huipun viereltä** — GT-aito 28 m `wall_008`
+  (tuki 0.372) siirtyi 138 mm pois oikealta paikaltaan.
+  Ratkaisu kohtaan 2 EI ole uusi tukikynnys (ne eivät siirry aineistosta
+  toiseen) vaan **ennen/jälkeen-vertailu samasta pilvestä**: siirto tehdään
+  vain jos tuki paranee ≥ 0.10. Rohbau palautui bitilleen ennalleen ja aulan
+  `wall_007` nousi 0.17 → 0.51. Yleistys: kun korjaus siirtää geometriaa,
+  mittaa lopputulos molemmissa asennoissa — älä luota siihen että ehto joka
+  löysi kohteen osaa myös sijoittaa sen.
 - **Etäisyys "lähimpään pintaan" on mitattava VYÖTÄRÖLTÄ, muuten lattian roina
   antaa haamullekin osoitteen.** `_nearest_surface` erottaa SIIRTYNEEN seinän
   HAAMUSTA, ja `prune_unsupported_walls` säästää kaiken minkä offset ≥ 250 mm.
@@ -569,10 +587,19 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   ole reitityksen kääntäminen vaan histogrammin heikkojen tuotosten karsinta.
   **Nykyinen karsinta ei osu näihin:** ne ovat *jatkuvia mutta tuettomia*
   (`wall_007` tuki 0.17 / jatkuvuus 0.94), ja `prune_unsupported_walls` katsoo
-  jatkuvuutta. Kaikilla viidellä `support_offset is None` → pintaa ei ole
-  metrinkään säteellä, eli kyse ei ole siirtymästä. Tuen kynnyksen nosto
-  0.15 → ~0.25 nappaisi ne, **mutta se on validoitava Rohbau-GT:tä vasten
-  ennen tuotantoa** — aulassa ei ole GT:tä eikä kynnystä saa johtaa siitä.
+  jatkuvuutta.
+  **ANSA — `support_offset is None` EI tarkoita "pintaa ei ole".** Se lasketaan
+  vain kun `support < 0.15 TAI continuity < 0.30` (`measure_wall_support`),
+  joten näillä viidellä (tuki 0.16–0.21, jatkuvuus 0.38–0.94) sitä ei ollut
+  laskettu lainkaan — `None` tarkoitti "ei mitattu". Kun `_nearest_surface`
+  ajetaan niille suoraan, kolme on aitoja haamuja (ei pintaa ±1000 mm) mutta
+  **kaksi on SIIRTYNEITÄ**: `wall_007` 842 mm, `wall_ext_013` 492 mm. Kynnyksen
+  nosto olisi poistanut nekin. Älä lue tästä kentästä puuttumista todisteeksi
+  ilman että tarkistat laskettiinko se.
+  **Eikä tuen kynnystä voi nostaa:** Rohbaun GT-aito `wall_ext_011` on tuki
+  0.21 (GT-puhtaus 0.90), eli se osuu aulan heikkojen 0.16–0.21 väliin. Mikään
+  globaali tukikynnys ei erota näitä — tuen taso riippuu keilausgeometriasta,
+  ei seinän aitoudesta (Rohbaun aidot 0.21–0.43, aulan aidot 0.17–0.92).
 
 - **ISO E57 luetaan lohkoissa (≥40 M pistettä) — ja se MUUTTAA TULOSTA hieman.**
   `read_scan` varaa koko skannin kerralla, ja iso keilaus on **yksi** skanni,

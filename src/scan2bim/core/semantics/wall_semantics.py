@@ -662,11 +662,22 @@ _SNAP_BAND = 60.0          # mm — kaista huipun ympärillä
 _SNAP_MIN_CONT = 0.80      # vastineen jatkuvuus: alle tämän ei ole seinä vaan sirpale
 _SNAP_MIN_SHIFT = 30.0     # mm — pienempi siirto kuuluu pintalukitukselle
 _SNAP_MIN_COL_PTS = 5      # pistettä jotta sarake on tuettu
+_SNAP_MIN_COLS = 8         # sarakkeita (= 4 m) jotta jatkuvuus todistaa jotain
+_SNAP_MIN_GAIN = 0.10      # siirto hyväksytään vain jos MITATTU tuki paranee tällä
 _SNAP_PAIR_TOL = 80.0      # mm — kuinka tarkasti vastapinnan on oltava paksuuden päässä
+_SNAP_MAX_SUP = 0.50       # yli puoliksi keilattu pinta on jo oikeassa paikassa
 
 
 def snap_displaced_walls(model, cloud) -> list[tuple[str, float]]:
     """Siirrä pinnattomat seinät mitatulle pinnalle. Palauttaa (id, siirto mm).
+
+    Ehto on `support < 0.50`, ei `== 0`: mitattu aulassa, jossa `wall_007`:n
+    oikea pinta on 842 mm sivussa mutta mallin pinnalla sattuu olemaan
+    hajapisteitä (tuki 0.17) — siirtyneisyys ei katoa siitä että seinää
+    raapaisee jokin. Yli puoliksi keilattu pinta on jo oikeassa paikassa.
+    Varsinaisen päätöksen tekevät jatkuvuus- ja siirtoehdot alla: oikeassa
+    paikassa oleva seinä löytää huipun omalta pinnaltaan, jolloin siirto jää
+    alle `_SNAP_MIN_SHIFT`:n eikä mitään tapahdu.
 
     `support == 0` ei kerro onko kyse haamusta vai aidosta seinästä väärässä
     paikassa. Ero on mitattavissa: aidolla on vyötärökorkeudella YHDENSUUNTAINEN
@@ -674,6 +685,12 @@ def snap_displaced_walls(model, cloud) -> list[tuple[str, float]]:
     1.00), haamulla ei ole mitään (Rohbaun perimetritynkät: ei vastinetta
     ±1000 mm). Siirto tehdään vain kun vastine on lähes koko pituudelta, joten
     sirpale ei vedä seinää mukanaan.
+
+    LYHYTTÄ seinää ei siirretä lainkaan (`_SNAP_MIN_COLS`, 4 m): 500 mm
+    sarakkeilla metrin seinään mahtuu kaksi saraketta, jolloin jatkuvuusehto
+    täyttyy millä tahansa läiskällä. Mitattu Rohbaulla: GT-aito 1.0 m
+    `wall_ext_011` hyppäsi 400 mm ja sen oma tuki putosi 0.212 → 0.155
+    (kattavuus 0.792 → 0.749, tarkkuus 0.918 → 0.905).
 
     Tämä on eri asia kuin `_align_faces_to_surface_median`, joka hienosäätää jo
     ~oikeassa paikassa olevaa seinää 25 mm katolla. Tässä seinä on satoja
@@ -684,7 +701,7 @@ def snap_displaced_walls(model, cloud) -> list[tuple[str, float]]:
         return []
     moved: list[tuple[str, float]] = []
     for w in model.walls:
-        if getattr(w, "support", None) is None or w.support > 0.0 or len(w.axis) < 2:
+        if getattr(w, "support", None) is None or w.support >= _SNAP_MAX_SUP or len(w.axis) < 2:
             continue
         p0 = np.array(w.axis[0], float)
         p1 = np.array(w.axis[1], float)
@@ -708,6 +725,8 @@ def snap_displaced_walls(model, cloud) -> list[tuple[str, float]]:
         if on.sum() < 100:
             continue
         ncol = max(1, int(L / 500.0))
+        if ncol < _SNAP_MIN_COLS:
+            continue
         ci = np.clip((tp[on] / L * ncol).astype(np.int64), 0, ncol - 1)
         if float((np.bincount(ci, minlength=ncol) >= _SNAP_MIN_COL_PTS).mean()) < _SNAP_MIN_CONT:
             continue
@@ -729,7 +748,19 @@ def snap_displaced_walls(model, cloud) -> list[tuple[str, float]]:
         if abs(shift) < _SNAP_MIN_SHIFT:
             continue
         d = n * shift
-        w.axis = [[float(p0[0] + d[0]), float(p0[1] + d[1])],
-                  [float(p1[0] + d[0]), float(p1[1] + d[1])]]
+        new_axis = [[float(p0[0] + d[0]), float(p0[1] + d[1])],
+                    [float(p1[0] + d[0]), float(p1[1] + d[1])]]
+        # Ratkaiseva ehto: siirto hyväksytään vain jos se PARANTAA mitattua
+        # tukea. Pelkkä "lähin tiheä huippu" ei riitä — Rohbaun GT-aito 28 m
+        # `wall_008` (tuki 0.372) löysi huipun 138 mm sivusta ja siirtyi pois
+        # oikealta paikaltaan (kattavuus 0.792 → 0.748). Tuki mitataan samasta
+        # pilvestä molemmissa asennoissa, joten vertailu on suora.
+        from scan2bim.core.qa.deviation import _wall_support  # noqa: PLC0415
+        probe = w.model_copy(deep=True)
+        probe.axis = new_axis
+        after = _wall_support(probe, pts, None)
+        if after is None or after[0] < w.support + _SNAP_MIN_GAIN:
+            continue
+        w.axis = new_axis
         moved.append((w.id, shift))
     return moved

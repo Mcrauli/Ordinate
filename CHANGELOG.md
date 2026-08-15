@@ -5,6 +5,29 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 sovellus päivittää itsensä sieltä.
 
 ## Julkaisematon
+- **Siirtynyt seinä napsautetaan nyt myös silloin kun sitä raapaisee jokin —
+  ja siirto hyväksytään vasta jos MITATTU tuki paranee.** Ehto oli
+  `support == 0`, joten aulan `wall_007` (8.8 m, oikea pinta 842 mm sivussa)
+  jäi väliin: mallin pinnalla sattui olemaan hajapisteitä, tuki 0.17.
+  Siirtyneisyys ei katoa siitä että seinää raapaisee jokin, joten portti on nyt
+  `support < 0.50` (yli puoliksi keilattu pinta on jo oikeassa paikassa).
+  **Mitattu aulassa: `wall_007` tuki 0.17 → 0.51, jatkuvuus 0.94 → 1.00**,
+  mallin tuen mediaani 0.41 → 0.46.
+  Pelkkä portin levennys kuitenkin REGRESSOI Rohbaun (kattavuus 0.792 → 0.749,
+  tarkkuus 0.918 → 0.905), ja kontrolliajo `data/_ctrl_snapgate.py` osoitti
+  kaksi eri juurisyytä — kumpikin korjattu:
+  1. **Lyhyt seinä ei voi todistaa vastinettaan.** 500 mm sarakkeilla 1.0 m
+     seinään mahtuu kaksi saraketta, joten jatkuvuusehto 0.80 täyttyy millä
+     tahansa läiskällä: GT-aito `wall_ext_011` hyppäsi 400 mm ja sen oma tuki
+     putosi 0.212 → 0.155. Alle 4 m seiniä ei siirretä (`_SNAP_MIN_COLS`).
+  2. **"Lähin tiheä huippu" ei ole sama kuin "oikea paikka".** GT-aito 28 m
+     `wall_008` (tuki 0.372) löysi huipun 138 mm sivusta ja siirtyi pois
+     oikealta paikaltaan. Siirto hyväksytään nyt vain jos tuki paranee
+     vähintään 0.10 — tuki mitataan samasta pilvestä molemmissa asennoissa,
+     joten vertailu on suora eikä vaadi uutta kynnystä.
+  Lopputulos: **Rohbau palautui bitilleen ennalleen** (0.792 / 0.918,
+  identtiset akselit vanhan portin kanssa), aula paranee, ja myymälä (9),
+  kauppakeskus (9) ja asunto (13) tuottavat saman seinämäärän kuin ennen.
 - **Histogrammireititys mitattu vihdoin Matterport-aulalla — se ostaa
   kattavuutta 12× huonommalla vaihtokurssilla kuin contour.** Reitityksen
   trigger `_looks_like_retail` oli kirjattu "validoiduksi aulalla jota ei ole
@@ -25,10 +48,19 @@ sovellus päivittää itsensä sieltä.
   9.8 m 0.79, 9.3 m 0.92 — contourin pisin on 9.4 m). Korjattava on siis
   histogrammin heikko häntä, ei reititys. **Nykyinen karsinta ei yllä siihen:**
   heikot ovat *jatkuvia mutta tuettomia* (`wall_007` tuki 0.17 / jatkuvuus
-  0.94), ja karsinta katsoo jatkuvuutta; kaikilla viidellä `support_offset` on
-  `None`, eli pintaa ei löydy metrinkään säteeltä eikä kyse ole siirtymästä.
-  Tuen kynnyksen nosto 0.15 → ~0.25 nappaisi ne, mutta se vaatii Rohbau-GT-
-  validoinnin — kynnystä ei saa johtaa aineistosta jossa ei ole totuutta.
+  0.94), ja karsinta katsoo jatkuvuutta.
+  **Korjaus samassa yhteydessä tehtyyn väitteeseen:** kirjasin ensin että
+  kaikilla viidellä `support_offset` on `None` eli pintaa ei ole — se oli
+  väärin. Kenttä lasketaan vain kun `support < 0.15 TAI continuity < 0.30`,
+  eikä näillä kumpikaan täyttynyt, joten `None` tarkoitti "ei mitattu".
+  Suoraan ajettuna kolme on aitoja haamuja, mutta **kaksi on siirtyneitä**
+  (`wall_007` 842 mm, `wall_ext_013` 492 mm) — kynnyksen nosto olisi poistanut
+  nekin.
+  **Tuen kynnystä ei myöskään voi nostaa:** Rohbaun GT-aito `wall_ext_011` on
+  tuki 0.21 (GT-puhtaus 0.90) eli aulan heikkojen 0.16–0.21 sisällä. Tuen taso
+  seuraa keilausgeometriaa, ei seinän aitoutta (Rohbaun aidot 0.21–0.43, aulan
+  0.17–0.92), joten globaali kynnys ei erottele. Oikea jatko on siirtyneiden
+  napsautus, ei karsinnan kiristys.
 - **Muisti mitattu uudelleen v0.9.18:lla: 38.3 min / 12.9 GB.** Luku 13.1 GB oli
   v0.9.0:sta, ja väliin mahtui ~80 committia (histogrammidetektori, hyllyfrontin
   poisto, pilarikorjaus, semanttisen suodattimen auto-valinta) — mikään niistä
