@@ -129,6 +129,10 @@ Tarkkuus mitataan erillisillä QA-skripteillä — **aja tuotantomallia (`model.
 | `data/_prune_probe.py` | Seinän tuki, jatkuvuus, offset, **vastineen jatkuvuus** ja GT-luokka rinnakkain — tällä erotettiin haamu siirtyneestä seinästä |
 | `data/_ctrl_waist.py` | Kontrolliajo: `_nearest_surface` palautettuna koko korkeuden hakuun → mitkä seinät vyötärörajaus poistaa LISÄÄ |
 | `data/_density_probe.py` | **Kestääkö mittari harvan skannin**: harventaa saman pilven 1/1…1/5000 ja ajaa tuen, jatkuvuuden ja karsinnan uudelleen. Erottaa oikeat poistot (GT-haamut) vääristä |
+| `data/_gap_probe.py` | **Mikä jää mallintamatta**: ryhmittelee lunastamattomat GT-seinäpisteet paloiksi ja tulostaa ne kokojärjestyksessä — kertoo onko vaje kokonaan puuttuvia seiniä, päitä vai sirontaa |
+| `data/_gap_view.py` | Sama kuvana: lunastettu (harmaa) vs puuttuva (punainen) GT-seinäpiste mallin akselien päällä |
+| `data/_second_face_probe.py` | **Keksiikö katvepintahaku seiniä**: ajaa aineistot joilla ei ole GT:tä ja tulostaa löydetyt katveseinät tuki/jatkuvuus-lukuineen |
+| `data/_shelf_gt_probe.py` | Mitä `remove_shelf_front_walls` oikeasti poistaa — poistettujen GT-luokkajakauma Rohbaussa |
 | `data/_cont_rule_probe.py` | Vertaa jatkuvuussääntöjä (kiinteä 5 / ≥1 / suhteellinen) eri tiheyksillä ja tulostaa erottelun aito−palkki — tällä valittiin suhteellinen sääntö |
 | `data/_ctrl_snapgate.py` | Kontrolliajo: napsautusportti vanhalla (`support == 0`) vs nykyisellä ehdolla, seinien akselit ja GT-luvut rinnakkain — tällä eristettiin kaksi regressiota |
 | `data/_lobby_ab.py` | Aulan A/B: auto-reititys vs pakotettu contour, kuva + mitatut tuki/jatkuvuus-luvut. `--plot-only` piirtää uudelleen ajamatta putkea |
@@ -206,6 +210,36 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
      paikalla MITÄÄN (pisteet ±1 m vyötäröllä). Se on tyhjä vs ei-tyhjä eikä
      tiheyskynnys: Rohbaun haamuilla 0 joka tiheydellä, aidoilla lyhyillä
      63 754 / 46 581 → 36 / 27 vielä 1/2500:lla.
+- **Kontuuri näkee vain ENSIMMÄISEN pinnan — mikään detektorin kynnys ei tuo
+  sen takana olevaa seinää.** `cv2.findContours` jäljittää vapaan tilan reunan,
+  joten puolen metrin päässä perimetristä seisova kipsiseinä on maskin sisällä
+  eikä sitä ole olemassa mallille. Rohbaussa se oli **suurin yksittäinen
+  kattavuusvaje**: 20,6 %:n vajeesta 52,6 % istui 400–700 mm päässä
+  mallipinnasta (`data/_gap_probe.py`), ja GT:ssä ne ovat omia
+  Drywall-instanssejaan. Korjaus on oma vaihe (`semantics/second_face.py`,
+  0.792 → 0.887), ei detektorin viritys. **Vaihe ajetaan VASTA karsinnan
+  jälkeen**: hyllynetupinta-poisto, dedup ja napsautus pitävät rinnakkaista
+  seinäparia virheenä, ja ensimmäisessä yrityksessä ne söivät molemmat
+  (30 m emäseinät katosivat kokonaan).
+- **Hyllyn etupinta ja kipsiseinä ovat geometrisesti sama asia — erottava
+  todiste on VÄLISSÄ, ei pinnassa.** Molemmat: lattiasta kattoon ulottuva
+  yhtenäinen pystypinta 0,5–1 m emäseinästä. Tuki, jatkuvuus ja välin
+  pistemassa eivät erottele (mitattu: väli/pinta 0.038 vs 0.042 — sama).
+  Erottelija on välin **z-rakenne**: synteettisen myymälän hyllyvälissä 6
+  vaakatasoa ~900 mm välein, Rohbaun kipsiseinän välissä 1 (palkki).
+- **Väärä korkeus tekee jokaisesta pystymittarista hölynpölyä.** Uusi seinä ei
+  peri emäseinänsä korkeutta: 10 m hallin vyötärökaista (30–70 %) osuu 3 m
+  kipsiseinän yläpuolelle, jolloin aidon pinnan jatkuvuudeksi mitataan 0.42.
+  Mittaa korkeus pinnasta itsestään (sarakkeiden mediaani-ylä- ja alareuna) ja
+  vaadi ≥ 20 % kerroskorkeudesta — muuten 1,1 m korkea kanavalinja pääsee läpi
+  seinänä täydellisillä luvuilla (tuki 0.96, jatkuvuus 0.96; tarkkuus 0.884).
+- **"Yhtä pitkä pinta" ei ole sama kuin "yksi seinä".** Sohva + kaappi + komero
+  peräkkäin tuottavat 8,5 m yhtenäisen linjan, jonka tuki (0.31) ja jatkuvuus
+  (0.47) ovat PAREMMAT kuin Rohbaun aidoilla kipsiseinillä (0.21/0.42). Erottava
+  mittari on sarakkeittaisen ylä- ja alareunan hajonta: aito 4–9 mm (0.00 ×
+  korkeus), huonekaluketju 1649 mm (0.61 ×). Rajaa lattia ja katto pois ennen
+  mittausta — muuten laatat täyttävät joka sarakkeen ja reuna näyttää
+  täydelliseltä kaikkialla (IQR 2 mm huonekaluketjullekin).
 - **Siirron saa hyväksyä vain jos MITATTU tuki paranee — "lähin tiheä huippu"
   ei ole sama kuin "oikea paikka".** Napsautusportin levennys `support == 0` →
   `< 0.50` (tarpeen, koska aulan `wall_007` on 842 mm sivussa mutta sitä

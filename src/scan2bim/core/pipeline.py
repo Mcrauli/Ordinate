@@ -858,6 +858,7 @@ class Pipeline:
         self._progress = progress or (lambda msg: log.info(msg))
         self._scanner_origins: list = []   # täytetään kerroskohtaisesti (E57)
         self._sem_labels = None            # PointNetin luokat (SemanticLabels|None)
+        self._shelf_fronts: list = []      # hyllyksi mitatut (diagnostiikka)
 
     def run(self, input_path: Path | list[Path], output_dir: Path) -> StructuralModel:
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -1174,6 +1175,17 @@ class Pipeline:
                 self._progress(
                     f"  Poistettu {len(dropped)} seinää joilla ei ole yhtenäistä "
                     f"pintaa pilvessä (palkki-/pilarilinja)")
+            # Kontuuri jäljittää vapaan tilan reunan → se näkee vain ENSIMMÄISEN
+            # pinnan, ja puolen metrin päässä seisova kipsiseinä katoaa kokonaan.
+            # VASTA tässä: aiemmat vaiheet (hyllynetupinta-poisto, dedup, snap)
+            # pitävät rinnakkaista seinäparia virheenä ja söisivät molemmat.
+            from scan2bim.core.semantics.second_face import find_hidden_walls
+            hidden = find_hidden_walls(model.walls, cloud)
+            if hidden:
+                model.walls.extend(hidden)
+                measure_wall_support(model, cloud)
+                self._progress(
+                    f"  Löydetty {len(hidden)} seinää toisen takaa (kontuurin katve)")
             left = [f for f in flag_low_confidence(model) if f["type"] == "wall"]
             if left:
                 self._progress(f"  Tarkistettavaa: {len(left)} seinää")
@@ -1187,6 +1199,7 @@ class Pipeline:
         # (mode="off" tai geometrinen haara) ja detektori lukisi väärän kerroksen
         # luokkia oman ruudukkoavaimensa läpi.
         self._sem_labels = None
+        self._shelf_fronts = []
 
         mode = self.config.semantic_filter_mode
         # Taaksepäinyhteensopivuus: vanha semantic_filter=True → "geometric"
@@ -1480,10 +1493,15 @@ class Pipeline:
         # suodatin ei sitä poista (tiheä pystytaso). Ennen huonepolygonia jotta
         # tilat lasketaan puhtaasta seinäjoukosta.
         from scan2bim.core.semantics.wall_semantics import remove_shelf_front_walls
-        _nw_pre_shelf = len(model.walls)
+        _pre_shelf = list(model.walls)
         model.walls = remove_shelf_front_walls(model.walls, retail=is_retail)
-        if len(model.walls) < _nw_pre_shelf:
-            self._progress(f"  Hyllyn etupinta-valeseiniä poistettu: {_nw_pre_shelf - len(model.walls)}")
+        # Muista poistetut: `data/_shelf_gt_probe.py` mittaa niiden GT-luokan,
+        # eli näkeekö sääntö hyllyjä vai aitoja seiniä.
+        _kept = {w.id for w in model.walls}
+        self._shelf_fronts = [w for w in _pre_shelf if w.id not in _kept]
+        if self._shelf_fronts:
+            self._progress(
+                f"  Hyllyn etupinta-valeseiniä poistettu: {len(self._shelf_fronts)}")
 
         # Korvaa laatan rajapisteet seinien leikkauspisteistä johdetulla polygonilla
         from scan2bim.core.semantics.room_polygon import build_room_polygon, snap_walls_to_polygon

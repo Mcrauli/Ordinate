@@ -5,6 +5,37 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 sovellus päivittää itsensä sieltä.
 
 ## Julkaisematon
+- **Toisen seinän takana ollut seinä löytyy nyt: Rohbaun kattavuus 0.792 →
+  0.887, tarkkuus 0.918 → 0.924, 0 ongelmaseinää.** `cv2.findContours`
+  jäljittää vapaan tilan reunan, eli se näkee vain ENSIMMÄISEN pinnan. Puolen
+  metrin päässä betoniperimetristä seisova 30 m kipsiseinä ei ollut mallissa
+  lainkaan — eikä yksikään detektorin kynnys olisi sitä löytänyt, koska pinta
+  on maskin sisällä. Mittaus (`data/_gap_probe.py`, `data/_gap_view.py`):
+  20,6 %:n vajeesta **52,6 % istui 400–700 mm päässä mallipinnasta**, ja
+  Rohbau3D-GT:ssä ne pisteet ovat omia Drywall-instanssejaan (96–97 %).
+  Uusi `core/semantics/second_face.py` etsii löydetyn seinän
+  poikkileikkauksesta huiput mallipintojen ulkopuolelta. Ehdokas joutuu
+  todistamaan neljä asiaa, jokainen omalla mittauksellaan:
+  1. **Massa suhteessa emäseinän omaan pintaan** (≥ 10 %), ei absoluuttiseen
+     pistemäärään — sama sääntö kuin muillakin laatumittareilla.
+  2. **Väli on tyhjä.** Lattiasta kattoon ulottuvan hyllykön etupinta on
+     geometrisesti sama kuvio kuin kipsiseinä — paitsi että hyllyssä ON
+     HYLLYJÄ. Mitattu: synteettisen myymälän hyllyvälissä **6 vaakatasoa**
+     (z = 500…5900, ~900 mm välein), Rohbaun kipsiseinän välissä **1**
+     (palkkilinja z ≈ 5,1–5,5 m). Raja: ≥ 3 erillistä tasoa = hyllykkö.
+  3. **Pinta on YKSI esine.** Sohva + kaappi + komero peräkkäin muodostavat
+     yhtä pitkän "pinnan". Sarakkeittainen yläreuna erottaa ne: Rohbaun aito
+     kipsiseinä IQR **4–9 mm** (0.00 × korkeus), asunnon huonekaluketju
+     **1649 mm** (0.61 × korkeus).
+  4. **Korkeus mitataan pinnasta, ei emäseinästä**, ja sen on oltava ≥ 20 %
+     kerroskorkeudesta. Ilman tätä 10 m hallin vyötärömitta antaa 3 m
+     kipsiseinälle hölynpölyluvut, ja 1,1 m korkea kanavalinja (tuki 0.96,
+     jatkuvuus 0.96) menisi läpi seinänä — se pudotti tarkkuuden 0.884:ään.
+  Vaihe ajetaan VASTA karsinnan jälkeen: aiemmat vaiheet (hyllynetupinta-
+  poisto, dedup, napsautus) pitävät rinnakkaista seinäparia virheenä ja söivät
+  ensimmäisessä yrityksessä molemmat (wall_012 ja wall_010 katosivat kokonaan).
+  Muut aineistot ennallaan, ei uusia valeseiniä: myymälä 9, iso myymälä 9,
+  asunto 13, kauppakeskus 12.
 - **Laatumittarit eivät enää riipu keilaustiheydestä: karsinta kestää 1/5000
   harvennuksen ilman yhtään väärää poistoa (ennen murtui 1/250:llä).** Tuki,
   jatkuvuus ja karsinta nojasivat ABSOLUUTTISIIN pistemääriin (5 pistettä /
