@@ -609,21 +609,23 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
 
 ## Tunnetut rajoitukset
 
-- **`_looks_like_retail` on tosiasiassa "ISO JA KORKEA", ei liiketila — ja se
-  puolittaa tarkkuuden paljaalla rungolla.** Ehto on pohja-ala + vapaa korkeus
-  ≥4.5 m; Rohbau site_07:n ~10 m betonirunko täyttää sen ja reitittyy
-  histogrammidetektorille ("liiketila → histogrammi", näkyy diagnostiikassa).
-  **Mitattu `data/_rohbau_qa.py`:llä samalla datalla, kontrolliajo
-  `data/_ctrl_contour.py` (auto-reititys patchattu pois):**
-  | detektori | kattavuus | tarkkuus | ongelmaseiniä |
-  |---|---|---|---|
-  | histogrammi (auto, tuotanto) | **0.796** | **0.510** | 8 / 14 |
-  | contour (auto pois) | 0.653 | **0.951** | 4 / 18 |
-  Contourin luvut toistavat kirjatut 0.96/0.65 → mittari on kunnossa.
-  Kuusi 28 m valeseinää istuu PALKEILLA (GT Beam 93–96 %): histogrammi lukee
-  palkiston keskikorkeuden tiheydestä seinälinjoiksi. Kauppa on siis kattavuus
-  +0.14 vs tarkkuus −0.44.
-  **AULA ON NYT MITATTU (15.8.), ja se osoittaa samaan suuntaan.** Tiedosto on
+- **`_looks_like_retail` on tosiasiassa "ISO JA KORKEA", ei liiketila.** Ehto on
+  pohja-ala + vapaa korkeus ≥4.5 m; Rohbau site_07:n ~10 m betonirunko täyttää
+  sen ja reitittyy histogrammidetektorille ("liiketila → histogrammi", näkyy
+  diagnostiikassa). Nimi on yhä väärä, **mutta reititys ei enää maksa
+  tarkkuutta** — se maksoi ennen kuin karsinta osasi erottaa palkkilinjan.
+  **Mitattu uudelleen 16.8.2026 `data/_rohbau_qa.py`:llä, kontrolliajo
+  `data/_ctrl_contour.py site_07 scene_07000` (auto-reititys patchattu pois):**
+  | detektori | kattavuus | tarkkuus | ongelmaseiniä | (15.8. tarkkuus) |
+  |---|---|---|---|---|
+  | histogrammi (auto, tuotanto) | **0.887** | 0.924 | **0** | 0.510, 8 kpl |
+  | contour (auto pois) | 0.653 | **0.951** | 1 | 0.951 |
+  Kauppa on nyt kattavuus **+0.234** vs tarkkuus **−0.027**; ennen se oli
+  +0.14 vs −0.44. Ero syntyi jatkuvuuskarsinnasta (kuusi 28 m valeseinää
+  PALKEILLA, GT Beam 93–96 %, karsiutuvat nyt) ja katvepintahausta.
+  **Reititystä ei siis pidä kääntää** — contour menettää kolmanneksen
+  kattavuudesta eikä sen tarkkuusetu ole enää kuin 2,7 pros.yks.
+  **AULA ON MITATTU (15.8.), ja siellä kauppa oli vielä huono.** Tiedosto on
   julkinen näyte (ks. testidatataulu), joten trigger ei ole enää sokea kohta.
   `data/_lobby_ab.py` + `data/_lobby_cov.py`, sama pilvi molemmille, ei GT:tä:
   | reititys | seiniä | seinäpituus | tuki med | lunastettu | tuki < 0.25 |
@@ -632,8 +634,10 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   | contour (auto pois) | 13 | 50.0 m | **0.60** | 0.564 | 2 kpl / 5.4 m |
   Histogrammi ostaa **+6.7 pros.yks. lunastettuja pisteitä 70.9 lisämetrillä**
   seinää — marginaalinen vaihtokurssi 0.09 pp/m, kun contourin oma on 1.13
-  pp/m eli **12× parempi**. Sama kauppa kuin Rohbaussa (kattavuus ylös,
-  tarkkuus alas), nyt ilman GT:tä ja itsenäisesti.
+  pp/m eli **12× parempi**. HUOM: aulaa ei ole mitattu uudelleen 15.8. jälkeen,
+  eli nämä luvut ovat ENNEN jatkuvuuskarsintaa ja katvepintahakua, jotka
+  käänsivät Rohbaun kaupan hyväksi. Aja `data/_lobby_cov.py` uudelleen ennen
+  kuin nojaat näihin.
   **Mutta EI yksipuolisesti:** histogrammi löytää aulan pitkät HYVIN tuetut
   perimetriseinät jotka contour menettää (19.6 m / tuki 0.64, 15.7 m / 0.51,
   9.8 m / 0.79, 9.3 m / 0.92; contourin pisin on 9.4 m). Oikea korjaus ei siis
