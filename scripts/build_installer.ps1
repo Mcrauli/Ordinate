@@ -75,3 +75,11 @@ $hash = Get-FileHash -Algorithm SHA256 -Path $installer
 Write-Host "Built  : $installer"
 Write-Host "SHA256 : $($hash.Hash)"
 Set-Content -Path "$installer.sha256" -Value "$($hash.Hash)  $(Split-Path -Leaf $installer)"
+
+# VERSIOIMATON KOPIO: nettisivun latausnappi osoittaa kiinteaan nimeen
+# releases/latest/download/scan2bim-Setup.exe. Se puuttui v0.9.17:sta ja
+# v0.9.18:sta -> sivun lataus oli 404. Julkaise TAMA jokaisessa releasessa.
+$plain = Join-Path $dist "scan2bim-Setup.exe"
+Copy-Item -Path $installer -Destination $plain -Force
+Set-Content -Path "$plain.sha256" -Value "$($hash.Hash)  scan2bim-Setup.exe"
+Write-Host "Built  : $plain (nettisivun linkki)"
