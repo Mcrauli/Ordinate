@@ -863,7 +863,16 @@ Kirjaa tähän jokainen uusi setti + sen LÄHDE, muuten kukaan ei tiedä mistä 
 - Commit-trailer AI-commiteissa: `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`.
 - **Versiopumppi** koskettaa: `src/scan2bim/_version.py`, `build/version_info.py`
   (4 kenttää). `v*.*.*`-release julkaistaan **`Mcrauli/scan2bim-web`**-repoon
-  (raaka exe + sha256 + Setup.exe) → itsepäivitys hakee sen.
+  → itsepäivitys hakee sen. **Kuusi assettia, ei viittä:**
+  `scan2bim-<v>.zip` + `.sha256` (itsepäivityksen payload),
+  `scan2bim-Setup-<v>.exe` + `.sha256` (uusasennus) ja
+  **`scan2bim-Setup.exe` + `.sha256` (VERSIOIMATON)** — nettisivun
+  `index.html` osoittaa kiinteään nimeen `releases/latest/download/scan2bim-Setup.exe`,
+  ja kun se puuttui v0.9.17:stä ja v0.9.18:sta, sivun latausnappi oli 404
+  kymmenen päivää. `scripts/build_installer.ps1` tekee kopion automaattisesti;
+  tarkista julkaisun jälkeen `curl -sL -r 0-100 -o /dev/null -w "%{http_code}"`.
+  Julkaisuketju: `$env:ISCC = "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe"`
+  → `scripts\build_installer.ps1` → `gh release create`.
 - **Koodi: ei kommentteja ellei pyydetä; ei ennenaikaisia abstraktioita.**
 - **Tarkkuusväitteet aina mitattuna** (QA-skripti + vision), ei arviona.
 
