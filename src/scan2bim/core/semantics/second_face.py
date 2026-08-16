@@ -40,6 +40,11 @@ _MIN_H_FRAC = 0.20         # seinä ulottuu vähintään tämän osuuden kerroks
 _SLAB_MARGIN = 300.0       # mm — lattia ja katto pois reunamittauksesta
 _CONT_REL = 0.10           # sarake on "elossa" tällä osuudella keskiarvosta
 _COHERENT = 0.15           # reunojen IQR saa olla tämä osuus korkeudesta
+_DECK_SLAB = 150.0         # mm — kaista alareunan ympärillä
+_DECK_REACH = 1200.0       # mm — kuinka kauas sivulle vaakatasoa seurataan
+_DECK_SKIP = 100.0         # mm — pinta itse ei ole vaakataso
+_DECK_BIN = 100.0
+_DECK_BOTH = 0.50          # molemminpuolinen peitto tästä ylös = laatan reuna
 
 
 def _profile(w: Wall, pts: np.ndarray):
@@ -58,7 +63,10 @@ def _profile(w: Wall, pts: np.ndarray):
     n = np.array([-u[1], u[0]])
     rel = pts[:, :2] - a
     t, perp, z = rel @ u, rel @ n, pts[:, 2]
-    clear = ((t > 0.0) & (t < L) & (np.abs(perp) < _SEEK)
+    # Ikkuna on _DECK_REACH leveämpi kuin huippuhaku: laatan reunan testi
+    # katsoo pinnan MOLEMMIN puolin, ja 1.5 m päässä oleva ehdokas jäisi
+    # muuten ilman dataa toisella puolella (mitattu: käytettävää 15 mm).
+    clear = ((t > 0.0) & (t < L) & (np.abs(perp) < _SEEK + _DECK_REACH)
              & (z > w.z_min + _SLAB_MARGIN)
              & (z < w.z_min + w.height - _SLAB_MARGIN))
     if clear.sum() < _MIN_JUDGE:
@@ -88,6 +96,33 @@ def _gap_has_shelves(w: Wall, perp: np.ndarray, z: np.ndarray, p: float) -> bool
         return False
     levels = 1 + int((np.diff(edges[peaks]) > _SHELF_SEP).sum())
     return levels >= _SHELF_LEVELS
+
+
+def _is_deck_edge(perp: np.ndarray, z: np.ndarray, p: float, z0: float) -> bool:
+    """Onko "seinä" laatan reuna tai palkin kylki?
+
+    Betonirungossa pystypinta on yhtä usein välipohjan reuna kuin seinä, ja
+    laatan reuna on parempi seinä kuin aito seinä: tuki 0.80–0.82, jatkuvuus
+    0.89–0.97 (aidoilla kipsiseinillä 0.40–0.82). Erottava todiste on
+    ALAREUNASSA: laatan reunan alla vaakataso jatkuu pinnan MOLEMMIN PUOLIN,
+    seinä katkaisee sen. Mitattu neljällä Rohbau-scenellä, 7 ehdokasta:
+    molemminpuolinen peitto 0.92 kummallakin palkkilinjalla, **0.00 kaikilla
+    viidellä aidolla seinällä** (GT Wall/Drywall).
+    """
+    base = np.abs(z - z0) < _DECK_SLAB
+    if base.sum() < _MIN_JUDGE:
+        return False
+    nbins = max(1, int(_DECK_REACH / _DECK_BIN))
+    worst = 1.0
+    for sgn in (-1.0, 1.0):
+        d = sgn * (perp[base] - p)
+        sel = (d > _DECK_SKIP) & (d < _DECK_REACH)
+        if sel.sum() < _MIN_JUDGE:
+            return False
+        bi = np.clip((d[sel] / _DECK_BIN).astype(np.int64), 0, nbins - 1)
+        cnt = np.bincount(bi, minlength=nbins)
+        worst = min(worst, float((cnt >= max(1.0, _CONT_REL * cnt.mean())).mean()))
+    return worst >= _DECK_BOTH
 
 
 def _face_edges(t: np.ndarray, zf: np.ndarray, L: float, ncol: int,
@@ -173,6 +208,8 @@ def find_hidden_walls(walls: list[Wall], cloud) -> list[Wall]:
                 continue
             ci = np.clip((t[waist] / L * ncol).astype(np.int64), 0, ncol - 1)
             if _column_continuity(np.bincount(ci, minlength=ncol)) < _MIN_CONT:
+                continue
+            if _is_deck_edge(perp, z, p, z0):
                 continue
 
             # Näkyvä pinta on se joka on emäseinään päin — runko jää sen taakse.

@@ -131,6 +131,7 @@ Tarkkuus mitataan erillisillä QA-skripteillä — **aja tuotantomallia (`model.
 | `data/_density_probe.py` | **Kestääkö mittari harvan skannin**: harventaa saman pilven 1/1…1/5000 ja ajaa tuen, jatkuvuuden ja karsinnan uudelleen. Erottaa oikeat poistot (GT-haamut) vääristä |
 | `data/_gap_probe.py` | **Mikä jää mallintamatta**: ryhmittelee lunastamattomat GT-seinäpisteet paloiksi ja tulostaa ne kokojärjestyksessä — kertoo onko vaje kokonaan puuttuvia seiniä, päitä vai sirontaa |
 | `data/_gap_view.py` | Sama kuvana: lunastettu (harmaa) vs puuttuva (punainen) GT-seinäpiste mallin akselien päällä |
+| `data/_rohbau_all.py` | **Yleistyvyys**: ajaa kaikki Rohbau-scenet erikseen ja tulostaa kattavuuden, tarkkuuden ja ongelmaseinät rinnakkain — kynnykset on viritetty vain sceneen 07000 |
 | `data/_second_face_probe.py` | **Keksiikö katvepintahaku seiniä**: ajaa aineistot joilla ei ole GT:tä ja tulostaa löydetyt katveseinät tuki/jatkuvuus-lukuineen |
 | `data/_shelf_gt_probe.py` | Mitä `remove_shelf_front_walls` oikeasti poistaa — poistettujen GT-luokkajakauma Rohbaussa |
 | `data/_cont_rule_probe.py` | Vertaa jatkuvuussääntöjä (kiinteä 5 / ≥1 / suhteellinen) eri tiheyksillä ja tulostaa erottelun aito−palkki — tällä valittiin suhteellinen sääntö |
@@ -221,6 +222,19 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   jälkeen**: hyllynetupinta-poisto, dedup ja napsautus pitävät rinnakkaista
   seinäparia virheenä, ja ensimmäisessä yrityksessä ne söivät molemmat
   (30 m emäseinät katosivat kokonaan).
+- **Yksi kohde ei kerro yleistyykö putki — aja `data/_rohbau_all.py`.** Kaikki
+  kynnykset on viritetty `scene_07000`:sta. Kun neljä muuta sceneä ajettiin
+  ensimmäistä kertaa (16.8.), kattavuus piti (0.807–0.887) mutta katvepintahaku
+  teki kahdessa valeseinän VÄLIPOHJAN REUNASTA. **Uusi sääntö ei ole valmis
+  ennen kuin se on nähnyt muutakin kuin viritysaineiston.**
+- **Betonirungossa laatan reuna on "parempi seinä" kuin seinä.** Tuki 0.80–0.82
+  ja jatkuvuus 0.89–0.97, kun aidoilla kipsiseinillä 0.40–0.82 → laatukynnyksen
+  nosto poistaa aidot ja säästää väärät. Erottava todiste on ALAREUNASSA:
+  laatan reunan alla vaakataso jatkuu pinnan MOLEMMIN puolin, seinä katkaisee
+  sen. Mitattu 7 ehdokkaasta: 0.92 molemmilla palkkilinjoilla, 0.00 kaikilla
+  viidellä aidolla. **Varmista että testillä on dataa** — ensimmäinen versio ei
+  purrut, koska ±1.5 m hakuikkuna loppui juuri ennen: 1.5 m päässä olevalle
+  ehdokkaalle jäi 15 mm käytettävää sivuulottumaa.
 - **Hyllyn etupinta ja kipsiseinä ovat geometrisesti sama asia — erottava
   todiste on VÄLISSÄ, ei pinnassa.** Molemmat: lattiasta kattoon ulottuva
   yhtenäinen pystypinta 0,5–1 m emäseinästä. Tuki, jatkuvuus ja välin

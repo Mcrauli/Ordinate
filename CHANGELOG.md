@@ -5,6 +5,23 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 sovellus päivittää itsensä sieltä.
 
 ## Julkaisematon
+- **Välipohjan reuna ei ole enää seinä: tarkkuus 0.858 → 0.964 (scene_07002)
+  ja 0.856 → 0.927 (scene_07003), kattavuus ennallaan.** Uusi `data/_rohbau_all.py`
+  ajaa KAIKKI viisi Rohbau-sceneä — kynnykset on viritetty vain sceneen 07000,
+  eikä yksi kohde kerro yleistyykö putki. Neljä ennen mittaamatonta sceneä
+  paljastivat, että katvepintahaku teki kahdessa niistä valeseinän välipohjan
+  reunasta (GT Beam 93 % ja 89 %). Ne olivat mittareilla **parempia kuin aidot
+  seinät** (tuki 0.80–0.82 / jatkuvuus 0.89–0.97 vs aitojen 0.40–0.82), joten
+  minkään kynnyksen nosto olisi poistanut väärät seinät.
+  Erottava todiste on ALAREUNASSA: laatan reunan alla vaakataso jatkuu pinnan
+  MOLEMMIN puolin, seinä katkaisee sen. Mitattu 7 ehdokkaasta neljällä
+  scenellä: molemminpuolinen peitto **0.92** kummallakin palkkilinjalla,
+  **0.00 kaikilla viidellä aidolla seinällä**. Ensimmäinen yritys ei purrut,
+  koska hakuikkuna (±1,5 m emäseinän akselista) loppui juuri ennen testiä —
+  1,5 m päässä olevalle ehdokkaalle jäi 15 mm käytettävää — joten ikkuna on
+  nyt `_DECK_REACH` leveämpi kuin huippuhaku.
+  Yleistyvyys viidellä scenellä: kattavuus 0.807–0.887, tarkkuus 0.924–0.979
+  (paitsi 07003 0.927 ja 07001 0.940).
 - **Toisen seinän takana ollut seinä löytyy nyt: Rohbaun kattavuus 0.792 →
   0.887, tarkkuus 0.918 → 0.924, 0 ongelmaseinää.** `cv2.findContours`
   jäljittää vapaan tilan reunan, eli se näkee vain ENSIMMÄISEN pinnan. Puolen

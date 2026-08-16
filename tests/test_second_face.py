@@ -142,6 +142,35 @@ def test_a_duct_line_floating_in_a_tall_hall_is_not_a_wall():
     assert find_hidden_walls([w], cloud) == []
 
 
+def _deck(z, y_from, y_to, x_to=30000.0, step=60.0):
+    x = np.arange(0.0, x_to, step)
+    y = np.arange(y_from, y_to, step)
+    xx, yy = np.meshgrid(x, y)
+    return np.column_stack([xx.ravel(), yy.ravel(), np.full(xx.size, z)])
+
+
+def test_a_slab_edge_is_not_a_wall():
+    """Valipohjan reuna: pystypinta jonka ALLA vaakataso jatkuu molemmin puolin."""
+    w = _wall("w0", 0, 0, 30000, 0)
+    w.height = 10000.0
+    face = _surface(600.0, z_lo=3000.0, z_hi=9900.0)
+    slab = _deck(3000.0, -600.0, 1800.0)
+    cloud = _cloud(_surface(-_T / 2, z_hi=9900.0), _surface(_T / 2, z_hi=9900.0),
+                   face, slab)
+    assert find_hidden_walls([w], cloud) == []
+
+
+def test_a_wall_standing_on_a_floor_is_still_found():
+    """Seina katkaisee lattian: vaakataso jatkuu vain toisella puolella."""
+    w = _wall("w0", 0, 0, 30000, 0)
+    w.height = 10000.0
+    face = _surface(600.0, z_lo=3000.0, z_hi=9900.0)
+    slab = _deck(3000.0, -600.0, 550.0)
+    cloud = _cloud(_surface(-_T / 2, z_hi=9900.0), _surface(_T / 2, z_hi=9900.0),
+                   face, slab)
+    assert len(find_hidden_walls([w], cloud)) == 1
+
+
 def test_sparse_scan_still_finds_the_hidden_wall():
     """Massavaatimus on suhteessa emaseinan omaan pintaan, ei pistemaaraan."""
     w = _wall("w0", 0, 0, 30000, 0)
