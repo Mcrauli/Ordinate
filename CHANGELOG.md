@@ -5,6 +5,13 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 sovellus päivittää itsensä sieltä.
 
 ## Julkaisematon
+
+## v0.9.19 (16.8.2026) — kattavuus 0.79 → 0.89, katvepintaan jäänyt seinä löytyy
+
+Kaikki luvut mitattu Rohbau3D:n per-piste-GT:tä vastaan. Yleistyvyys viidellä
+scenellä (vain 07000 on viritysaineisto): kattavuus 0.807–0.887, tarkkuus
+0.924–0.979.
+
 - **Välipohjan reuna ei ole enää seinä: tarkkuus 0.858 → 0.964 (scene_07002)
   ja 0.856 → 0.927 (scene_07003), kattavuus ennallaan.** Uusi `data/_rohbau_all.py`
   ajaa KAIKKI viisi Rohbau-sceneä — kynnykset on viritetty vain sceneen 07000,
