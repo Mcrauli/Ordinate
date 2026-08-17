@@ -6,6 +6,24 @@ sovellus päivittää itsensä sieltä.
 
 ## Julkaisematon
 
+- **Evidenssin yli venytetty seinänpää leikataan takaisin pintaan.**
+  `snap_corners` ja `close_open_corners` venyttävät akselin päitä pelkällä
+  geometrisella rajalla (1300 mm / 2300 mm) eivätkä kysy onko venytetyllä
+  osalla yhtään pistettä. Asuntoskannauksessa se näkyi näin
+  (`data/_extent_qa.py`): wall_013 kate 0.78, 800 mm häntä ilmassa; wall_005
+  kate 0.63, hännät 600 + 800 mm. Uusi `semantics/overstretch.py` leikkaa pään
+  VAIN jos se on samaan aikaan kattamaton yli 700 mm:n matkalta JA yhä
+  irrallaan (>60 mm kaikista muista seinistä). Ehto 2 tekee siitä turvallisen:
+  venytys nurkkaan on laillinen mallinnusvara, mutta asunnossa nämä päät
+  roikkuivat 542 mm ja 495 mm irti eli venytys ei ostanut mitään. Nurkkaan
+  osuvaan päähän ei kosketa, joten suljettu nurkka ei voi avautua.
+  Kattamaton KESKIOSA on oviaukko eikä sitä katsota.
+  Asunto: wall_013 kate 0.78 → 1.00, pituus 3663 → 2863 mm.
+  **Kontrolli viidellä Rohbau-scenellä: 6.2 m seinää leikattu, kattavuus ja
+  tarkkuus muuttumattomat kolmen desimaalin tarkkuudella** (0.807–0.887 /
+  0.924–0.979). GT-pisteistä poistui bandista 65 kpl ~594 000:sta, eli
+  leikkaus poisti vain sitä mitä siellä ei ollut.
+
 ## v0.9.19 (16.8.2026) — kattavuus 0.79 → 0.89, katvepintaan jäänyt seinä löytyy
 
 Kaikki luvut mitattu Rohbau3D:n per-piste-GT:tä vastaan. Yleistyvyys viidellä

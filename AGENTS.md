@@ -227,6 +227,19 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   ensimmäistä kertaa (16.8.), kattavuus piti (0.807–0.887) mutta katvepintahaku
   teki kahdessa valeseinän VÄLIPOHJAN REUNASTA. **Uusi sääntö ei ole valmis
   ennen kuin se on nähnyt muutakin kuin viritysaineiston.**
+- **Nurkkasnäppäys venyttää seinää evidenssin yli — ja venytys joka EI osu
+  mihinkään on pelkkä virhe.** `_MAX_EXTEND` (1300 mm) ja `_CLOSE_MAX_EXT`
+  (2300 mm) ovat puhtaasti geometrisia rajoja; kumpikaan ei kysy onko
+  venytetyllä osalla pisteitä. Asunnossa se tuotti 3.8 m seinään 1.4 m ilmaa.
+  **Erottava todiste ei ole hännän pituus vaan se osuuko pää mihinkään:**
+  venytys nurkkaan on laillinen mallinnusvara, roikkuva häntä ei — ja asunnon
+  venytetyt päät olivat yhä 542 mm ja 495 mm irti. `semantics/overstretch.py`
+  leikkaa vain kattamattoman JA irrallisen pään, joten suljettu nurkka ei voi
+  avautua. Kontrolli: 6.2 m leikattu viidessä Rohbau-scenessä, kattavuus ja
+  tarkkuus muuttumattomat — GT-pisteistä poistui 65 kpl 594 000:sta.
+  **Älä leikkaa nurkkaan osuvaa päätä pelkän katteen perusteella:** asunnon
+  wall_005:n 800 mm häntä päättyy aitoon nurkkaan (vastinseinä on katettu
+  liitoskohdassa), ja sen trimmaus avaisi huonepolygonin.
 - **Betonirungossa laatan reuna on "parempi seinä" kuin seinä.** Tuki 0.80–0.82
   ja jatkuvuus 0.89–0.97, kun aidoilla kipsiseinillä 0.40–0.82 → laatukynnyksen
   nosto poistaa aidot ja säästää väärät. Erottava todiste on ALAREUNASSA:
