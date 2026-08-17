@@ -99,6 +99,32 @@ def test_tail_that_closes_a_corner_is_kept():
     assert m.walls[0].axis[1][0] == 4000.0
 
 
+def test_invented_corner_is_trimmed_on_both_walls():
+    """Kaksi kattamatonta hantaa kohtaavat toisensa -> nurkka lepaa tyhjan paalla.
+
+    Kumpikaan pea ei ole irrallaan, joten pelkka irrallisuusehto ei nae tata.
+    Erottava todiste: vastinseina on liitoskohdassa itsekin kattamaton.
+    """
+    m = _model([_wall("w0", 0, 0, 4000, 0), _wall("w1", 4000, 0, 4000, 4000)])
+    # w0:n pinta loppuu 1000 mm ennen nurkkaa, w1:n alkaa 1000 mm nurkan jalkeen
+    cloud = _cloud(_both_faces(0.0, 3000.0),
+                   _face_y(1000.0, 4000.0, 4000.0 - _T / 2.0),
+                   _face_y(1000.0, 4000.0, 4000.0 + _T / 2.0))
+    got = dict(trim_overstretched_walls(m, cloud))
+    assert set(got) == {"w0", "w1"}, got
+    assert abs(m.walls[0].axis[1][0] - 3000.0) <= _BIN_TOL, m.walls[0].axis
+    assert abs(m.walls[1].axis[0][1] - 1000.0) <= _BIN_TOL, m.walls[1].axis
+
+
+def test_one_covered_partner_is_enough_to_earn_the_corner():
+    """Vastinseinalla on pintaa liitoskohdassa -> nurkka on aito, hanta jaa."""
+    m = _model([_wall("w0", 0, 0, 4000, 0), _wall("w1", 4000, 0, 4000, 4000)])
+    cloud = _cloud(_both_faces(0.0, 3000.0),
+                   _face_y(0.0, 4000.0, 4000.0 - _T / 2.0),
+                   _face_y(0.0, 4000.0, 4000.0 + _T / 2.0))
+    assert trim_overstretched_walls(m, cloud) == []
+
+
 def test_short_tail_is_modelling_slack_not_an_error():
     """400 mm kattamaton hanta jaa: alle _MIN_TAIL."""
     m = _model([_wall("w0", 0, 0, 4000, 0)])

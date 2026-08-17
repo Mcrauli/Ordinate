@@ -235,11 +235,20 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   venytys nurkkaan on laillinen mallinnusvara, roikkuva häntä ei — ja asunnon
   venytetyt päät olivat yhä 542 mm ja 495 mm irti. `semantics/overstretch.py`
   leikkaa vain kattamattoman JA irrallisen pään, joten suljettu nurkka ei voi
-  avautua. Kontrolli: 6.2 m leikattu viidessä Rohbau-scenessä, kattavuus ja
-  tarkkuus muuttumattomat — GT-pisteistä poistui 65 kpl 594 000:sta.
-  **Älä leikkaa nurkkaan osuvaa päätä pelkän katteen perusteella:** asunnon
-  wall_005:n 800 mm häntä päättyy aitoon nurkkaan (vastinseinä on katettu
-  liitoskohdassa), ja sen trimmaus avaisi huonepolygonin.
+  avautua.
+- **"Pää osuu seinään" ei vielä tarkoita että nurkka on olemassa.** Kaksi
+  kattamatonta häntää voi kohdata TOISENSA: kumpikaan pää ei ole irrallaan,
+  mutta nurkka lepää tyhjän päällä (asunnossa wall_002 ↔ wall_010). Oikea
+  kysymys on **onko vastinseinällä pintaa juuri liitoskohdassa** — ei se onko
+  siellä seinäOBJEKTI. Tämä löysi scene_07000:sta katvepintaseinän joka oli
+  14.4 m liian pitkä ja jonka kaistasta poistui 392 GT-pistettä 201 037:stä.
+  Kontrolli: 21 m leikattu viidessä scenessä, kattavuus/tarkkuus ennallaan
+  (suurin muutos 5 desimaalilla 0.87755 → 0.87746). Aito nurkka jää: asunnon
+  wall_005:n 800 mm häntä päättyy `wall_ext_002`:een joka ON katettu
+  liitoskohdassa.
+- **Lue kate KAIKILTA seiniltä ennen kuin leikkaat yhtäkään.** Jos vastinseinän
+  katteen lukee jo leikatusta akselista, ensimmäinen leikkaus muuttaa
+  seuraavan tuomion ja tulos riippuu seinien järjestyksestä.
 - **Betonirungossa laatan reuna on "parempi seinä" kuin seinä.** Tuki 0.80–0.82
   ja jatkuvuus 0.89–0.97, kun aidoilla kipsiseinillä 0.40–0.82 → laatukynnyksen
   nosto poistaa aidot ja säästää väärät. Erottava todiste on ALAREUNASSA:

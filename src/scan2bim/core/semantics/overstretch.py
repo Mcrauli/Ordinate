@@ -7,19 +7,24 @@ joten seinä piirretään evidenssin yli. Mitattu asuntoskannauksella
 (`data/_extent_qa.py`): wall_005 kate 0.63 (hännät 600 + 800 mm), wall_013 0.78
 (800 mm), wall_010 0.70 (600 mm) — 3.8 m seinästä 1.4 m oli ilmassa.
 
-Leikataan VAIN pää joka on samaan aikaan
-  1) kattamaton yli `_MIN_TAIL` mm:n matkalta, JA
-  2) irrallaan (>`_OPEN_TOL` mm kaikista muista seinistä).
+Leikataan pää joka on kattamaton yli `_MIN_TAIL` mm:n matkalta JA jonka venytys
+ei ole ansainnut paikkaansa. Jälkimmäinen on tosi kahdessa tapauksessa:
 
-Ehto 2 on se mikä tekee tästä turvallisen. Venytys on laillinen mallinnusvara
-silloin kun se SULKEE nurkan; jos pää yhä roikkuu ilmassa, venytys ei ostanut
-mitään ja häntä on pelkkä virhe. Asunnossa juuri näin oli: wall_005:n ja
-wall_013:n venytetyt päät olivat yhä 542 mm ja 495 mm irti lähimmästä seinästä.
-Nurkkaan osuvaan päähän ei kosketa, joten tämä ei voi avata suljettua nurkkaa
-eikä rikkoa huonepolygoneja.
+  a) pää on irrallaan (>`_OPEN_TOL` mm kaikista muista seinistä) — venytys ei
+     osunut mihinkään, joten se ei ostanut mitään. Asunnossa wall_005:n ja
+     wall_013:n venytetyt päät roikkuivat yhä 542 mm ja 495 mm irti.
+  b) pää osuu seinään, mutta SE seinä on liitoskohdassa itsekin kattamaton —
+     nurkka lepää tyhjän päällä eli se on keksitty. Asunnossa wall_002 ja
+     wall_010 kohtasivat juuri näin (hännät 400 ja 600 mm, kumpikaan pää ei
+     katettu).
+
+Nurkkaan jossa vastinseinällä ON pintaa ei kosketa: silloin venytys sulkee
+aidon nurkan ja on laillinen mallinnusvara. Asunnon wall_005:n 800 mm häntä on
+juuri tällainen (`wall_ext_002` on katettu liitoskohdassa) eikä se leikkaudu.
 
 Kattamaton KESKIOSA on laillinen (oviaukko/ikkuna) eikä sitä katsota lainkaan —
 vain päät.
+
 """
 from __future__ import annotations
 
@@ -84,11 +89,32 @@ def trim_overstretched_walls(model, cloud) -> list[tuple[str, float]]:
     if len(xy) == 0:
         return []
 
-    ends = [(np.asarray(w.axis[0], float), np.asarray(w.axis[1], float)) for w in model.walls]
+    # Kate luetaan KAIKILTA seiniltä kertaalleen alkuperäisestä geometriasta:
+    # nurkan pätevyys on kysymys vastinseinän katteesta, ja jos sitä luettaisiin
+    # jo leikatusta akselista, ensimmäinen leikkaus muuttaisi seuraavan tuomion.
+    prof = [_coverage(w, xy) for w in model.walls]
+    n_w = len(model.walls)
     trimmed: list[tuple[str, float]] = []
 
+    def junction_is_earned(i: int, p: np.ndarray) -> bool:
+        """Osuuko pää seinään jolla on pintaa juuri liitoskohdassa."""
+        earned = False
+        for j in range(n_w):
+            if j == i:
+                continue
+            cov_j, L_j, a_j, b_j = prof[j]
+            if L_j < 1.0 or _pt_seg_dist(p, a_j, b_j) > _OPEN_TOL:
+                continue
+            if not len(cov_j):
+                continue
+            u_j = (b_j - a_j) / L_j
+            k = int(np.clip(float((p - a_j) @ u_j) / _BIN, 0, len(cov_j) - 1))
+            if cov_j[max(0, k - 1):k + 2].any():
+                earned = True
+        return earned
+
     for i, w in enumerate(model.walls):
-        cov, L, a, b = _coverage(w, xy)
+        cov, L, a, b = prof[i]
         if not cov.any() or L < _MIN_KEEP:
             continue
         nb = len(cov)
@@ -98,15 +124,8 @@ def trim_overstretched_walls(model, cloud) -> list[tuple[str, float]]:
         cut_b = (nb - 1 - last) * _BIN
         u = (b - a) / L
 
-        def is_open(p: np.ndarray) -> bool:
-            return min(
-                (_pt_seg_dist(p, ends[j][0], ends[j][1])
-                 for j in range(len(model.walls)) if j != i),
-                default=1e9,
-            ) > _OPEN_TOL
-
-        take_a = cut_a > _MIN_TAIL and is_open(a)
-        take_b = cut_b > _MIN_TAIL and is_open(b)
+        take_a = cut_a > _MIN_TAIL and not junction_is_earned(i, a)
+        take_b = cut_b > _MIN_TAIL and not junction_is_earned(i, b)
         if not (take_a or take_b):
             continue
         da = cut_a if take_a else 0.0
