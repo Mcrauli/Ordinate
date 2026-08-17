@@ -227,6 +227,28 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   ensimmäistä kertaa (16.8.), kattavuus piti (0.807–0.887) mutta katvepintahaku
   teki kahdessa valeseinän VÄLIPOHJAN REUNASTA. **Uusi sääntö ei ole valmis
   ennen kuin se on nähnyt muutakin kuin viritysaineiston.**
+- **Nurkkasnäppäys venyttää seinää evidenssin yli — ja venytys joka EI osu
+  mihinkään on pelkkä virhe.** `_MAX_EXTEND` (1300 mm) ja `_CLOSE_MAX_EXT`
+  (2300 mm) ovat puhtaasti geometrisia rajoja; kumpikaan ei kysy onko
+  venytetyllä osalla pisteitä. Asunnossa se tuotti 3.8 m seinään 1.4 m ilmaa.
+  **Erottava todiste ei ole hännän pituus vaan se osuuko pää mihinkään:**
+  venytys nurkkaan on laillinen mallinnusvara, roikkuva häntä ei — ja asunnon
+  venytetyt päät olivat yhä 542 mm ja 495 mm irti. `semantics/overstretch.py`
+  leikkaa vain kattamattoman JA irrallisen pään, joten suljettu nurkka ei voi
+  avautua.
+- **"Pää osuu seinään" ei vielä tarkoita että nurkka on olemassa.** Kaksi
+  kattamatonta häntää voi kohdata TOISENSA: kumpikaan pää ei ole irrallaan,
+  mutta nurkka lepää tyhjän päällä (asunnossa wall_002 ↔ wall_010). Oikea
+  kysymys on **onko vastinseinällä pintaa juuri liitoskohdassa** — ei se onko
+  siellä seinäOBJEKTI. Tämä löysi scene_07000:sta katvepintaseinän joka oli
+  14.4 m liian pitkä ja jonka kaistasta poistui 392 GT-pistettä 201 037:stä.
+  Kontrolli: 21 m leikattu viidessä scenessä, kattavuus/tarkkuus ennallaan
+  (suurin muutos 5 desimaalilla 0.87755 → 0.87746). Aito nurkka jää: asunnon
+  wall_005:n 800 mm häntä päättyy `wall_ext_002`:een joka ON katettu
+  liitoskohdassa.
+- **Lue kate KAIKILTA seiniltä ennen kuin leikkaat yhtäkään.** Jos vastinseinän
+  katteen lukee jo leikatusta akselista, ensimmäinen leikkaus muuttaa
+  seuraavan tuomion ja tulos riippuu seinien järjestyksestä.
 - **Betonirungossa laatan reuna on "parempi seinä" kuin seinä.** Tuki 0.80–0.82
   ja jatkuvuus 0.89–0.97, kun aidoilla kipsiseinillä 0.40–0.82 → laatukynnyksen
   nosto poistaa aidot ja säästää väärät. Erottava todiste on ALAREUNASSA:

@@ -1175,6 +1175,18 @@ class Pipeline:
                 self._progress(
                     f"  Poistettu {len(dropped)} seinää joilla ei ole yhtenäistä "
                     f"pintaa pilvessä (palkki-/pilarilinja)")
+            # snap/close_open_corners venyttävät päitä pelkällä geometrisella
+            # rajalla → seinä piirtyy evidenssin yli. Leikataan VASTA tässä:
+            # nurkkavaiheet ajavat monta kierrosta, ja vain pilvi kertoo missä
+            # pinta loppuu.
+            from scan2bim.core.semantics.overstretch import trim_overstretched_walls
+            cut = trim_overstretched_walls(model, cloud)
+            if cut:
+                measure_wall_support(model, cloud)
+                worst = max(mm for _, mm in cut)
+                self._progress(
+                    f"  Leikattu {len(cut)} seinän irrallinen häntä evidenssiin "
+                    f"(suurin {worst:.0f} mm)")
             # Kontuuri jäljittää vapaan tilan reunan → se näkee vain ENSIMMÄISEN
             # pinnan, ja puolen metrin päässä seisova kipsiseinä katoaa kokonaan.
             # VASTA tässä: aiemmat vaiheet (hyllynetupinta-poisto, dedup, snap)

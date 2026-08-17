@@ -6,6 +6,37 @@ sovellus päivittää itsensä sieltä.
 
 ## Julkaisematon
 
+## v0.9.20 (17.8.2026) — evidenssin yli venytetty seinä leikataan pintaan
+
+- **Evidenssin yli venytetty seinänpää leikataan takaisin pintaan.**
+  `snap_corners` ja `close_open_corners` venyttävät akselin päitä pelkällä
+  geometrisella rajalla (1300 mm / 2300 mm) eivätkä kysy onko venytetyllä
+  osalla yhtään pistettä. Asuntoskannauksessa se näkyi näin
+  (`data/_extent_qa.py`): wall_013 kate 0.78, 800 mm häntä ilmassa; wall_005
+  kate 0.63, hännät 600 + 800 mm. Uusi `semantics/overstretch.py` leikkaa pään
+  VAIN jos se on samaan aikaan kattamaton yli 700 mm:n matkalta JA yhä
+  irrallaan (>60 mm kaikista muista seinistä). Ehto 2 tekee siitä turvallisen:
+  venytys nurkkaan on laillinen mallinnusvara, mutta asunnossa nämä päät
+  roikkuivat 542 mm ja 495 mm irti eli venytys ei ostanut mitään. Nurkkaan
+  osuvaan päähän ei kosketa, joten suljettu nurkka ei voi avautua.
+  Kattamaton KESKIOSA on oviaukko eikä sitä katsota.
+  Asunto: wall_013 kate 0.78 → 1.00, pituus 3663 → 2863 mm.
+- **Keksitty nurkka tunnistetaan vastinseinän katteesta.** Pelkkä irrallisuus ei
+  riitä: kaksi kattamatonta häntää voi kohdata TOISENSA, jolloin kumpikaan pää ei
+  ole irrallaan mutta nurkka lepää tyhjän päällä. Mitattu asunnosta: wall_002 ja
+  wall_010 kohtaavat, eikä kumpikaan ole katettu liitoskohdassa. Sääntö on nyt
+  yksi kysymys: **onko sillä seinällä johon pää osuu pintaa juuri
+  liitoskohdassa.** Jos ei ole, venytys ei ansainnut paikkaansa. Tämä löysi
+  scene_07000:sta katvepintaseinän joka oli **14.4 m liian pitkä** (30301 →
+  15901 mm) — sen kaistasta poistui 392 GT-pistettä 201 037:stä, eli loppuosa oli
+  aidosti tyhjää.
+- **Kontrolli kaikilla viidellä Rohbau-scenellä: 21 m seinää leikattu, kattavuus
+  ja tarkkuus ennallaan** (0.807–0.887 / 0.924–0.979). Viidellä desimaalilla
+  suurin muutos oli scene_07000 kattavuus 0.87755 → 0.87746 eli 392 GT-pistettä
+  4.3 miljoonasta. Leikkaus poisti vain sitä mitä siellä ei ollut.
+- Asunnon `wall_005`:n 800 mm häntä jää tarkoituksella: sen vastinseinä
+  `wall_ext_002` ON katettu liitoskohdassa, eli nurkka on aito.
+
 ## v0.9.19 (16.8.2026) — kattavuus 0.79 → 0.89, katvepintaan jäänyt seinä löytyy
 
 Kaikki luvut mitattu Rohbau3D:n per-piste-GT:tä vastaan. Yleistyvyys viidellä
