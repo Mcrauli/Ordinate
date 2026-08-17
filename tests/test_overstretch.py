@@ -212,3 +212,27 @@ def test_diagonal_wall_is_trimmed_along_its_own_axis():
     assert len(got) == 1
     end = np.asarray(m.walls[0].axis[1])
     assert abs(float((end - a) @ u) - 3400.0) <= _BIN_TOL, end
+
+
+def test_stale_dxf_is_removed_when_the_run_does_not_write_one(tmp_path):
+    """GUI ajaa export_dxf=False -> vanha DXF ei korvaudu, joten se on poistettava."""
+    from scan2bim.core.pipeline import _drop_stale_dxf
+
+    d = tmp_path / "floor_00"
+    d.mkdir()
+    old = d / "model.dxf"
+    old.write_text("vanha piirustus", encoding="utf-8")
+    (d / "model.ifc").write_text("uusi", encoding="utf-8")
+    msgs = []
+    _drop_stale_dxf(d, msgs.append)
+    assert not old.exists()
+    assert (d / "model.ifc").exists(), "vain DXF saa poistua"
+    assert any("model.dxf" in m for m in msgs)
+
+
+def test_dropping_a_missing_dxf_is_silent(tmp_path):
+    from scan2bim.core.pipeline import _drop_stale_dxf
+
+    msgs = []
+    _drop_stale_dxf(tmp_path, msgs.append)
+    assert msgs == []

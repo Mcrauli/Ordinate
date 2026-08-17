@@ -2,7 +2,7 @@
 
 Hierarkia: IfcProject → IfcSite → IfcBuilding → IfcBuildingStorey
 Seinät:    IfcWall + IfcWallType + IfcMaterialLayerSet (muokattava arkkitehtityökaluissa)
-Laatat:    IfcSlab (lattia) / IfcCovering CEILING (katto)
+Laatat:    IfcSlab — lattia FLOOR, yläpuolinen laatta FLOOR, yläpohja ROOF
 Aukot:     IfcOpeningElement + IfcDoor/IfcWindow + tyypit
 Tilat:     IfcSpace + Qto-pinta-ala/korkeus
 
@@ -656,40 +656,42 @@ def _create_slab(ifc, slab, oh, body_ctx, caches) -> ifcopenshell.entity_instanc
     shape = ifc.createIfcProductDefinitionShape(Representations=[body_repr])
     area = abs(_polygon_area(slab.boundary)) / 1e6  # m²
 
-    if is_ceiling:
-        ent = ifc.createIfcCovering(
-            GlobalId=ifcopenshell.guid.new(), OwnerHistory=oh, Name="Katto",
-            Tag=slab.id, ObjectPlacement=placement, Representation=shape,
-            PredefinedType="CEILING",
+    # Kerroksen ylin taso on YLÄPUOLISEN LAATAN ALAPINTA, ei pintarakenne.
+    # Aiemmin se kirjoitettiin IfcCoveringina ("Kattolevy", 200 mm) — se on
+    # pintarakenneluokka, ja 200 mm kattolevyä ei ole olemassa. Mitattu
+    # asunnosta: taso −23.2 m on 48.6 m² / 12.8 M pistettä eli kantava laatta,
+    # kun aito alaslaskettu katto oli eri tasolla (−23.6 m, 16.6 m²) eikä sitä
+    # tunnisteta lainkaan. IfcCovering jää siis vapaaksi sille, mitä se oikeasti
+    # tarkoittaa, jos alakatto joskus mallinnetaan.
+    kind = getattr(slab, "slab_type", "floor")
+    is_roof = kind == "roof"
+    predefined = "ROOF" if is_roof else "FLOOR"
+    name = "Yläpohja" if is_roof else ("Yläpuolinen laatta" if is_ceiling else "Lattia")
+    ent = ifc.createIfcSlab(
+        GlobalId=ifcopenshell.guid.new(), OwnerHistory=oh, Name=name,
+        Tag=slab.id, ObjectPlacement=placement, Representation=shape,
+        PredefinedType=predefined,
+    )
+    stype = caches["slab_types"].get(kind)
+    if stype is None:
+        stype = ifc.createIfcSlabType(
+            GlobalId=ifcopenshell.guid.new(), OwnerHistory=oh, Name=f"{name}tyyppi",
+            PredefinedType=predefined,
         )
-        ctype = caches["covering_types"].get("ceiling")
-        if ctype is None:
-            ctype = ifc.createIfcCoveringType(
-                GlobalId=ifcopenshell.guid.new(), OwnerHistory=oh, Name="Kattopinta",
-                PredefinedType="CEILING",
-            )
-            caches["covering_types"]["ceiling"] = ctype
-        _register_type(caches, ctype, ent)
-        _associate(ifc, oh, ent, _material(ifc, caches, "Kattolevy"))
-        _add_pset(ifc, ent, oh, "Pset_CoveringCommon", {"IsExternal": False})
-    else:
-        ent = ifc.createIfcSlab(
-            GlobalId=ifcopenshell.guid.new(), OwnerHistory=oh, Name="Lattia",
-            Tag=slab.id, ObjectPlacement=placement, Representation=shape,
-            PredefinedType="FLOOR",
-        )
-        stype = caches["slab_types"].get("floor")
-        if stype is None:
-            stype = ifc.createIfcSlabType(
-                GlobalId=ifcopenshell.guid.new(), OwnerHistory=oh, Name="Lattialaatta",
-                PredefinedType="FLOOR",
-            )
-            caches["slab_types"]["floor"] = stype
-        _register_type(caches, stype, ent)
-        _associate(ifc, oh, ent, _material(ifc, caches, "Betoni"))
-        _add_pset(ifc, ent, oh, "Pset_SlabCommon", {
-            "IsExternal": False, "LoadBearing": True,
-        })
+        caches["slab_types"][kind] = stype
+    _register_type(caches, stype, ent)
+    _associate(ifc, oh, ent, _material(ifc, caches, "Betoni"))
+    _add_pset(ifc, ent, oh, "Pset_SlabCommon", {
+        "IsExternal": is_roof, "LoadBearing": True,
+    })
+    # Katon/yläpohjan yläpintaa ei näe sisäskannauksessa, joten paksuus on
+    # oletus eikä mittaus (`slab_detector._measure_thickness`). Se on
+    # sanottava ääneen: muuten 200 mm näyttää IFC:ssä mitatulta.
+    _add_pset(ifc, ent, oh, "scan2bim_Mittaus", {
+        "PaksuusMitattu": not is_ceiling and not is_roof,
+        "Paksuus_mm": float(slab.thickness),
+        "Korkeusasema_mm": float(slab.elevation),
+    })
     _add_qto(ifc, ent, oh, "Qto_SlabBaseQuantities", [
         ("area", "GrossArea", area),
         ("length", "Width", float(slab.thickness)),

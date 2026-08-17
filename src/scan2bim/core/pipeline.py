@@ -55,6 +55,24 @@ _AUTO_VOXEL_MIN = 8.0
 _AUTO_VOXEL_MAX = 25.0
 
 
+def _drop_stale_dxf(out_dir, progress=None) -> None:
+    """Poista edellisen ajon model.dxf jos tämä ajo ei kirjoita DXF:ää.
+
+    GUI ajaa export_dxf=False, joten DXF ei korvaudu. Ilman tätä kansioon jää
+    vanha piirustus jota mikään ei merkitse vanhaksi — mitattu asunnosta: IFC
+    oli 17.8. ja sen vieressä 22.6. DXF, eri mallista.
+    """
+    stale = out_dir / "model.dxf"
+    try:
+        if stale.is_file():
+            stale.unlink()
+            if progress:
+                progress(f"  Poistettu vanhentunut {stale.name} (tämä ajo ei tuota DXF:ää)")
+    except OSError as e:
+        if progress:
+            progress(f"  Vanhaa DXF:ää ei voitu poistaa: {e}")
+
+
 def _auto_voxel(cloud, target: int = _AUTO_TARGET_POINTS) -> float:
     """Valitse voxelikoko niin että työpilvi on ~target pistettä (yksi halpa arvio)."""
     ref = 20.0
@@ -901,6 +919,8 @@ class Pipeline:
         if self.config.export_dxf:
             self._progress("Kirjoitetaan DXF…")
             self._write_dxf(model, output_dir / "model.dxf")
+        else:
+            _drop_stale_dxf(output_dir, self._progress)
 
         self._progress("Kirjoitetaan debug-pilvi…")
         self._write_debug(model, output_dir / "debug.ply")
@@ -1125,6 +1145,8 @@ class Pipeline:
                         self._progress(f"  QA-raportti ohitettu: {e}")
             if self.config.export_dxf:
                 self._write_dxf(model, floor_dir / "model.dxf")
+            else:
+                _drop_stale_dxf(floor_dir, self._progress)
             self._write_debug(model, floor_dir / "debug.ply")
 
             self._progress(f"  {model.summary()}")
