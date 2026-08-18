@@ -33,6 +33,10 @@ _CELL = 200.0            # mm — alapintakartan solu
 _MIN_PTS = 3             # pistettä solussa jotta alapinta on mitattu
 _Z_TOL = 150.0           # mm — naapurisolu samaa laikkua jos alapinta tällä välillä
 _MAX_DEPTH = 3000.0      # mm — tätä syvemmälle laatasta roikkuva ei ole palkki
+_MAX_DEPTH_FRAC = 0.35   # …mutta korkeassa hallissa palkki on syvempi: raja on
+                         # kumpi tahansa suurempi. Rohbau site_07:n palkit ovat
+                         # 2.6 m syviä eli kiinni 3000 mm:n rajassa, joten
+                         # kiinteä luku olisi pudottanut seuraavan hallin palkit
 _MIN_DEPTH = 150.0       # mm — tätä matalampi ei erotu laatasta
 _WALL_MARGIN = 250.0     # mm — seinälinjaa lähempänä oleva alapinta on seinän, ei palkin
 _MIN_LENGTH = 1200.0     # mm
@@ -60,7 +64,8 @@ def detect_beams(cloud, walls, floor_z: float, ceiling_z: float,
     if len(pts) < _MIN_PTS or height < 1500.0:
         return []
 
-    z_free = max(floor_z + 0.5 * height, ceiling_z - _MAX_DEPTH)
+    z_free = max(floor_z + 0.5 * height,
+                 ceiling_z - max(_MAX_DEPTH, _MAX_DEPTH_FRAC * height))
     cells = _soffit_cells(pts, floor_z + 200.0, ceiling_z - 30.0,
                           z_free, ceiling_z - _MIN_DEPTH)
     if walls:

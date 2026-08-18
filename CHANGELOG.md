@@ -6,6 +6,15 @@ sovellus päivittää itsensä sieltä.
 
 ## Julkaisematon
 
+- **Palkin syvyysraja skaalautuu tilan korkeudesta.** Kiinteä 3000 mm oli
+  kiinni Rohbau site_07:n palkeissa (2.6 m), joten seuraavan hallin syvempi
+  palkisto olisi pudonnut kokonaan. Raja on nyt suurempi luvuista 3000 mm ja
+  35 % vapaasta korkeudesta. Mitatut luvut eivät muuttuneet (Rohbau 0.834 /
+  8-14 ja 0.837 / 8-15, liiketila 0.856 / 1.000).
+- **Vanhentuneet `floor_NN`-hakemistot poistetaan ajon alussa.** Kerrosjako voi
+  muuttua ajojen välillä; vanha `floor_01` jäi levylle ja meni `building.ifc`:hen
+  mukaan, jolloin malli sisälsi kerroksen jota nykyinen ajo ei tunnista.
+
 - **Kerrosjako vaatii pintaparin, ei tiheintä vaakapintaa.** 10 m hallissa
   palkiston alapinta on tiheämpi kuin oikea katto (Rohbau scene_07001: 2.9 M vs
   2.8 M pistettä), joten `_split_tall_slice` keksi kerroksen palkiston kohdalle

@@ -236,3 +236,21 @@ def test_dropping_a_missing_dxf_is_silent(tmp_path):
     msgs = []
     _drop_stale_dxf(tmp_path, msgs.append)
     assert msgs == []
+
+
+def test_stale_floor_directories_are_removed(tmp_path):
+    """Kerrosjako voi muuttua ajojen valilla: vanha floor_01 ei saa jaada
+    building.ifc:hen. Mitattu Rohbaussa: keksityn kerroksen korjaus jatti
+    floor_01:n levylle ja se oli 2 paivaa vanha."""
+    from scan2bim.core.pipeline import _drop_stale_floors
+
+    for n in ("floor_00", "floor_01", "floor_02"):
+        (tmp_path / n / "x").mkdir(parents=True)
+    (tmp_path / "muu").mkdir()
+    msgs = []
+    _drop_stale_floors(tmp_path, 1, msgs.append)
+    assert (tmp_path / "floor_00").exists()
+    assert not (tmp_path / "floor_01").exists()
+    assert not (tmp_path / "floor_02").exists()
+    assert (tmp_path / "muu").exists(), "vain floor_NN saa poistua"
+    assert len(msgs) == 2

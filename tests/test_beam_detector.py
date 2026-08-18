@@ -240,3 +240,19 @@ def test_duct_turning_a_corner_is_not_a_beam():
     beams = detect_beams(_cloud([arm_x, arm_y, ceil]), walls,
                          floor_z=0.0, ceiling_z=2700.0, has_ceiling=True)
     assert len(beams) == 0,         f"kulmakanava tulkittiin palkiksi: {[(b.profile.width, b.profile.height) for b in beams]}"
+
+
+def test_deep_beam_in_a_tall_hall_is_found():
+    """Syvyysraja skaalautuu tilan korkeudesta.
+
+    Rohbau site_07:n palkit ovat 2.6 m syvia eli kiinni kiinteassa 3000 mm
+    rajassa; seuraavan hallin syvempi palkisto olisi pudonnut kokonaan.
+    """
+    walls = [_wall("w0", 0, 0, 12000, 0), _wall("w1", 0, 9000, 12000, 9000)]
+    beam = _beam_faces(1000, 11000, 4500, w=800.0, z_soffit=8000.0, z_top=11950.0, step=60.0)
+    ceil = np.column_stack([_RNG.uniform(0, 12000, 60000), _RNG.uniform(0, 9000, 60000),
+                            12000.0 + _RNG.normal(0, 3.0, 60000)])
+    beams = detect_beams(_cloud([beam, ceil]), walls,
+                         floor_z=0.0, ceiling_z=12000.0, has_ceiling=True)
+    assert len(beams) == 1, f"syva palkki korkeassa hallissa katosi ({len(beams)} kpl)"
+    assert beams[0].profile.height > 3000, f"syvyys {beams[0].profile.height:.0f}"

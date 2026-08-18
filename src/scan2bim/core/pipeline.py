@@ -55,6 +55,26 @@ _AUTO_VOXEL_MIN = 8.0
 _AUTO_VOXEL_MAX = 25.0
 
 
+def _drop_stale_floors(out_dir: Path, keep: int, progress=None) -> None:
+    """Poista edellisen ajon ylimääräiset floor_NN-hakemistot.
+
+    Kerrosjako voi muuttua ajojen välillä (esim. keksitty kerros korjattiin
+    pois). Vanha `floor_01` jäisi levylle ja menisi `building.ifc`:hen mukaan,
+    jolloin malli sisältäisi kerroksen jota nykyinen ajo ei tunnista.
+    """
+    import shutil
+
+    for d in sorted(out_dir.glob("floor_[0-9][0-9]")):
+        try:
+            idx = int(d.name[-2:])
+        except ValueError:
+            continue
+        if idx >= keep and d.is_dir():
+            shutil.rmtree(d, ignore_errors=True)
+            if progress:
+                progress(f"  Poistettu vanhentunut {d.name}")
+
+
 def _drop_stale_dxf(out_dir, progress=None) -> None:
     """Poista edellisen ajon model.dxf jos tämä ajo ei kirjoita DXF:ää.
 
@@ -985,6 +1005,7 @@ class Pipeline:
 
         source = paths[0]
         models: list[StructuralModel] = []
+        _drop_stale_floors(output_dir, len(floors), self._progress)
 
         for floor_idx, (z_lo, z_hi) in enumerate(floors):
             self._progress(
