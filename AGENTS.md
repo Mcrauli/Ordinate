@@ -737,10 +737,24 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   - *Sijoitus putkessa ratkaisee.* Geometriaketjun SISÄLLÄ ehdokkaat
     osallistuivat suoristukseen ja nurkkien napsautukseen ja muokkasivat
     oikeita seiniä (tarkkuus 0.538, lipulla 6 alkuperäistä histogrammiseinää).
-  **SEURAAVA MITATTAVA EHDOKAS: liittyvyys.** Aito seinä päättyy toiseen
-  seinään, pilariin tai perimetriin; irrallinen levy tai muottikappale ei. Sama
-  todiste kuin `overstretch.py`:n ansaitussa nurkassa. Kytke haku takaisin vasta
-  kun `data/_wall_inst_qa.py` näyttää tarkkuuden pysyvän.
+  **LIITTYVYYS MITATTU JA KUMOUTUNUT — ja se menee VÄÄRINPÄIN.** Ajatus: aito
+  seinä päättyy toiseen seinään, pilariin tai perimetriin; irrallinen levy ei.
+  Mitattu scene_07000:n 15 ehdokkaasta (etäisyys lähimmästä päästä mihin
+  tahansa muuhun seinään):
+  | ehdokkaat | lähin pää, mediaani |
+  |---|---|
+  | GT-seiniä | **1269 mm** |
+  | muut | **200 mm** |
+  Aidot seinät ovat runkovaiheessa irrallisia tynkiä, ja "None"-krääsä on
+  nimenomaan kiinni mallinnetuissa seinissä. Liittyvyysehto poistaisi aidot ja
+  säilyttäisi roskan. **Neljäs kumoutunut erottelija** (tuki/jatkuvuus
+  karsinnan kautta, lähisuodatus, pystyulottuvuus, liittyvyys).
+  **VAROAUMA MITTARIIN:** Rohbaun luokka 0 = None on LUOKITTELEMATON, ei
+  "ei-seinä". Kuusi 15:stä ehdokkaasta on None-voittoisia, joten "8/15 aitoja"
+  on alaraja eikä välttämättä totuus. Ennen viidettä erottelijayritystä
+  kannattaa katsoa kuvasta (`data/_gap_view.py`-tyyliin) mitä ne None-pinnat
+  oikeasti ovat — muuten viritetään erottelijaa väärää totuutta vasten.
+
 
   **HUOM reititysvalinta on tehty PISTEkattavuudella.** "Liiketila → histogrammi"
   perusteltiin +0.234 pistekattavuudella vs −0.027 tarkkuudella. Tänään
