@@ -778,11 +778,21 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   ja seinänpalan erottaa rengastesti. Mitattu: Rohbau 4 → **8 pilaria mutta
   yhä 0/15 GT ja tarkkuus 0.000** (löydetyt ovat 0.9–14.6 m päässä lähimmästä
   GT-pilarista), liiketila pysyi 34. Eli se vain tuplasi valepositiiviset.
-  **Seuraava yritys ei saa olla kolmas tapa arvata poikkileikkausta.** Palkeissa
-  ratkaisu oli vaihtaa MITATTAVA SUURE (klusterin leveys → alapinnan leveys);
-  pilarille vastaava suure on todennäköisesti pystypinnan NORMAALI: kaksi
-  vastakkaista tai kohtisuoraa pystytasoa määrää poikkileikkauksen vaikka
-  kumpaakaan ei näy kokonaan.
+  **KORJAUS OMAAN PÄÄTELMÄÄN — Rohbau site_07:ssa EI OLE vapaita pilareita.**
+  Kun aspektiportti relaksoidaan pois, **13/15 GT-pilaria hylkääntyy
+  seinäetäisyyteen 9–125 mm** ja loput 2 ohueen footprintiin. Lähimmät seinät
+  ovat aitoja (GT-kaista 88–95 % Wall), ja **pilarin kohdalla seinän kaistassa
+  on 15–44 % Column-pisteitä**: pilari työntyy seinälinjasta ulos 359–508 mm.
+  Nämä ovat siis **pilastereita — seinään integroituja pilareita** — ja
+  seinämalli kulkee niiden läpi. Erillinen `IfcColumn` päällekkäistäisi
+  geometrian jonka seinä jo mallintaa, joten seinäetäisyysportti tekee tässä
+  oikein. **0/15 ei ollut koskaan saavutettavissa.**
+  Älä siis lue tästä että pilaridetektori on rikki: ainoa aineisto jossa on
+  vapaita pilareita on synteettinen liiketila, ja siellä se on **34/34**.
+  Aito puute on toisaalla: 105–150 mm seinä jonka läpi kulkee 400–500 mm
+  pilasteri mallintuu vakiopaksuisena. Se on SEINÄN paksunnos, ei pilari.
+  **Ennen kuin pilaridetektoria kosketaan, hanki aineisto jossa on vapaita
+  pilareita** — muuten sitä viritetään totuutta vasten jota ei ole.
 
 
 - **`_looks_like_retail` on tosiasiassa "ISO JA KORKEA", ei liiketila.** Ehto on

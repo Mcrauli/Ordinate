@@ -101,7 +101,10 @@ def main(coord_npy: str, model_json: str) -> None:
         if max(wx, wy) < CD._MIN_REAL_FOOTPRINT:
             return "ohut footprint", f"{wx:.0f}x{wy:.0f}"
         asp = max(wx, wy) / max(min(wx, wy), 1.0)
-        if asp > CD._MAX_ASPECT:
+        # RELAKSOITU: alle 150 mm paksu poikkileikkaus = yksi keilattu kylki,
+        # jolloin aspekti mittaa peittoa eika jasenta. Tama nayttaa mika portti
+        # on SEURAAVANA - relaksaatio itse kumoutui mittauksessa (ks. AGENTS.md).
+        if asp > CD._MAX_ASPECT and min(wx, wy) >= 150.0:
             return "aspekti", f"{asp:.1f} ({wx:.0f}x{wy:.0f})"
         cx = float(xy[:, 0].mean()); cy = float(xy[:, 1].mean())
         if m.walls:
