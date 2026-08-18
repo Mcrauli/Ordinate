@@ -136,6 +136,8 @@ Tarkkuus mitataan erillisillä QA-skripteillä — **aja tuotantomallia (`model.
 | `data/_beam_synth_qa.py` | **Palkit synteettistä GT:tä vasten**: kattavuus GT-palkin akselipituudesta ja tarkkuus mallin palkkipituudesta. Rohbaun palkit ovat 2.5–5.5 m jättiläisiä, joten tavallisen kokoluokan (300 mm) totuus on vain täällä |
 | `data/_soffit_probe.py`, `data/_soffit_sweep.py` | **Alapintalaikkujen mitat GT-luokan rinnalla**: portit valitaan mitatusta välistä. `_beam_probe.py` näyttää mihin porttiin kukin klusteri kaatuu |
 | `data/_beam_run.py` | Ajaa **pelkän palkkidetektion** valmiiseen malliin (`model.beams.json`) — porttien säätö ei vaadi putkiajoa |
+| `data/_qa_all.py` | **Kaikki mittarit yhtenä taulukkona**: aineisto × elementtityyppi × (kattavuus, tarkkuus). Ei aja putkea — näyttää mallin IÄN, jotta vanhentunut tulos ei mene uutena luvusta läpi (paljasti heti 2 vrk vanhat liiketilamallit) |
+| `data/_column_qa.py`, `data/_col_gate_gt.py`, `data/_column_run.py` | **Pilarit GT:tä vasten** ja mikä portti hylkää minkäkin GT-pilarin |
 | `data/_second_face_probe.py` | **Keksiikö katvepintahaku seiniä**: ajaa aineistot joilla ei ole GT:tä ja tulostaa löydetyt katveseinät tuki/jatkuvuus-lukuineen |
 | `data/_shelf_gt_probe.py` | Mitä `remove_shelf_front_walls` oikeasti poistaa — poistettujen GT-luokkajakauma Rohbaussa |
 | `data/_cont_rule_probe.py` | Vertaa jatkuvuussääntöjä (kiinteä 5 / ≥1 / suhteellinen) eri tiheyksillä ja tulostaa erottelun aito−palkki — tällä valittiin suhteellinen sääntö |
