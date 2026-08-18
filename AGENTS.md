@@ -709,6 +709,18 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   | aito katto ~8080 | **0.10** | **0.09** | 0.12 |
   Erottelu menee **väärinpäin**: aito katto saa pienimmän peiton, koska palkisto
   varjostaa sen alhaalta keilattaessa. Älä yritä tätä uudelleen.
+  **KUMOUTUNUT KORJAUSEHDOTUS 2 — pintapari ei myöskään erota.** Ajatus oli
+  että välipohja on alapinta + kävelytaso 150–500 mm ylempänä samassa solussa,
+  kun palkin alapinnan yläpuolella on tyhjää lakeen asti. Mitattu
+  `data/_slab_pair_probe.py`, scene_07001 (400 mm solut, ±60 mm kaista):
+  | taso | pintaa 150–500 mm YLÄPUOLELLA | pintaa ALAPUOLELLA |
+  |---|---|---|
+  | lattia −2081 | 0.15 | 0.09 |
+  | palkiston alapinta 5450 | **0.53** | 0.26 |
+  | aito katto 8080 | 0.01 | 0.49 |
+  Taas **väärinpäin**: palkiston alapinta saa suurimman arvon, koska palkin omat
+  pystykyljet ja lakipinta täyttävät ikkunan. Kaksi kumoutunutta ehdokasta —
+  seuraava yritys ei saa olla kolmas muunnelma vaakapinnan tiheydestä.
 
 
 - **`_looks_like_retail` on tosiasiassa "ISO JA KORKEA", ei liiketila.** Ehto on
