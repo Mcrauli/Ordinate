@@ -67,6 +67,18 @@ def main(mj, coord_npy, class_npy, inst_npy=None):
     print(f"{'inst':>6s} {'n':>9s} {'pituus':>7s} {'lunastettu':>10s}")
     for i, n, ext, f in rows:
         print(f"{i:6d} {n:9,} {ext:7.0f} {f:10.2f}" + ("" if f >= _HIT else "   <== EI MALLISSA"))
+    # Pituusluokittain: 0.49 on eri asia jos puuttuvat ovat 0.5 m tynkia kuin
+    # jos ne ovat 4 m seinia. Ilman tata luku ei kerro mita korjata.
+    print("")
+    print(f"{'pituusluokka':16s} {'loytyi':>7s} {'kaikki':>7s} {'osuus':>6s}")
+    for lo, hi, name in ((0, 1000, "alle 1 m"), (1000, 2000, "1-2 m"),
+                         (2000, 4000, "2-4 m"), (4000, 1e9, "yli 4 m")):
+        grp = [r for r in rows if lo <= r[2] < hi]
+        if not grp:
+            continue
+        ok = sum(1 for r in grp if r[3] >= _HIT)
+        print(f"{name:16s} {ok:7d} {len(grp):7d} {ok / len(grp):6.2f}")
+
     found = sum(1 for _, _, _, f in rows if f >= _HIT)
     pt = float((claimed & struct).sum()) / max(int(struct.sum()), 1)
     print(f"\nINSTANSSIKATTAVUUS {found}/{len(rows)} = {found / max(len(rows), 1):.3f}"
