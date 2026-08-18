@@ -67,6 +67,9 @@ def find_residual_walls(walls: list[Wall], cloud, floor_z: float,
     occupied = counts[counts > 0]
     if not len(occupied):
         return []
+    # Suhteellinen pintakynnys: mediaanisolu kertoo tämän skannin tiheyden.
+    # Absoluuttinen pistemäärä sitoisi säännön keilaimeen. Kahden pisteen
+    # pohja on vain degeneraatiosuoja, ei tiheysmittari.
     need = max(_SURF_FRAC * float(np.median(occupied)), 2.0)
     surf = (counts >= need).reshape(nx, ny)
 
@@ -96,7 +99,7 @@ def find_residual_walls(walls: list[Wall], cloud, floor_z: float,
 
         sel = lab_flat[flat] == k
         q = free[sel]
-        if len(q) < _MIN_CELLS:
+        if not len(q):
             continue
         # Pystyulottuvuus: seinä on pinta koko vyötärökaistan läpi, kalusteen
         # yläpinta on ohut viipale.
