@@ -42,11 +42,24 @@ def _model(out_dir: Path) -> Path:
     return a if a.exists() else b
 
 
+def _src_mtime() -> float:
+    """Uusimman lahdetiedoston aika: sita vanhempi malli on ajettu eri koodilla."""
+    return max((f.stat().st_mtime for f in (ROOT / "src").rglob("*.py")), default=0.0)
+
+
+_SRC = None
+
+
 def _age(p: Path) -> str:
+    global _SRC
     if not p.exists():
         return "-"
-    d = _dt.datetime.now() - _dt.datetime.fromtimestamp(p.stat().st_mtime)
-    return f"{d.days}vrk" if d.days else f"{int(d.total_seconds() // 3600)}h"
+    if _SRC is None:
+        _SRC = _src_mtime()
+    t = p.stat().st_mtime
+    d = _dt.datetime.now() - _dt.datetime.fromtimestamp(t)
+    a = f"{d.days}vrk" if d.days else f"{int(d.total_seconds() // 3600)}h"
+    return ("!" + a) if t < _SRC else a
 
 
 def rohbau(rows: list) -> None:
@@ -111,10 +124,13 @@ def main() -> None:
         rohbau(rows)
     if only in (None, "retail"):
         retail(rows)
-    print(f"{'aineisto':14s} {'ika':>5s} {'tyyppi':8s} {'kattavuus':>9s} "
+    print(f"{'aineisto':14s} {'ika':>6s} {'tyyppi':10s} {'kattavuus':>9s} "
           f"{'tarkkuus':>8s}  huomio")
     for r in rows:
-        print(f"{r[0]:14s} {r[1]:>5s} {r[2]:8s} {r[3]:>9s} {r[4]:>8s}  {r[5]}")
+        print(f"{r[0]:14s} {r[1]:>6s} {r[2]:10s} {r[3]:>9s} {r[4]:>8s}  {r[5]}")
+    print("")
+    print("! = malli on vanhempi kuin uusin src/-muutos: luvut on ajettu "
+          "eri koodilla, aja putki uudelleen ennen kuin nojaat niihin.")
 
 
 if __name__ == "__main__":
