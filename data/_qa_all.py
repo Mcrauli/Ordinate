@@ -61,12 +61,17 @@ def rohbau(rows: list) -> None:
         coord = str(site / sc / "coord.npy")
         cls = str(site / sc / "class.npy")
         w = _run("_rohbau_qa.py", str(mj), coord, cls)
+        wi = _run("_wall_inst_qa.py", str(mj), coord, cls)
         b = _run("_beam_qa.py", str(mj), coord, cls)
         c = _run("_column_qa.py", str(mj), coord, cls)
         o = _run("_opening_qa.py", str(mj), coord, cls)
         rows.append((sc, _age(mj), "seina",
                      _num(r"KATTAVUUS.*?([\d.]+)", w), _num(r"TARKKUUS.*?([\d.]+)", w),
                      f"ongelmaseinia {_num(r'ONGELMASEINIA (\d+)', w)}"))
+        rows.append(("", "", "seina-inst",
+                     _num(r"INSTANSSIKATTAVUUS \d+/\d+ = ([\d.]+)", wi), "-",
+                     _num(r"(INSTANSSIKATTAVUUS \d+/\d+)", wi) + " (yli 4 m: "
+                     + _num(r"yli 4 m\s+\d+\s+\d+\s+([\d.]+)", wi) + ")"))
         rows.append(("", "", "palkki",
                      _num(r"INSTANSSIKATTAVUUS \d+/\d+ = ([\d.]+)", b),
                      _num(r"TARKKUUS.*?([\d.]+)", b),
