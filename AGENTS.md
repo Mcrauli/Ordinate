@@ -12,6 +12,15 @@ kuvaus on [`README.md`](README.md):ssä.
 
 ## Pikastartti
 
+**Uusi, tuntematon skanni: aja `scan2bim inspect <tiedosto>` ENSIN.** Se lukee
+ne oletukset jotka putki tekee — mittakaava, lattia- ja kattotaso, kerrosjako,
+pisteväli — ja varoittaa siitä mikä oikeasti kaataa ajon: liian pieni laajuus
+(mittakaava väärin), iso z-laajuus (monikerros tai rekisteröintivirhe), liian
+harva skanni ohuille seinille. Se **ei lataa tiedostoa muistiin**: E57 luetaan
+skanni kerrallaan harventaen, joten se toimii myös sillä 32 GB:n tiedostolla
+jota ei voi ajaa. Tiheys mitataan yhtenäisestä lohkosta — harvennetusta
+näytteestä se olisi 50 % liian suuri ja varoittaisi turhaan.
+
 Vaatimukset: **Python 3.12**.
 
 ```bash
