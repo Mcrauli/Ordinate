@@ -761,6 +761,28 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   joten epäillyt ovat footprint-, aspekti- ja `_surrounded`-portit.
   Liiketilan 34/34 pilaria säilyivät muuttumattomina, joten muutos ei maksanut
   mitään — mutta älä väitä pilareita korjatuiksi.
+  **ESTÄVÄT PORTIT ON NYT ERISTETTY** (`data/_col_gate_gt.py`, scene_07000):
+  | syy | GT-pilareita | mitat |
+  |---|---|---|
+  | seinäetäisyys < 250 mm | **6/15** | 29, 30, 36, 123, 124, 125 mm |
+  | aspekti > 2.5 tai ohut footprint | **7/15** | 52×199 … 112×303 mm |
+  | muut | 2/15 | |
+  Molemmat mittaavat **keilauspeittoa, eivät jäsentä**: 600 mm pilarista näkyy
+  yksi kylki, joten poikkileikkaus mittautuu 52×199 mm siivuksi.
+  **KUMOUTUNUT KORJAUS A — poikkileikkaus säteeltä jäsenen omassa jaksossa.**
+  Ajatus: kerää pisteet `_MAX_FOOTPRINT`-säteeltä eikä pelkistä täyttösoluista.
+  Mitattu: säde nielaisee viereisen massan → footprint-portti hylkää kaiken,
+  **Rohbau 0, liiketila 34 → 0**. Selvä regressio.
+  **KUMOUTUNUT KORJAUS B — yksi kylki = neliöprofiili.** Ajatus: alle 150 mm
+  paksu siivu on yksi keilattu kylki, jolloin aspekti ei kelpaa hylkyperusteeksi
+  ja seinänpalan erottaa rengastesti. Mitattu: Rohbau 4 → **8 pilaria mutta
+  yhä 0/15 GT ja tarkkuus 0.000** (löydetyt ovat 0.9–14.6 m päässä lähimmästä
+  GT-pilarista), liiketila pysyi 34. Eli se vain tuplasi valepositiiviset.
+  **Seuraava yritys ei saa olla kolmas tapa arvata poikkileikkausta.** Palkeissa
+  ratkaisu oli vaihtaa MITATTAVA SUURE (klusterin leveys → alapinnan leveys);
+  pilarille vastaava suure on todennäköisesti pystypinnan NORMAALI: kaksi
+  vastakkaista tai kohtisuoraa pystytasoa määrää poikkileikkauksen vaikka
+  kumpaakaan ei näy kokonaan.
 
 
 - **`_looks_like_retail` on tosiasiassa "ISO JA KORKEA", ei liiketila.** Ehto on
