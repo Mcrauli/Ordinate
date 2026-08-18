@@ -31,7 +31,12 @@ _MIN_CELLS = 10
 _SURF_FRAC = 0.5         # solu on pintaa jos siinä on tämä osuus MEDIAANIsolusta.
                          # Suhteellinen, koska absoluuttinen pistemäärä sitoisi
                          # säännön skannin tiheyteen.
-_MIN_VSPAN = 0.5         # osuus kaistan korkeudesta jonka pisteiden on katettava
+_MIN_VSPAN_MM = 800.0    # mm — pystypinnan vähimmäisulottuvuus. Osuutena kaistasta
+                         # tämä oli väärin: 10 m hallissa kaista on 5.6 m ja puolikas
+                         # siitä 2.8 m, mutta kaukaisesta seinästä NÄKYY vain 1.8–2.2 m.
+                         # Kysymys on 'onko tämä pystypinta vai hyllyn taso', ja siihen
+                         # 800 mm yhtenäistä pystyä vastaa fysikaalisesti.
+_MIN_VSPAN_FRAC = 0.5    # …matalassa tilassa ei yli puolta kaistasta
 _PAIR_MIN, _PAIR_MAX = 60.0, 500.0   # mm — vastakkaisten pintojen väli = paksuus
 _PAIR_COS = 0.985                    # cos 10°
 _PAIR_OVERLAP = 0.5                  # osuus lyhyemmästä pinnasta
@@ -44,7 +49,13 @@ _NEAR_EXISTING = 600.0               # mm — tätä lähempänä samansuuntaist
                                      # pistekattavuus 0.887 → 0.689, 30.3 m seinä
                                      # katkesi 15.4 m:iin.
 _NEAR_COS = 0.966                    # cos 15°
-_WAIST_LO, _WAIST_HI = 0.25, 0.65   # kaista lattiasta osuutena huonekorkeudesta
+_WAIST_HI = 0.65         # kaistan yläraja osuutena huonekorkeudesta
+_WAIST_LO_MM = 900.0     # kaistan alaraja lattiasta MILLEINÄ: alaraja on kyse
+                         # lattiakrääsästä, ei tilan korkeudesta. Osuutena (0.25)
+                         # se nousi 10 m hallissa 2.5 m:iin ja jätti seinäpinnan
+                         # alaosan kokonaan pois — mitattu Rohbau scene_07000:
+                         # vapaita pisteitä 154 906 kun kaista alkoi 2.5 m:stä.
+_WAIST_LO_FRAC = 0.25    # …mutta matalassa tilassa ei yli neljänneskorkeuden
 _DEFAULT_THICKNESS = 200.0
 
 
@@ -58,7 +69,7 @@ def find_residual_walls(walls: list[Wall], cloud, floor_z: float,
     if len(pts) < 500 or height < 1500.0:
         return []
 
-    z_lo = floor_z + _WAIST_LO * height
+    z_lo = floor_z + min(_WAIST_LO_FRAC * height, _WAIST_LO_MM)
     z_hi = floor_z + _WAIST_HI * height
     band = pts[(pts[:, 2] > z_lo) & (pts[:, 2] < z_hi)]
     if len(band) < 500:
@@ -112,7 +123,7 @@ def find_residual_walls(walls: list[Wall], cloud, floor_z: float,
             continue
         # Pystyulottuvuus: seinä on pinta koko vyötärökaistan läpi, kalusteen
         # yläpinta on ohut viipale.
-        if float(q[:, 2].ptp()) < _MIN_VSPAN * (z_hi - z_lo):
+        if float(q[:, 2].ptp()) < min(_MIN_VSPAN_MM, _MIN_VSPAN_FRAC * (z_hi - z_lo)):
             continue
 
         # Pinnan sijainti luetaan PISTEISTÄ, ei solukeskipisteistä: 100 mm solu
