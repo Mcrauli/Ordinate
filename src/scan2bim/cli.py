@@ -17,6 +17,15 @@ def main() -> None:
 
 @main.command()
 @click.argument("input_file", type=click.Path(exists=True, path_type=Path))
+def inspect(input_file: Path) -> None:
+    """Lue skannin oletukset (mittakaava, tasot, kerrokset, tiheys) ennen ajoa."""
+    from scan2bim.core.inspect import format_report, inspect_scan
+
+    click.echo(format_report(inspect_scan(input_file)))
+
+
+@main.command()
+@click.argument("input_file", type=click.Path(exists=True, path_type=Path))
 @click.argument("output_dir", type=click.Path(path_type=Path), default=Path("output"))
 @click.option("--voxel-size", default=20.0, show_default=True, help="Voxel-koko mm")
 @click.option(

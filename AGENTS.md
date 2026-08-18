@@ -708,6 +708,40 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   globaalia piikkiä lainkaan. **Histogrammi mallintaa vain hallitsevat
   seinälinjat** — lyhyet väliseinät ovat menetelmän ulkopuolella, eivät
   kynnyksen takana.
+  **JÄÄNNÖSSEINÄHAKU: rakennettu, mitattu ja KYTKETTY POIS (18.8.2026).**
+  Puuttuvat seinät ovat pilvessä yhtenäisinä pintoina — kun mallin seinien
+  lunastamat pisteet poistetaan, jäännöksessä on 15 suoraa 1.2–5.6 m rakennetta
+  joiden GT-luokka on 92–100 % Wall (`data/_residual_walls.py`).
+  `semantics/residual_walls.py` tekee niistä ehdokkaita, ja se TOIMII siihen
+  mihin se rakennettiin: **1–2 m seinät 0/3 → 3/3**. Mutta koko mallin luvut:
+  | mittari | ilman | kanssa |
+  |---|---|---|
+  | instanssikattavuus | 24/49 | 23/49 |
+  | pistekattavuus | 0.887 | 0.830 |
+  | **tarkkuus** | **0.924** | **0.515** |
+  | ongelmaseiniä | 0 | 13 |
+  Syy on mitattu: ehdokkaista vain **8/15 on GT-seiniä**, ja
+  `prune_unsupported_walls` **suojaa alle 4 m seinät joilla on pintaa** — sama
+  suoja joka pelastaa aidot lyhyet seinät päästää nämä läpi. Ehdokkaan on siis
+  todistettava itsensä jo syntyessään, ei toivottava karsinnan hoitavan sen.
+  **Kaksi ansaa matkan varrelta, molemmat mitattuja:**
+  - *Ehdokas voi olla olemassa olevan seinän toinen pinta.* Liian ohueksi
+    mallinnetun seinän ulkopinta jää lunastamatta; deduplikointi sulautti
+    ehdokkaat oikeisiin seiniin ja LYHENSI niitä (0.887 → 0.689, 30.3 m seinä
+    katkesi 15.4 m:iin). Siksi ehdokas joka on samansuuntainen ja alle 600 mm
+    päässä olemassa olevasta seinästä pudotetaan.
+  - *Kaista ja pystyulottuvuus eivät saa olla osuuksia huonekorkeudesta.*
+    10 m hallissa kaista alkoi 2.5 m:stä (ohi seinäpinnan alaosan) ja
+    pystyehto vaati 2.8 m kun kaukaisesta seinästä näkyy 1.8–2.2 m. Ehdokkaita
+    1 → 15 kun molemmat muutettiin fysikaalisiksi (900 mm / 800 mm).
+  - *Sijoitus putkessa ratkaisee.* Geometriaketjun SISÄLLÄ ehdokkaat
+    osallistuivat suoristukseen ja nurkkien napsautukseen ja muokkasivat
+    oikeita seiniä (tarkkuus 0.538, lipulla 6 alkuperäistä histogrammiseinää).
+  **SEURAAVA MITATTAVA EHDOKAS: liittyvyys.** Aito seinä päättyy toiseen
+  seinään, pilariin tai perimetriin; irrallinen levy tai muottikappale ei. Sama
+  todiste kuin `overstretch.py`:n ansaitussa nurkassa. Kytke haku takaisin vasta
+  kun `data/_wall_inst_qa.py` näyttää tarkkuuden pysyvän.
+
   **HUOM reititysvalinta on tehty PISTEkattavuudella.** "Liiketila → histogrammi"
   perusteltiin +0.234 pistekattavuudella vs −0.027 tarkkuudella. Tänään
   opittiin että pistekattavuus on painotettu elementin koolla, joten se on juuri

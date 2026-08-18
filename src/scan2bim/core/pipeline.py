@@ -1558,30 +1558,18 @@ class Pipeline:
             self._progress(
                 f"  Hyllyn etupinta-valeseiniä poistettu: {len(self._shelf_fronts)}")
 
-        # Jäännösseinät AJETAAN VASTA GEOMETRIAKETJUN JÄLKEEN: kun ehdokkaat
-        # olivat mukana deduplikoinnissa, suoristuksessa ja nurkkien
-        # napsautuksessa, ne muokkasivat myös oikeita seiniä — mitattu
-        # scene_07000: tarkkuus 0.924 → 0.538 ja 10 ongelmaseinää.
-        # Histogrammi löytää vain hallitsevat seinälinjat (mitattu
-        # Rohbau scene_07000: 4 seinää, kaikki 27–30 m, GT-instansseista 24/49).
-        # Puuttuvat seinät ovat pilvessä yhtenäisinä pintoina, joten ne haetaan
-        # siitä mitä mikään seinä ei lunasta. Ehdokkaat menevät tästä eteenpäin
-        # samojen todistusporttien läpi kuin muutkin.
-        try:
-            from scan2bim.core.semantics.residual_walls import find_residual_walls
-            # Korkeudet seinistä: ne on tässä vaiheessa jo tarkennettu, ja
-            # kaista on sama riippumatta siitä löytyikö kattolaattaa.
-            _zf = min((w.z_min for w in model.walls), default=None)
-            _zh = max((w.height for w in model.walls), default=0.0)
-            _res = ([] if _zf is None or _zh < 1500.0
-                    else find_residual_walls(model.walls, cloud, _zf, _zf + _zh))
-            if _res:
-                _res = _recenter_wall_axes(_res, lock_cloud, band=300.0, keep_thickness=True)
-                model.walls = model.walls + _res
-                self._progress(f"  Jäännösseiniä lisätty: {len(_res)}")
-        except Exception as _e:  # noqa: BLE001
-            self._progress(f"  Jäännösseinähaku ohitettu: {_e}")
-
+        # JÄÄNNÖSSEINÄHAKU ON KYTKETTY POIS — mitattu, ei kannata vielä.
+        # `semantics/residual_walls.py` löytää ne seinät jotka detektori jättää
+        # (Rohbau scene_07000: 1–2 m seinät 0/3 → 3/3), mutta hinta on liian
+        # kova: tarkkuus 0.924 → 0.515 ja 13 ongelmaseinää. Syy on mitattu:
+        # ehdokkaista vain 8/15 on GT-seiniä, ja `prune_unsupported_walls`
+        # SUOJAA alle 4 m seinät joilla on pintaa — sama suoja joka pelastaa
+        # aidot lyhyet seinät päästää nämä läpi. Ehdokkaan on siis todistettava
+        # itsensä jo syntyessään. Seuraava mitattava ehdokas: LIITTYVYYS —
+        # aito seinä päättyy toiseen seinään, pilariin tai perimetriin, irrallinen
+        # levy/muottikappale ei. Sama todiste kuin `overstretch.py`:n nurkassa.
+        # Moduuli ja sen testit jäävät; kytke tämä takaisin vasta kun
+        # `data/_wall_inst_qa.py` näyttää tarkkuuden pysyvän.
         # Korvaa laatan rajapisteet seinien leikkauspisteistä johdetulla polygonilla
         from scan2bim.core.semantics.room_polygon import build_room_polygon, snap_walls_to_polygon
         room_poly = build_room_polygon(model.walls)
