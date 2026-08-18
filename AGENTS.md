@@ -677,6 +677,27 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
 
 ## Tunnetut rajoitukset
 
+- **KORJAUS EDELLISEEN: instanssikattavuus 0.30–0.49 EI TARKOITA että puolet
+  seinistä puuttuu.** Kun sama luku jaetaan sen mukaan onko GT-seinä MALLIN
+  JALANJÄLJEN sisällä (seinäakselien konveksi peite, `data/_wall_inst_qa.py`):
+  | scene | jalanjäljen SISÄLLÄ | ULKOPUOLELLA | yhteensä |
+  |---|---|---|---|
+  | scene_07000 | **17/17 = 1.000** | 7/32 = 0.219 | 24/49 |
+  | scene_07002 | 12/23 = 0.522 | 4/21 = 0.190 | 15/44 |
+  | scene_07003 | **7/7 = 1.000** | 1/20 = 0.050 | 8/27 |
+  Eli scene_07000 ja scene_07003 ovat **täydellisiä sillä alueella jonka malli
+  väittää mallintavansa**, ja koko vaje on siitä että RAKENNUS JATKUU mallin
+  rajauksen yli. Kuva (`data/_gap_view.py` ja jäännösehdokkaiden overlay)
+  näyttää sen suoraan: puuttuvat GT-seinät ovat perimetrin ULKOpuolella.
+  Tämä selittää kolme muuta havaintoa kerralla:
+  - "histogrammi löytää vain hallitsevat seinälinjat" — jalanjäljen sisällä
+    MUITA seiniä ei ole;
+  - "1–2 m seiniä ei löydy yhtään" — ne ovat kaikki ulkopuolella;
+  - jäännösseinähaku romahdutti tarkkuuden — se lisäsi seiniä alueelle jota ei
+    ole kunnolla keilattu.
+  **Ainoa aito seinävaje on scene_07002:n 11 instanssia jalanjäljen sisällä.**
+  Se on oikea kohde; älä optimoi kokonaislukua 0.49 vasten.
+
 - **PISTEKATTAVUUS PIILOTTAA PUUTTUVAT SEINÄT — MITTAA INSTANSSIT.**
   `data/_rohbau_qa.py` antaa seinille kattavuuden 0.81–0.89, ja se on totta:
   perimetriseinillä on valtaosa pisteistä. `data/_wall_inst_qa.py` laskee saman

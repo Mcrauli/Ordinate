@@ -24,6 +24,10 @@ _HIT = 0.30                 # osuus instanssin pisteista mallin kaistassa
 _MIN_PTS = 2000
 
 
+def _pts_of(xy, struct, ins, i):
+    return xy[struct & (ins == i)]
+
+
 def main(mj, coord_npy, class_npy, inst_npy=None):
     m = json.loads(pathlib.Path(mj).read_text(encoding="utf-8"))
     P = np.load(coord_npy).astype(np.float64)
@@ -54,7 +58,7 @@ def main(mj, coord_npy, class_npy, inst_npy=None):
         claimed |= (s > 0) & (s < L) & (np.abs(np.abs(t) - w["thickness"] / 2.0) < _BAND)
 
     ids, cnts = np.unique(ins[struct], return_counts=True)
-    rows = []
+    rows: list = []
     for i, n in zip(ids, cnts):
         if n < _MIN_PTS:
             continue
@@ -63,29 +67,51 @@ def main(mj, coord_npy, class_npy, inst_npy=None):
         ext = float(np.hypot(*(q.max(0) - q.min(0))))
         rows.append((int(i), int(n), ext, float(claimed[sel].mean())))
 
+    # Jaa mallin JALANJALJEN mukaan: ulkopuolella oleva GT-seina ei ole
+    # detektorin virhe vaan mallin rajaus. Ilman tata jakoa luku 0.49 sanoo
+    # "puolet seinista puuttuu" kun tosiasiassa jalanjaljen sisalla on 17/17.
+    from scipy.spatial import Delaunay
+
+    axis_pts = np.array([q for w in m["walls"] for q in w["axis"]], dtype=float)
+    hull = Delaunay(axis_pts) if len(axis_pts) >= 4 else None
+    rows = [(i, n, ext, f,
+             (float((hull.find_simplex(_pts_of(xy, struct, ins, i)) >= 0).mean())
+              if hull is not None else 1.0))
+            for i, n, ext, f in rows]
     rows.sort(key=lambda r: -r[1])
-    print(f"{'inst':>6s} {'n':>9s} {'pituus':>7s} {'lunastettu':>10s}")
-    for i, n, ext, f in rows:
-        print(f"{i:6d} {n:9,} {ext:7.0f} {f:10.2f}" + ("" if f >= _HIT else "   <== EI MALLISSA"))
+    print(f"{'inst':>6s} {'n':>9s} {'pituus':>7s} {'lunastettu':>10s} {'jalanj.':>8s}")
+    for i, n, ext, f, fin in rows:
+        print(f"{i:6d} {n:9,} {ext:7.0f} {f:10.2f} {fin:8.2f}"
+              + ("" if f >= _HIT else "   <== EI MALLISSA"))
     # Pituusluokittain: 0.49 on eri asia jos puuttuvat ovat 0.5 m tynkia kuin
     # jos ne ovat 4 m seinia. Ilman tata luku ei kerro mita korjata.
     print("")
     print(f"{'pituusluokka':16s} {'loytyi':>7s} {'kaikki':>7s} {'osuus':>6s}")
     for lo, hi, name in ((0, 1000, "alle 1 m"), (1000, 2000, "1-2 m"),
                          (2000, 4000, "2-4 m"), (4000, 1e9, "yli 4 m")):
-        grp = [r for r in rows if lo <= r[2] < hi]
+        grp = [r for r in rows if lo <= r[2] < hi]  # noqa: B023
         if not grp:
             continue
         ok = sum(1 for r in grp if r[3] >= _HIT)
         print(f"{name:16s} {ok:7d} {len(grp):7d} {ok / len(grp):6.2f}")
 
-    found = sum(1 for _, _, _, f in rows if f >= _HIT)
+    found = sum(1 for r in rows if r[3] >= _HIT)
     pt = float((claimed & struct).sum()) / max(int(struct.sum()), 1)
+    ins_in = [r for r in rows if r[4] >= 0.5]
+    ins_out = [r for r in rows if r[4] < 0.5]
+    fi = sum(1 for r in ins_in if r[3] >= _HIT)
+    fo = sum(1 for r in ins_out if r[3] >= _HIT)
+    print("")
+    print(f"JALANJALJEN SISALLA {fi}/{len(ins_in)} = {fi / max(len(ins_in), 1):.3f}"
+          "   <== taman detektori omistaa")
+    print(f"ULKOPUOLELLA        {fo}/{len(ins_out)} = {fo / max(len(ins_out), 1):.3f}"
+          "   (rakennus jatkuu mallin rajauksen yli)")
     print(f"\nINSTANSSIKATTAVUUS {found}/{len(rows)} = {found / max(len(rows), 1):.3f}"
           f"   (pistekattavuus {pt:.3f}, mallin seinia {len(m['walls'])})")
     miss = sorted((r for r in rows if r[3] < _HIT), key=lambda r: -r[2])[:6]
     if miss:
-        print("pisimmat puuttuvat:", ", ".join(f"{i}({e:.0f}mm)" for i, _, e, _ in miss))
+        print("pisimmat puuttuvat:",
+              ", ".join(f"{r[0]}({r[2]:.0f}mm, jalanj. {r[4]:.2f})" for r in miss))
 
 
 if __name__ == "__main__":
