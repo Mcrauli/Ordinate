@@ -358,6 +358,81 @@ def flag_low_confidence(model: StructuralModel) -> list[dict]:
     return flags
 
 
+_COV_CELL = 500.0        # mm — lattiaruudukon solu (0.25 m²)
+_COV_BAND = 150.0        # mm — kaista lattiatason ympärillä
+_COV_MIN_PTS = 3         # solu on skannattua lattiaa vasta tällä pistemäärällä
+
+
+def scan_coverage(model: StructuralModel, cloud, cell: float = _COV_CELL) -> dict | None:
+    """Kuinka suuri osa SKANNATUSTA lattiasta on mallin rajauksen sisällä.
+
+    Malli kattaa sen tilan jonka se väittää mallintavansa, mutta rakennus voi
+    jatkua rajauksen yli — Rohbau site_07 scene_07000: jalanjäljen sisällä on
+    17/17 GT-seinää, ulkopuolella 7/32. Käyttäjän on nähtävä TULOKSESTA saiko
+    hän koko rakennuksen vai yhden huoneen, eikä vasta vertaamalla pilveen.
+    """
+    pts = np.asarray(cloud.points, dtype=np.float64)
+    if len(pts) < 1000:
+        return None
+    floors = [sl for sl in model.slabs if sl.slab_type == "floor"]
+    z = float(min(sl.elevation for sl in floors)) if floors else float(
+        np.percentile(pts[:, 2], 1.0))
+    band = pts[np.abs(pts[:, 2] - z) < _COV_BAND]
+    if len(band) < _COV_MIN_PTS * 4:
+        return None
+
+    ij = np.floor(band[:, :2] / cell).astype(np.int64)
+    key = (ij[:, 0] + 1_000_000) * 4_000_037 + (ij[:, 1] + 1_000_000)
+    uniq, inv, cnt = np.unique(key, return_inverse=True, return_counts=True)
+    keep = cnt >= _COV_MIN_PTS
+    if not keep.any():
+        return None
+    first = np.zeros(len(uniq), dtype=np.int64)
+    first[inv[::-1]] = np.arange(len(inv))[::-1]
+    centers = band[first[keep]][:, :2]
+
+    poly = _model_footprint(model)
+    if poly is None:
+        return None
+    inside = _in_poly(centers, poly)
+    area = cell * cell / 1e6
+    return {
+        "scanned_m2": round(float(len(centers) * area), 1),
+        "inside_m2": round(float(int(inside.sum()) * area), 1),
+        "outside_m2": round(float(int((~inside).sum()) * area), 1),
+        "covered_frac": round(float(inside.mean()), 3),
+    }
+
+
+def _model_footprint(model: StructuralModel) -> np.ndarray | None:
+    """Mallin oma väite alueesta: lattialaatan reuna, muuten seinäakselien peite."""
+    for sl in model.slabs:
+        if sl.slab_type == "floor" and len(sl.boundary) >= 3:
+            return np.asarray(sl.boundary, dtype=float)
+    pts = np.array([q for w in model.walls for q in w.axis], dtype=float)
+    if len(pts) < 3:
+        return None
+    from scipy.spatial import ConvexHull
+
+    return pts[ConvexHull(pts).vertices]
+
+
+def _in_poly(q: np.ndarray, poly: np.ndarray) -> np.ndarray:
+    """Ray casting — ei lisäriippuvuutta matplotlibiin QA-polulle."""
+    x, y = q[:, 0], q[:, 1]
+    inside = np.zeros(len(q), dtype=bool)
+    n = len(poly)
+    for i in range(n):
+        x0, y0 = poly[i]
+        x1, y1 = poly[(i + 1) % n]
+        if y0 == y1:
+            continue
+        crosses = ((y0 > y) != (y1 > y))
+        xint = x0 + (y - y0) * (x1 - x0) / (y1 - y0)
+        inside ^= crosses & (x < xint)
+    return inside
+
+
 def write_qa_report(model: StructuralModel, cloud, ifc_path: Path, txt_path: Path, tol: float = 2.5) -> dict:
     dev = model_deviation(cloud, ifc_path, tol)
     flags = flag_low_confidence(model)
@@ -397,6 +472,18 @@ def write_qa_report(model: StructuralModel, cloud, ifc_path: Path, txt_path: Pat
             "noise_rms_mm": round(float(np.median(noise)), 1),
         }
 
+    cov = scan_coverage(model, cloud)
+    if cov:
+        lines.append("")
+        lines.append("Kattavuus (skannattu lattia vs mallin rajaus):")
+        lines.append(f"  skannattua lattiaa {cov['scanned_m2']:.0f} m2, "
+                     f"mallin sisalla {cov['inside_m2']:.0f} m2 "
+                     f"({100 * cov['covered_frac']:.0f} %), "
+                     f"ulkopuolelle jai {cov['outside_m2']:.0f} m2")
+        if cov["covered_frac"] < 0.80:
+            lines.append(f"  HUOM: malli kattaa vain {100 * cov['covered_frac']:.0f} % "
+                         f"skannatusta lattiasta — rakennus jatkuu rajauksen yli")
+
     lines.append("")
     if flags:
         lines.append(f"TARKISTA MANUAALISESTI ({len(flags)} kpl, matala luottamus):")
@@ -406,4 +493,5 @@ def write_qa_report(model: StructuralModel, cloud, ifc_path: Path, txt_path: Pat
         lines.append("Ei matalan luottamuksen elementteja.")
 
     txt_path.write_text("\n".join(lines), encoding="utf-8")
-    return {"deviation": dev, "flags": flags, "surface": surface_summary}
+    return {"deviation": dev, "flags": flags, "surface": surface_summary,
+            "coverage": cov}
