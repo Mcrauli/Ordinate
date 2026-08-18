@@ -133,6 +133,9 @@ Tarkkuus mitataan erillisillä QA-skripteillä — **aja tuotantomallia (`model.
 | `data/_gap_view.py` | Sama kuvana: lunastettu (harmaa) vs puuttuva (punainen) GT-seinäpiste mallin akselien päällä |
 | `data/_rohbau_all.py` | **Yleistyvyys**: ajaa kaikki Rohbau-scenet erikseen ja tulostaa kattavuuden, tarkkuuden ja ongelmaseinät rinnakkain — kynnykset on viritetty vain sceneen 07000 |
 | `data/_beam_qa.py` | **Palkkien GT-vertailu**: mallin palkkilaatikoiden GT-luokkajakauma JA montako GT:n palkki-instanssia (`instance.npy`) löytyi. Seinäpuolen `_rohbau_qa.py`:n vastine — ilman tätä palkkidetektorin kynnyksiä ei ollut mitattu mitään vasten |
+| `data/_beam_synth_qa.py` | **Palkit synteettistä GT:tä vasten**: kattavuus GT-palkin akselipituudesta ja tarkkuus mallin palkkipituudesta. Rohbaun palkit ovat 2.5–5.5 m jättiläisiä, joten tavallisen kokoluokan (300 mm) totuus on vain täällä |
+| `data/_soffit_probe.py`, `data/_soffit_sweep.py` | **Alapintalaikkujen mitat GT-luokan rinnalla**: portit valitaan mitatusta välistä. `_beam_probe.py` näyttää mihin porttiin kukin klusteri kaatuu |
+| `data/_beam_run.py` | Ajaa **pelkän palkkidetektion** valmiiseen malliin (`model.beams.json`) — porttien säätö ei vaadi putkiajoa |
 | `data/_second_face_probe.py` | **Keksiikö katvepintahaku seiniä**: ajaa aineistot joilla ei ole GT:tä ja tulostaa löydetyt katveseinät tuki/jatkuvuus-lukuineen |
 | `data/_shelf_gt_probe.py` | Mitä `remove_shelf_front_walls` oikeasti poistaa — poistettujen GT-luokkajakauma Rohbaussa |
 | `data/_cont_rule_probe.py` | Vertaa jatkuvuussääntöjä (kiinteä 5 / ≥1 / suhteellinen) eri tiheyksillä ja tulostaa erottelun aito−palkki — tällä valittiin suhteellinen sääntö |
@@ -646,35 +649,54 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
 
 ## Tunnetut rajoitukset
 
-- **PALKKIDETEKTORI ON MITATTU GT:tä VASTEN (18.8.2026) JA SE EI TOIMI.**
-  `data/_beam_qa.py`, Rohbau3D site_07, kaikki viisi sceneä:
-  | scene | GT-palkki-instansseja | löydetty | mallin palkkeja | tarkkuus |
-  |---|---|---|---|---|
-  | scene_07000 | 14 | **0** | 8 | **0.048** |
-  | scene_07001 | 19 | 0 | 0 | – |
-  | scene_07002 | 15 | 0 | 0 | – |
-  | scene_07003 | 15 | 0 | 0 | – |
-  | scene_07004 | 14 | 0 | 0 | – |
-  Eli **0/77 aitoa palkkia** ja ainoan sceneen syntyneet 8 palkkia ovat
-  laatikoltaan 79–100 % **TGA**:ta (talotekniikka), yksi 64 % Beam. Nämä
-  menevät IFC:hen `IfcBeam`-elementteinä, eli malli väittää putkiriviä palkiksi.
-  **Syy ei ole kynnyksen hienosäätö vaan suunnitteluikkuna:** site_07:n palkit
-  ovat 2.5–5.5 m leveitä ja 1.3–2.9 m syviä alaslaskettuja palkistoja joiden
-  alapinta on 1.5–2.8 m kattolaatan alla, kun detektori hakee `_MAX_WIDTH_MM`
-  600 mm ja `_SOFFIT_BAND` 800 mm katon alta. Ikkunan sisällä tässä
-  aineistossa **ei ole yhtään aitoa palkkia** — kaikki kapea ja kattoon
-  kiinnittynyt on TGA:ta.
-  **Kaksi erottelijaehdokasta mitattu ja molemmat kumoutuivat:**
-  - *Soffit-kiinnitys* (`_SOFFIT_ATTACH_MM`, koodissa jo): kaikkien kahdeksan
-    väärän klusterin lakipiste on kattotason YLÄPUOLELLA (−43…−306 mm) — tämän
-    aineiston kaapelihyllyt ja kanavat kulkevat kiinni laatassa, eivät roiku.
-  - *Soffitin tasaisuus* (per 200 mm solun alapinnan hajonta): väärät
-    IQR 6–37 mm, GT-aidot palkit IQR 50–122 mm. Erottelu on **väärinpäin** —
-    suora kaapelihylly on tasaisempi kuin 27 m betonipalkki.
-  **Älä yritä neljättä kynnystä ennen kuin on aineisto jossa on aitoja
-  palkkeja suunnitteluikkunan sisällä.** Ilman yhtäkään tosipositiivista ei
-  voi mitata mitä sääntö maksaa. Ks. myös asunnon `beam_000` (hormi), jossa
-  kolme muuta ehdokassääntöä kumoutui samalla tavalla.
+- **PALKKI ON ALAPINTA, EI PISTEKLUSTERI.** Vanha detektori klusteroi
+  kattokaistan pisteet XY:ssä ja luki palkin leveyden klusterin XY-laajuudesta.
+  Skannattu palkki ei ole umpikappale vaan **kaksi pystypintaa ja niiden
+  välinen alapinta**, joten klusterin leveys ei koskaan ollut palkin leveys:
+  synteettisen liiketilan sama 300 mm palkki antoi joko **143 mm** (yksi pinta
+  omana klusterinaan → hylky `_FINISHED_MIN_WIDTH` 150) tai **47 000 mm** (koko
+  palkisto ketjuuntui pilarien kautta yhdeksi klusteriksi → hylky `_MAX_WIDTH`
+  600). Kumpikin hylättiin, ja koko detektori sai GT:tä vasten **tarkkuuden
+  0.048 ja kattavuuden 0/77**.
+  Uusi malli (`beam_detector.py`, 18.8.2026) mittaa sen mitä keilain näkee:
+  jokaiselle 200 mm XY-solulle **kattokaistan alin piste = alapinta**,
+  vierekkäiset samankorkeat solut = laikku, ja laikun poikittaisleveys ON
+  palkin leveys. Mitattu (`data/_beam_qa.py`, `data/_beam_synth_qa.py`):
+  | aineisto | vanha | uusi |
+  |---|---|---|
+  | Rohbau site_07, instanssikattavuus | **0/77** | **34/77** |
+  | Rohbau tarkkuus (07000 / 07002 / 07003 / 07004) | 0.048 / – / – / – | **0.83 / 0.84 / 0.82 / 0.96** |
+  | synteettinen liiketila, GT-akselipituudesta katettu | **0.012** | **0.856** |
+  | synteettinen liiketila, tarkkuus / harhapalkit | 1.000 / 0 | **1.000 / 0** |
+  | asunto (hormi) | 1 valepalkki | **0** |
+  Sama mitattiin koko putken läpi PointNet-suodattimen kanssa: **luvut eivät
+  muutu** (0.856 / 1.000), eli suodatin ei syö alapintoja.
+  **Alapintaehto korvaa neljä aiempaa erikoissääntöä.** Seinä, pilari, hyllykkö,
+  gondoli ja asunnon hormi yltävät lattiaan, joten niiden alin piste ei ole
+  koskaan katon lähellä eikä niistä synny laikkua. Asunnon `beam_000`-hormille
+  yritettiin kolmea eri sääntöä (alaslasketun katon reuna, `_has_headroom`-
+  resoluutio, soffitin ja esteen väli) ja kaikki kumoutuivat mittauksessa —
+  oikea korjaus oli vaihtaa malli, ei lisätä viides sääntö.
+  **Portit ja mistä ne on mitattu** (`data/_soffit_sweep.py` ajaa kaikki
+  scenet ja tulostaa jokaisen laikun mitat GT-luokan rinnalla):
+  aspekti ≥ 3, pituus ≥ 1200, leveys ≤ 3000, syvyys ≥ 150, solut ≥ 20,
+  **täyttöaste ≥ 0.5** (laikun solut / suorakaiteen solut — nosti Rohbaun
+  tarkkuuden 0.808 → 0.834 **kattavuuden muuttumatta**; kulmassa kääntyvä
+  kanava täyttää 31 %), ja ilmarako laattaan ≤ 300 mm.
+  **ANSA — ilmarakoa ei saa mitata laatikon korkeimmasta pisteestä.** Laatan
+  oma pinta on aina laatikossa, joten `max(z)` on aina katossa ja testi on
+  turha. Se mitataan laikun sisältä pystyhistogrammina (pisin tyhjä jakso).
+  **ANSA — vuotava vesiväritäyttö.** Naapuriehto yksin (|Δz| ≤ 150 mm)
+  ryömii portaittain läpi koko mallin: mitattu **200 m "palkki"**. Laikkuun
+  tarvitaan myös ankkuriehto ensimmäiseen soluun.
+
+- **PALKIN KATTAVUUDEN TULPPA ON KATTOLAATTA, EI PALKKIDETEKTORI.**
+  scene_07001 ja scene_07004 jäävät instanssikattavuuteen 0.21 ja 0.36, muut
+  kolme ovat 0.53–0.60. Syy on mitattu: näissä kahdessa **mallin kattotaso on
+  2.6 m liian alhaalla** (5444 ja 5442, GT-katto 8074 ja 8078) — laattadetektori
+  valitsi palkiston alapinnan katoksi. Palkkihaku saa siis syötteekseen tilan
+  jossa palkeille ei ole tilaa. Muissa kolmessa virhe on −99…+4 mm.
+  **Älä säädä palkkiportteja näiden kahden scenen perusteella.**
 
 - **`_looks_like_retail` on tosiasiassa "ISO JA KORKEA", ei liiketila.** Ehto on
   pohja-ala + vapaa korkeus ≥4.5 m; Rohbau site_07:n ~10 m betonirunko täyttää

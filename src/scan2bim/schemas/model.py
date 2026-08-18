@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 # ---------------------------------------------------------------------------
 
 class ElementSource(BaseModel):
-    method: Literal["ransac", "density", "z_histogram", "cluster", "manual", "normals", "floorplan", "opening", "polygonize", "contour", "histogram", "second_face"]
+    method: Literal["ransac", "density", "z_histogram", "cluster", "manual", "normals", "floorplan", "opening", "polygonize", "contour", "histogram", "second_face", "soffit"]
     plane_ids: list[int] = Field(default_factory=list)
     notes: str = ""
 

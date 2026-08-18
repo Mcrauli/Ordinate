@@ -115,7 +115,7 @@ def build(out: np.ndarray | Path, step: float, sx: float, sy: float, h: float,
     rng = np.random.default_rng(seed)
     w = PlyWriter(Path(out))
     T_EXT, T_BOH, T_ROOM = 250.0, 200.0, 120.0
-    gt: dict = {"walls": [], "floor_z": 0.0, "ceiling_z": h, "columns": [],
+    gt: dict = {"walls": [], "floor_z": 0.0, "ceiling_z": h, "columns": [], "beams": [],
                 "openings": []}
 
     def wall(p0, p1, t, gaps=(), keep=1.0, both=True, z0=0.0, z1=None):
@@ -178,6 +178,9 @@ def build(out: np.ndarray | Path, step: float, sx: float, sy: float, h: float,
         for sgn in (+1, -1):
             w.add(_rect(rng, (0, cy + sgn * 150), (sx, cy + sgn * 150), zb, h - 20, step))
         w.add(_slab(rng, 0, sx, cy - 150, cy + 150, zb, step))
+        gt["beams"].append({"axis": [[0.0, float(cy)], [float(sx), float(cy)]],
+                            "width": 300.0, "soffit_z": float(zb),
+                            "depth": float(h - 20.0 - zb)})
 
     # --- LIIKETILAN YDINTESTI: hyllyt ---------------------------------------
     # (a) gondolit 1800 mm: pystymaskin PITAA pudottaa nama.

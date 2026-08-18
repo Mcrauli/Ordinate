@@ -6,6 +6,41 @@ sovellus päivittää itsensä sieltä.
 
 ## Julkaisematon
 
+- **Palkki mitataan alapinnasta, ei pisteklusterista.** Vanha detektori
+  klusteroi kattokaistan pisteet XY:ssä ja luki palkin leveyden klusterin
+  XY-laajuudesta. Skannattu palkki ei ole umpikappale vaan kaksi pystypintaa ja
+  niiden välinen alapinta, joten klusterin leveys ei ollut palkin leveys:
+  synteettisen liiketilan sama 300 mm palkki antoi joko 143 mm (yksi pinta
+  erillisenä klusterina) tai 47 000 mm (koko palkisto ketjuuntui pilarien kautta
+  yhdeksi klusteriksi), ja molemmat hylättiin leveysportissa.
+  Uusi malli lukee jokaiselle 200 mm solulle kattokaistan alimman pisteen,
+  yhdistää samankorkeat naapurisolut laikuksi ja mittaa leveyden laikusta.
+  Mitattu Rohbau3D:n per-piste-GT:tä ja synteettisen liiketilan GT:tä vasten
+  (`data/_beam_qa.py`, `data/_beam_synth_qa.py`):
+  | mittari | ennen | jälkeen |
+  |---|---|---|
+  | Rohbau, GT-palkki-instansseja löydetty | 0/77 | **34/77** |
+  | Rohbau, tarkkuus (scene_07000) | 0.048 | **0.834** |
+  | liiketila, GT-palkin akselipituudesta katettu | 0.012 | **0.856** |
+  | liiketila, harhapalkkeja | 0 | **0** |
+  | asunto, hormi palkkina | 1 | **0** |
+  Samat luvut koko putken läpi PointNet-suodattimen kanssa, eli suodatin ei
+  syö alapintoja.
+- **Asunnon hormi ei enää ole palkki, eikä siihen tarvittu omaa sääntöä.**
+  Alapintaehto pudottaa kaikki lattiaan yltävät kappaleet — seinän, pilarin,
+  hyllykön, gondolin ja hormin — koska niiden alin piste ei ole katon lähellä.
+  Kolme aiemmin kokeiltua erikoissääntöä kumoutuivat mittauksessa; oikea
+  korjaus oli vaihtaa malli.
+- **Pilarien katkomat palkin pätkät yhdistetään yhdeksi jäseneksi**, mutta vain
+  jos ne ovat samansuuntaisia, samalla alapinnalla ja väli on alle 1500 mm.
+  Kauempana toisistaan olevat samansuuntaiset palkit jäävät erilleen, jottei
+  synny samaa ylivenytystä joka seinäpuolelta jouduttiin leikkaamaan pois.
+- **Palkkien mittarit** ovat uusia: `data/_beam_qa.py` (per-piste-GT + per-
+  instanssikattavuus), `data/_beam_synth_qa.py` (synteettinen GT),
+  `data/_soffit_sweep.py` (porttien valinta mitatusta välistä),
+  `data/_beam_run.py` (pelkkä palkkidetektio valmiiseen malliin).
+  `data/_synth_retail.py` kirjoittaa nyt myös palkiston GT:hen.
+
 ## v0.9.20 (17.8.2026) — evidenssin yli venytetty seinä leikataan pintaan
 
 - **Evidenssin yli venytetty seinänpää leikataan takaisin pintaan.**

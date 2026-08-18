@@ -1,271 +1,291 @@
-"""Palkkidetektori: DBSCAN katto-vyöhykkeessä + pitkänomaiset klusterit.
+"""Palkkidetektori: ALAPINTAKARTTA (soffit), ei pisteklusteri.
 
-Algoritmi:
-  1. Rajataan pisteet lähelle kattoa (z > z_max - sub_ceiling_mm).
-  2. DBSCAN XY-tasoon projisoituna (kuten ColumnDetector).
-  3. Pitkänomaiset klusterit (aspekti ≥ min_aspect) → palkit.
-  4. Akseli: PCA XY-tasossa → 3D-päätepisteet z-keskiarvolla.
+Vanha malli klusteroi kattokaistan pisteet XY:ssä ja luki palkin leveyden
+klusterin XY-laajuudesta. Skannattu palkki ei ole umpikappale vaan kaksi
+pystypintaa ja niiden välinen alapinta, joten klusterin leveys ei ole palkin
+leveys: mitattu synteettisellä liiketilalla (`data/_beam_probe.py`) sama 300 mm
+palkki antoi joko 143 mm (yksi pinta erillisenä klusterina) tai 47 000 mm (koko
+palkisto ketjuuntui pilarien kautta yhdeksi klusteriksi). Molemmat hylättiin
+leveysportissa, ja Rohbau3D:n GT:tä vasten koko detektori sai tarkkuuden 0.048
+ja kattavuuden 0/77 (`data/_beam_qa.py`).
+
+Uusi malli mittaa sen mitä keilain oikeasti näkee: jokaiselle XY-solulle
+kattokaistan ALIN piste = sen kohdalla roikkuvan kappaleen alapinta.
+Vierekkäiset samankorkeat solut ovat yksi alapintalaikku, ja laikun poikittainen
+leveys ON palkin leveys.
+
+Alapintaehto hoitaa myös erottelun ilman erillistä sääntöä: seinän, pilarin,
+hyllykön ja gondolin alin piste on lattian lähellä, joten ne eivät koskaan
+tuota alapintaa katon läheltä.
 """
 from __future__ import annotations
 
-import uuid
 import logging
+import uuid
 
 import numpy as np
-import open3d as o3d
 
 from scan2bim.schemas.model import Beam, BeamProfile, ElementSource
-from .base import ElementDetector
 
 log = logging.getLogger(__name__)
 
-_MIN_INLIERS = 30
-_MIN_ASPECT = 3.0          # length/width — alle tämän = pilari, ei palkki
-_MIN_LENGTH_MM = 700.0     # alle tämän = kattokrääsän/putken pätkä, ei palkki
-                           # (aidot Rohbau-palkit useimmat >1200mm)
-_MAX_WIDTH_MM = 600.0      # palkin max-leveys (ei katto/laatta)
-_MIN_HEIGHT_MM = 50.0      # palkin min-z-ulottuvuus (depth)
+_CELL = 200.0            # mm — alapintakartan solu
+_MIN_PTS = 3             # pistettä solussa jotta alapinta on mitattu
+_Z_TOL = 150.0           # mm — naapurisolu samaa laikkua jos alapinta tällä välillä
+_MAX_DEPTH = 3000.0      # mm — tätä syvemmälle laatasta roikkuva ei ole palkki
+_MIN_DEPTH = 150.0       # mm — tätä matalampi ei erotu laatasta
+_WALL_MARGIN = 250.0     # mm — seinälinjaa lähempänä oleva alapinta on seinän, ei palkin
+_MIN_LENGTH = 1200.0     # mm
+_MIN_ASPECT = 3.0        # pituus/leveys — alle tämän on pilari tai laatan pudotus
+_MIN_FILL = 0.5          # laikun solut / suorakaiteen solut — palkin alapinta on
+                         # täysi suorakaide; kulmassa kääntyvä kanava ei ole
+_MAX_WIDTH = 3000.0      # mm — tätä leveämpi on alaslaskettu katto, ei palkki
+_ATTACH = 300.0          # mm — laikun laen etäisyys kattoon (irti roikkuva = talotekniikka)
+_MIN_CELLS = 20
 
-# Soffit-kiinnitys: aito alaslaskettu palkki valetaan kattolaatan kanssa yhteen →
-# sen kyljet ulottuvat YLÖS kattoon asti (max-z lähellä kattoa). Ripustettu
-# talotekniikka (putket/kanavat/kaapelihyllyt) roikkuu katosta IRTI — väli jää.
-# Vaadi valmiissa tilassa (kattolaatta löytyi) että klusterin lakipiste yltää
-# tähän etäisyyteen katosta; muuten = roikkuva LVIS, ei palkki. Tämä on juuri se
-# ero joka tuottaa valepalkkeja MEP-täyteisissä liike/toimistotiloissa.
-_SOFFIT_ATTACH_MM = 130.0
-
-# Valmiissa tilassa aito palkki ei ole hiuksenohut — kattoon kiinnittyneet ohuet
-# pitkänomaiset klusterit ovat putkia/kaapelihyllyjä/johtokouruja, eivät palkkeja.
-_FINISHED_MIN_WIDTH_MM = 150.0
-
-_BEAM_WALL_MARGIN = 150.0   # mm — tätä lähempänä seinälinjaa olevat pisteet pois
-_SOFFIT_BAND = 800.0        # mm — palkkikaista katon alapinnasta (syvemmällä = TATE-roikku)
-                            # (seinän yläosa on pitkänomainen klusteri = valepalkki)
-
-# HEADROOM: aidon palkin ALTA kävelee — sen alapuolella keskikorkeudella on tyhjää.
-# Kalustepatterin/hyllyn päällä oleva valepalkki istuu täydellä massalla (mitattu
-# 3DSES-huoneesta: palkin alla ~100k pistettä koko matkalta). Valmiissa tilassa
-# (kattolaatta tiedossa) jaetaan palkin jänne soluihin: jos liian moni solu on
-# "tukossa" (pisteitä suoraan alla keskikorkeudella), klusteri ei ole vapaa palkki.
-_HEADROOM_LO = 1000.0        # mm lattiasta — alaraja tarkistuskaistalle
-_HEADROOM_GAP = 200.0        # mm — palkin alapinnan alle jätettävä väli
-_HEADROOM_CELL = 200.0       # mm — solun koko jänteen suunnassa
-_HEADROOM_HALF = 150.0       # mm — puolileveys footprintille tarkistuksessa
-_HEADROOM_MIN_PTS = 8        # solu "tukossa" jos alla väh. tämä pistemäärä
-_HEADROOM_MAX_BLOCKED = 0.5  # yli tämän osuus tukossa → ei palkki
+_OFF = 500_000           # solukoordinaatit positiivisiksi ennen avaimen laskua
+_BASE = 1_000_003
 
 
 def detect_beams(cloud, walls, floor_z: float, ceiling_z: float,
                  has_ceiling: bool = False) -> list[Beam]:
-    """Pipeline-entrypoint: palkit kattovyöhykkeestä seinäeksluusiolla.
+    """Alapintalaikut kattovyöhykkeessä -> palkit.
 
-    has_ceiling=True (valmis tila, KATTOLAATTA löydetty): rajaa palkit SOFFIT-
-    vyöhykkeelle (katon alapinnan alta _SOFFIT_BAND) → katosta syvemmälle roikkuva
-    talotekniikka (putket/kanavat/kaapelihyllyt) ei mene palkiksi. has_ceiling=False
-    (työmaa, ei kattolaattaa): ceiling_z on vain seinänlakikorkeuden varasija, joten
-    soffit-rajaus katkoisi aidot palkit → pidetään leveä ylä-puolikaskaista."""
-    from .column_detector import _dist_to_walls
+    `has_ceiling=True` (kattolaatta löydetty) ottaa käyttöön kattoon
+    kiinnittymisen vaatimuksen. Työmaalla `ceiling_z` on vain seinänlaki-
+    varasija, jolloin vaatimus katkoisi aidot palkit.
+    """
+    pts = np.asarray(cloud.points, dtype=np.float64)
+    height = ceiling_z - floor_z
+    if len(pts) < _MIN_PTS or height < 1500.0:
+        return []
 
-    pts = np.asarray(cloud.points)
-    if len(pts) < _MIN_INLIERS or ceiling_z - floor_z < 1500.0:
+    z_free = max(floor_z + 0.5 * height, ceiling_z - _MAX_DEPTH)
+    cells = _soffit_cells(pts, floor_z + 200.0, ceiling_z - 30.0,
+                          z_free, ceiling_z - _MIN_DEPTH)
+    if walls:
+        cells = _drop_wall_cells(cells, walls)
+    if len(cells) < _MIN_CELLS:
         return []
-    band_lo = floor_z + 0.5 * (ceiling_z - floor_z)
-    if has_ceiling:
-        band_lo = max(band_lo, ceiling_z - _SOFFIT_BAND)
-    zmask = (pts[:, 2] > band_lo) & (pts[:, 2] < ceiling_z - 30.0)
-    band = pts[zmask]
-    if len(band) < _MIN_INLIERS:
-        return []
-    far = _dist_to_walls(band[:, :2], walls) > _BEAM_WALL_MARGIN
-    free = band[far]
-    if len(free) < _MIN_INLIERS:
-        return []
-    sub = o3d.geometry.PointCloud()
-    sub.points = o3d.utility.Vector3dVector(free)
-    beams, _ = BeamDetector(
-        sub_ceiling_mm=float(free[:, 2].max() - free[:, 2].min()) + 100.0,
-        ceiling_z=ceiling_z if has_ceiling else None,
-    ).detect(sub)
-    if has_ceiling:
-        beams = [b for b in beams if _has_headroom(b, pts, floor_z)]
+
+    cand = []
+    for comp in _patches(cells):
+        b = _patch_to_beam(comp, cells, pts, ceiling_z, has_ceiling)
+        if b is not None:
+            cand.append(b)
+    beams = _merge_collinear(cand)
     for i, b in enumerate(beams):
         beams[i] = b.model_copy(update={"id": f"beam_{i:03d}"})
+    log.info("BeamDetector: %d alapintalaikkua -> %d palkkia", len(cand), len(beams))
     return beams
 
 
-def _has_headroom(beam, pts: np.ndarray, floor_z: float) -> bool:
-    """True jos palkin alapuolella keskikorkeudella on tyhjää (aito palkki).
-    Jakaa jänteen soluihin ja katsoo montako on 'tukossa' (pisteitä suoraan alla)."""
-    a = np.array(beam.axis[0][:2], dtype=float)
-    b = np.array(beam.axis[1][:2], dtype=float)
-    seg = b - a
-    L = float(np.hypot(*seg))
-    if L < _HEADROOM_CELL:
-        return True
-    dirv = seg / L
-    perp = np.array([-dirv[1], dirv[0]])
-    z_beam_bottom = float(beam.axis[0][2]) - beam.profile.height / 2.0
-    z_hi = z_beam_bottom - _HEADROOM_GAP
-    z_lo = floor_z + _HEADROOM_LO
-    if z_hi - z_lo < 300.0:              # ei mielekästä alatilaa → älä hylkää
-        return True
-    rel = pts[:, :2] - a
-    t = rel @ dirv
-    n = rel @ perp
-    below = (
-        (pts[:, 2] > z_lo) & (pts[:, 2] < z_hi)
-        & (np.abs(n) < _HEADROOM_HALF)
-        & (t > 0.2 * L) & (t < 0.8 * L)      # keskimmäinen 60 % jänteestä
+# --------------------------------------------------------------------------- #
+
+def _soffit_cells(pts: np.ndarray, z_lo: float, z_hi: float,
+                  z_free: float, z_top: float) -> dict[int, tuple[float, int]]:
+    """XY-solu -> (alapinta, pistemäärä).
+
+    `z_free` on korkeus jonka yläpuolella alapinnan on oltava: sen alle yltävä
+    kappale jatkuu lattiaa kohti eikä ole vapaa palkki. `z_top` estää katon
+    oman pinnan menemästä laikuksi.
+    """
+    m = (pts[:, 2] > z_lo) & (pts[:, 2] < z_hi)
+    q = pts[m]
+    if not len(q):
+        return {}
+    ij = np.floor(q[:, :2] / _CELL).astype(np.int64) + _OFF
+    if ij.min() < 0 or ij.max() >= _OFF * 2:
+        return {}
+    key = ij[:, 0] * _BASE + ij[:, 1]
+    order = np.argsort(key, kind="stable")
+    key_s, z_s = key[order], q[order, 2]
+    bounds = np.flatnonzero(np.diff(key_s)) + 1
+    starts = np.concatenate([[0], bounds])
+    ends = np.concatenate([bounds, [len(key_s)]])
+    out: dict[int, tuple[float, int]] = {}
+    for s, e in zip(starts, ends):
+        if e - s < _MIN_PTS:
+            continue
+        zb = float(z_s[s:e].min())
+        if zb < z_free or zb > z_top:
+            continue
+        out[int(key_s[s])] = (zb, int(e - s))
+    return out
+
+
+def _cell_xy(keys: np.ndarray) -> np.ndarray:
+    ij = np.stack([keys // _BASE, keys % _BASE], axis=1).astype(np.float64) - _OFF
+    return ij * _CELL + _CELL / 2.0
+
+
+def _drop_wall_cells(cells: dict, walls) -> dict:
+    """Seinälinjalla oleva alapinta on seinän yläosa, ei palkki."""
+    from .column_detector import _dist_to_walls
+
+    keys = np.fromiter(cells.keys(), dtype=np.int64, count=len(cells))
+    far = _dist_to_walls(_cell_xy(keys), walls) > _WALL_MARGIN
+    return {int(k): cells[int(k)] for k, f in zip(keys, far) if f}
+
+
+def _patches(cells: dict):
+    """Yhtenäiset laikut: naapuri 4-yhteydessä, alapinta _Z_TOL:n sisällä.
+
+    Ankkuriehto (ero myös laikun ensimmäiseen soluun) on pakollinen: ilman sitä
+    laikku ryömii portaittain läpi koko mallin — mitattu 200 m "palkki".
+    """
+    seen: set[int] = set()
+    for k0 in cells:
+        if k0 in seen:
+            continue
+        z0 = cells[k0][0]
+        stack, comp = [k0], []
+        seen.add(k0)
+        while stack:
+            k = stack.pop()
+            comp.append(k)
+            i, j = divmod(k, _BASE)
+            z = cells[k][0]
+            for di, dj in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                n = (i + di) * _BASE + (j + dj)
+                if n not in cells or n in seen:
+                    continue
+                zn = cells[n][0]
+                if abs(zn - z) <= _Z_TOL and abs(zn - z0) <= _Z_TOL:
+                    seen.add(n)
+                    stack.append(n)
+        if len(comp) >= _MIN_CELLS:
+            yield comp
+
+
+def _patch_to_beam(comp: list[int], cells: dict, pts: np.ndarray,
+                   ceiling_z: float, has_ceiling: bool) -> Beam | None:
+    xy = _cell_xy(np.asarray(comp, dtype=np.int64))
+    z = np.array([cells[k][0] for k in comp], dtype=np.float64)
+    c = xy.mean(axis=0)
+    A = xy - c
+    _, V = np.linalg.eigh(A.T @ A / len(A))
+    u, n = V[:, 1], V[:, 0]
+    s = A @ u
+    t = A @ n
+    length = float(s.ptp()) + _CELL
+    width = float(t.ptp()) + _CELL
+    if length < _MIN_LENGTH or width > _MAX_WIDTH:
+        return None
+    if length / width < _MIN_ASPECT:
+        return None
+    if len(comp) / ((length / _CELL) * (width / _CELL)) < _MIN_FILL:
+        return None
+    soffit = float(np.median(z))
+    depth = ceiling_z - soffit
+    if depth < _MIN_DEPTH:
+        return None
+    if has_ceiling and not _attached(pts, c, u, n, length, width, soffit, ceiling_z):
+        return None
+
+    p0 = c + s.min() * u
+    p1 = c + s.max() * u
+    z_mid = soffit + depth / 2.0
+    return Beam(
+        id=str(uuid.uuid4()),
+        confidence=round(min(1.0, len(comp) / 60.0), 3),
+        source=ElementSource(method="soffit"),
+        axis=[[round(float(p0[0]), 1), round(float(p0[1]), 1), round(z_mid, 1)],
+              [round(float(p1[0]), 1), round(float(p1[1]), 1), round(z_mid, 1)]],
+        profile=BeamProfile(width=round(width, 1), height=round(depth, 1)),
     )
-    if not below.any():
+
+
+def _attached(pts: np.ndarray, c: np.ndarray, u: np.ndarray, n: np.ndarray,
+              length: float, width: float, soffit: float, ceiling_z: float) -> bool:
+    """Yltääkö kappale alapinnasta laattaan asti ilman ilmarakoa.
+
+    Valettu palkki on laatan kanssa yhtä; ripustettu kanava/putki jättää välin.
+    Rako mitataan laikun sisältä pystyhistogrammina — laatikon KORKEIN piste ei
+    kelpaa, koska laatan oma pinta on aina laatikossa ja tekisi testistä turhan.
+    """
+    box = _in_box(pts[:, :2], c, u, n, length, width)
+    z = pts[box][:, 2]
+    z = z[(z >= soffit) & (z < ceiling_z - 30.0)]
+    if len(z) < _MIN_PTS:
+        return False
+    span = ceiling_z - 30.0 - soffit
+    if span <= _ATTACH:
         return True
-    tb = t[below]
-    ncells = max(int(0.6 * L / _HEADROOM_CELL), 1)
-    cell = np.clip(((tb - 0.2 * L) / _HEADROOM_CELL).astype(np.int64), 0, ncells - 1)
-    blocked = np.bincount(cell, minlength=ncells) >= _HEADROOM_MIN_PTS
-    return blocked.sum() / ncells <= _HEADROOM_MAX_BLOCKED
+    nb = max(int(span / 100.0), 1)
+    filled = np.zeros(nb, dtype=bool)
+    filled[np.clip(((z - soffit) / span * nb).astype(np.int64), 0, nb - 1)] = True
+    run = gap = 0
+    for f in filled:
+        run = 0 if f else run + 1
+        gap = max(gap, run)
+    return gap * (span / nb) <= _ATTACH
 
 
-class BeamDetector(ElementDetector):
-    """Löytää palkit kattovyöhykkeen pitkänomaisista klustereista."""
+def _in_box(xy: np.ndarray, c: np.ndarray, u: np.ndarray, n: np.ndarray,
+            length: float, width: float) -> np.ndarray:
+    d = xy - c
+    return (np.abs(d @ u) <= length / 2.0) & (np.abs(d @ n) <= width / 2.0)
 
-    def __init__(
-        self,
-        sub_ceiling_mm: float = 700.0,   # kuinka syvältä katosta etsitään
-        eps_mm: float = 80.0,
-        min_points: int = 20,
-        ceiling_z: float | None = None,  # jos tiedossa (valmis tila) → soffit-kiinnitystesti
-    ) -> None:
-        self.sub_ceiling_mm = sub_ceiling_mm
-        self.eps_mm = eps_mm
-        self.min_points = min_points
-        self.ceiling_z = ceiling_z
 
-    def detect(
-        self,
-        cloud: o3d.geometry.PointCloud,
-    ) -> tuple[list[Beam], o3d.geometry.PointCloud]:
-        pts = np.asarray(cloud.points)
-        if len(pts) < self.min_points:
-            return [], cloud
+_MERGE_GAP = 1500.0      # mm — pilari katkaisee alapinnan; tätä isompi väli on eri palkki
+_MERGE_ANGLE = 0.985     # cos 10°
+_MERGE_OFFSET = 0.75     # osuus leveydestä — sivusiirtymä jonka jälkeen eri palkki
 
-        z_max = float(pts[:, 2].max())
-        z_lo = z_max - self.sub_ceiling_mm
-        z_hi = z_max - 30.0
 
-        zone_mask = (pts[:, 2] >= z_lo) & (pts[:, 2] < z_hi)
-        zone_pts = pts[zone_mask]
-        zone_idx = np.where(zone_mask)[0]
+def _merge_collinear(beams: list[Beam]) -> list[Beam]:
+    """Pilarien katkomat palkin pätkät yhdeksi palkiksi.
 
-        if len(zone_pts) < self.min_points:
-            return [], cloud
-
-        # Iso kattovyöhyke kaataisi DBSCANin — harvennetaan klusterointiin.
-        # Harvennettaessa luovutaan tarkasta inlier-poistosta (palkkeja on vähän;
-        # niiden pisteet jäävät krääsälaskentaan, mikä on vaaratonta).
-        downsampled = len(zone_pts) > 120_000
-        if downsampled:
-            from .wall_detector import _downsample_to_target
-            zc = o3d.geometry.PointCloud()
-            zc.points = o3d.utility.Vector3dVector(zone_pts)
-            cluster_src = np.asarray(
-                _downsample_to_target(zc, target=120_000, start_voxel=max(self.eps_mm * 0.7, 50.0)).points
-            )
+    Yhdistetään vain samansuuntaiset, samalla alapinnalla olevat ja saman
+    linjan pätkät joiden väli on pienempi kuin pilarin leveysluokka — muuten
+    tämä olisi sama ylivenytys jonka seinäpuolelta jouduttiin leikkaamaan pois.
+    """
+    out: list[Beam] = []
+    for b in sorted(beams, key=lambda b: -_length(b)):
+        for i, m in enumerate(out):
+            j = _try_join(m, b)
+            if j is not None:
+                out[i] = j
+                break
         else:
-            cluster_src = zone_pts
+            out.append(b)
+    return out
 
-        zone_2d = cluster_src.copy()
-        zone_2d[:, 2] = 0.0
-        cloud_2d = o3d.geometry.PointCloud()
-        cloud_2d.points = o3d.utility.Vector3dVector(zone_2d)
-        labels = np.asarray(cloud_2d.cluster_dbscan(
-            eps=self.eps_mm,
-            min_points=self.min_points,
-            print_progress=False,
-        ))
 
-        beams: list[Beam] = []
-        beam_labels: set[int] = set()
+def _length(b: Beam) -> float:
+    a = np.array(b.axis[0][:2])
+    q = np.array(b.axis[1][:2])
+    return float(np.linalg.norm(q - a))
 
-        for label in set(labels.tolist()):
-            if label == -1:
-                continue
-            cluster = cluster_src[labels == label]
-            beam = self._cluster_to_beam(cluster, label)
-            if beam is not None:
-                beams.append(beam)
-                beam_labels.add(label)
 
-        if downsampled:
-            # Indeksit eivät vastaa täyttä pilveä → ei tarkkaa poistoa
-            return beams, cloud
-
-        # Poista palkki-inlierit alkuperäisestä pilvestä
-        beam_zone_inlier_idx = zone_idx[np.isin(labels, list(beam_labels))]
-        keep = np.ones(len(pts), dtype=bool)
-        keep[beam_zone_inlier_idx] = False
-        remaining = o3d.geometry.PointCloud()
-        remaining.points = o3d.utility.Vector3dVector(pts[keep])
-
-        log.info("BeamDetector: %d palkkia, %d pistettä jäljellä",
-                 len(beams), int(keep.sum()))
-        return beams, remaining
-
-    # ------------------------------------------------------------------ #
-
-    def _cluster_to_beam(self, pts: np.ndarray, label: int) -> Beam | None:
-        if len(pts) < _MIN_INLIERS:
-            return None
-
-        xy = pts[:, :2]
-        center_xy = xy.mean(axis=0)
-        cov = np.cov((xy - center_xy).T)
-        _, eigvecs = np.linalg.eigh(cov)
-        axis_dir = eigvecs[:, -1]
-
-        proj = (xy - center_xy) @ axis_dir
-        length = float(proj.max() - proj.min())
-        if length < _MIN_LENGTH_MM:
-            return None
-
-        perp = eigvecs[:, 0]
-        width = float(((xy - center_xy) @ perp).ptp())
-        if width > _MAX_WIDTH_MM or width < 10:
-            return None
-
-        if length / (width + 1e-6) < _MIN_ASPECT:
-            return None
-
-        z_depth = float(pts[:, 2].ptp())
-        if z_depth < _MIN_HEIGHT_MM:
-            return None
-
-        # SOFFIT-KIINNITYS + OHUUS (vain valmis tila, kattolaatta tiedossa):
-        # aito alaslaskettu palkki ulottuu kattoon asti eikä ole hiuksenohut.
-        # Jos klusterin lakipiste jää katosta yli _SOFFIT_ATTACH_MM alas → se
-        # roikkuu irti = talotekniikka (putki/kanava/kaapelihylly), ei palkki.
-        # Kattoon kiinnittynyt ohut pitkänomainen (leveys < min) = putki/kouru.
-        if self.ceiling_z is not None:
-            if float(pts[:, 2].max()) < self.ceiling_z - _SOFFIT_ATTACH_MM:
-                return None
-            if width < _FINISHED_MIN_WIDTH_MM:
-                return None
-
-        # Päätepisteet
-        p0_xy = center_xy + proj.min() * axis_dir
-        p1_xy = center_xy + proj.max() * axis_dir
-        z_mid = float(pts[:, 2].mean())
-
-        profile = BeamProfile(width=round(width, 1), height=round(z_depth, 1))
-        confidence = round(min(1.0, len(pts) / 1500.0), 3)
-
-        return Beam(
-            id=str(uuid.uuid4()),
-            confidence=confidence,
-            source=ElementSource(method="cluster", plane_ids=[label]),
-            axis=[
-                [round(float(p0_xy[0]), 1), round(float(p0_xy[1]), 1), round(z_mid, 1)],
-                [round(float(p1_xy[0]), 1), round(float(p1_xy[1]), 1), round(z_mid, 1)],
-            ],
-            profile=profile,
-        )
+def _try_join(m: Beam, b: Beam) -> Beam | None:
+    a0 = np.array(m.axis[0][:2])
+    a1 = np.array(m.axis[1][:2])
+    b0 = np.array(b.axis[0][:2])
+    b1 = np.array(b.axis[1][:2])
+    la, lb = float(np.linalg.norm(a1 - a0)), float(np.linalg.norm(b1 - b0))
+    if la < 1.0 or lb < 1.0:
+        return None
+    ua, ub = (a1 - a0) / la, (b1 - b0) / lb
+    if abs(float(ua @ ub)) < _MERGE_ANGLE:
+        return None
+    if abs(m.axis[0][2] - b.axis[0][2]) > _Z_TOL:
+        return None
+    na = np.array([-ua[1], ua[0]])
+    if max(abs(float((b0 - a0) @ na)),
+           abs(float((b1 - a0) @ na))) > _MERGE_OFFSET * m.profile.width:
+        return None
+    s = [float((p - a0) @ ua) for p in (b0, b1)]
+    lo, hi = min(s), max(s)
+    if lo > la + _MERGE_GAP or hi < -_MERGE_GAP:
+        return None
+    p0 = a0 + ua * min(0.0, lo)
+    p1 = a0 + ua * max(la, hi)
+    z = m.axis[0][2]
+    return m.model_copy(update={
+        "axis": [[round(float(p0[0]), 1), round(float(p0[1]), 1), z],
+                 [round(float(p1[0]), 1), round(float(p1[1]), 1), z]],
+        "profile": BeamProfile(width=max(m.profile.width, b.profile.width),
+                               height=max(m.profile.height, b.profile.height)),
+        "confidence": round(min(1.0, m.confidence + b.confidence), 3),
+    })
