@@ -100,6 +100,20 @@ N x pistepilveä (run_floors yhdistää yhdeksi kerrokseksi)
 
 ## Mittarit ja validointi (`data/`)
 
+**Aloita tästä:** `.venv/Scripts/python.exe data/_qa_all.py` tulostaa kaikki
+mittarit yhtenä taulukkona (aineisto × elementtityyppi × kattavuus/tarkkuus).
+Se EI aja putkea, joten se merkitsee `!`-etuliitteellä jokaisen mallin joka on
+vanhempi kuin uusin `src/`-muutos — sellaisen luvut on ajettu eri koodilla
+eivätkä ne ole todiste nykyisestä puusta. Aja putki uudelleen ennen kuin nojaat
+niihin.
+
+**Kattavuus mitataan INSTANSSEINA, ei pisteinä.** Pistekattavuus on painotettu
+elementin koolla, joten yksi iso perimetriseinä peittää monta puuttuvaa pientä:
+Rohbaussa seinien pistekattavuus on 0.75–0.89 mutta instanssikattavuus
+0.30–0.49. Sama harha piilotti palkkien 0/77:n. Jokaisella elementtityypillä on
+oma `_*_qa.py` joka laskee instanssit.
+
+
 Tarkkuus mitataan erillisillä QA-skripteillä — **aja tuotantomallia (`model.json`) vasten, ei välimuistia**:
 
 | Skripti | Mittaa |
