@@ -6,6 +6,13 @@ sovellus päivittää itsensä sieltä.
 
 ## Julkaisematon
 
+- **Aukon leveyskatto 2500 → 3000 mm.** Runkovaiheen oviaukot ovat 2.5–3.0 m ja
+  jäivät kiinteään kattoon; suhteellinen katto (50 % seinän pituudesta) hoitaa
+  varsinaisen rajauksen. Mitattu Rohbau3D:n GT:tä vasten: scene_07000
+  5/35 → 6/35 ja tarkkuus 0.312 → 0.353, scene_07003 2/19 → 3/19 ja
+  0.500 → 0.600, scene_07002 ennallaan. Asunto (4 aukkoa) ja liiketila
+  (6 aukkoa) eivät muuttuneet.
+
 - **Palkin syvyysraja skaalautuu tilan korkeudesta.** Kiinteä 3000 mm oli
   kiinni Rohbau site_07:n palkeissa (2.6 m), joten seuraavan hallin syvempi
   palkisto olisi pudonnut kokonaan. Raja on nyt suurempi luvuista 3000 mm ja

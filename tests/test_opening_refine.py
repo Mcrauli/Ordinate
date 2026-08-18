@@ -44,3 +44,18 @@ def test_window_edges_refined_to_mm():
     assert abs(sill - win[2]) < 8.0, f"silli {sill:.1f} vs {win[2]}"
     assert abs(head - win[3]) < 8.0, f"ylitys {head:.1f} vs {win[3]}"
     assert op.opening_type == "window"
+
+
+def test_wide_rough_opening_is_found():
+    """Runkovaiheen oviaukko on leveampi kuin asunnon ovi.
+
+    Mitattu Rohbau3D:n GT:ta vasten: 2.5-3.0 m aukot jaivat kiinteaan
+    2500 mm kattoon. Suhteellinen katto (_MAX_FRACTION 50 % seinasta) hoitaa
+    varsinaisen rajauksen, joten absoluuttinen luku sai olla auliimpi.
+    Scene_07000 5/35 -> 6/35 ja tarkkuus 0.312 -> 0.353, scene_07003
+    2/19 -> 3/19 ja 0.500 -> 0.600; asunto ja liiketila eivat muuttuneet.
+    """
+    w, cloud = _wall_with_window(1200.0, 4000.0, 60.0, 2350.0, L=9000.0, n=240000)
+    ops = detect_openings([w], cloud, floor_z=0.0)
+    assert len(ops) == 1, f"aukkoja {len(ops)}"
+    assert 2600 < ops[0].width < 3000, f"leveys {ops[0].width:.0f}"

@@ -677,7 +677,15 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   | scene_07000 | 35 | 4 | 8 | **0.500** |
   | scene_07002 | 23 | 6 | 10 | **0.500** |
   Eli **kattavuus 0.11–0.26 ja joka toinen mallin aukko ei ole GT-aukon
-  kohdalla.** Tämä on lähtöluku, ei tavoite — sama tilanne kuin palkeissa ennen
+  kohdalla.** MUTTA nimittäjä on väärä: `data/_opening_view.py` osoittaa että
+  **19/35 GT-aukosta on seinällä jota mallissa ei ole** (2.3–9 m lähimpään
+  mallin seinään), ja niistä 12:sta jotka ovat mallinnetulla seinällä vain
+  **5:llä näkyy reikä pilvessä** (`data/_opening_probe.py`: täyttö aukon kohdalla
+  0.25–0.42 vs 0.64–0.89 vieressä). Aukkodetektorin oma osuus on siis
+  **4–5 / 9–10**, ei 4/35. Loput on seinäkattavuuden ongelma.
+  **Korjattu tästä yksi asia mitattuna:** `_MAX_W` 2500 → 3000 mm (runkovaiheen
+  oviaukot ovat 2.5–3.0 m). scene_07000 5/35 → 6/35 ja tarkkuus 0.312 → 0.353,
+  scene_07003 2/19 → 3/19 ja 0.500 → 0.600; asunto ja liiketila ennallaan. Tämä on lähtöluku, ei tavoite — sama tilanne kuin palkeissa ennen
   alapintamallia (0.048). Älä väitä aukkojen toimivan ennen kuin tämä on ajettu.
 
 - **PALKKI ON ALAPINTA, EI PISTEKLUSTERI.** Vanha detektori klusteroi

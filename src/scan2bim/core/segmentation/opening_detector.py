@@ -40,7 +40,9 @@ _GRID_MM = 30.0           # mm/solu (pienempi → erottaa yksittäiset ikkunat)
 _NEIGHBOR_COLS = 3        # kuinka monta naapurisaraketta katsotaan reunaehtoon
 _MIN_PTS_BASELINE = 30    # min pisteitä per kolonni jotta seinä on "datallinen"
 _MIN_W = 500.0            # mm — kapein aukko (realistisin pienin ikkuna)
-_MAX_W = 2500.0           # mm — levein aukko
+_MAX_W = 3000.0          # mm — levein aukko: mitattu Rohbau3D:n GT:tä vasten,
+                          # runkovaiheen oviaukot ovat 2.5-3.0 m. Suhteellinen katto
+                          # (_MAX_FRACTION) hoitaa varsinaisen rajauksen
 _MAX_FRACTION = 0.50      # aukko ei voi olla yli 50 % seinänpituudesta
 _MIN_H = 600.0            # mm — matalin aukko
 _DOOR_SILL_MAX = 250.0    # mm — ovi alkaa lattiatasosta; korkeampi sokkeli = ikkuna
