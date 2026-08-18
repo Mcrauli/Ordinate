@@ -1390,6 +1390,25 @@ class Pipeline:
             perim = _recenter_wall_axes(perim, lock_cloud, band=300.0, keep_thickness=True)
             model.walls = model.walls + perim
 
+        # Jäännösseinät: histogrammi löytää vain hallitsevat seinälinjat (mitattu
+        # Rohbau scene_07000: 4 seinää, kaikki 27–30 m, GT-instansseista 24/49).
+        # Puuttuvat seinät ovat pilvessä yhtenäisinä pintoina, joten ne haetaan
+        # siitä mitä mikään seinä ei lunasta. Ehdokkaat menevät tästä eteenpäin
+        # samojen todistusporttien läpi kuin muutkin.
+        try:
+            from scan2bim.core.semantics.residual_walls import find_residual_walls
+            # Laattoja ei ole vielä tässä vaiheessa → korkeudet seinistä.
+            _zf = min((w.z_min for w in model.walls), default=None)
+            _zh = max((w.height for w in model.walls), default=0.0)
+            _res = ([] if _zf is None or _zh < 1500.0
+                    else find_residual_walls(model.walls, cloud, _zf, _zf + _zh))
+            if _res:
+                _res = _recenter_wall_axes(_res, lock_cloud, band=300.0, keep_thickness=True)
+                model.walls = model.walls + _res
+                self._progress(f"  Jäännösseiniä lisätty: {len(_res)}")
+        except Exception as _e:  # noqa: BLE001
+            self._progress(f"  Jäännösseinähaku ohitettu: {_e}")
+
         from scan2bim.core.semantics.wall_semantics import _deduplicate
         model.walls = _deduplicate(model.walls)
 
