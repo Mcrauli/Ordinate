@@ -690,13 +690,26 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   ryömii portaittain läpi koko mallin: mitattu **200 m "palkki"**. Laikkuun
   tarvitaan myös ankkuriehto ensimmäiseen soluun.
 
-- **PALKIN KATTAVUUDEN TULPPA ON KATTOLAATTA, EI PALKKIDETEKTORI.**
+- **PALKIN KATTAVUUDEN TULPPA ON KEKSITTY KERROSJAKO, EI PALKKIDETEKTORI.**
   scene_07001 ja scene_07004 jäävät instanssikattavuuteen 0.21 ja 0.36, muut
-  kolme ovat 0.53–0.60. Syy on mitattu: näissä kahdessa **mallin kattotaso on
-  2.6 m liian alhaalla** (5444 ja 5442, GT-katto 8074 ja 8078) — laattadetektori
-  valitsi palkiston alapinnan katoksi. Palkkihaku saa siis syötteekseen tilan
-  jossa palkeille ei ole tilaa. Muissa kolmessa virhe on −99…+4 mm.
-  **Älä säädä palkkiportteja näiden kahden scenen perusteella.**
+  kolme ovat 0.53–0.60. Syy on mitattu: näissä kahdessa `detect_floors`
+  (`geometry/floor_splitter.py`, `_split_tall_slice`) **keksii toisen kerroksen
+  palkiston alapinnan kohdalle** — floor_00 on −2052…5444 ja floor_01
+  5444…8076, eli palkit katkeavat kesken. `_SLAB_PEAK_FRAC = 0.30` on
+  suosioääni: 10 m korkeassa hallissa palkiston alapintapiikki (2.9 M pistettä)
+  on isompi kuin oikea kattopiikki (2.8 M). Muissa kolmessa scenessä jakoa ei
+  synny ja kattovirhe on −99…+4 mm.
+  **KUMOUTUNUT KORJAUSEHDOTUS — jalanjäljen peitto ei erota välipohjaa
+  palkiston alapinnasta.** Ajatus oli että aito välipohja peittää koko pohjan
+  ja palkkikaistat vain osan. Mitattu (400 mm solut, ±60 mm kaista):
+  | taso | 07001 | 07004 | 07000 |
+  |---|---|---|---|
+  | lattia | 0.33 | 0.39 | 0.39 |
+  | palkiston alapinta ~5450 | **0.29** | **0.30** | 0.27 |
+  | aito katto ~8080 | **0.10** | **0.09** | 0.12 |
+  Erottelu menee **väärinpäin**: aito katto saa pienimmän peiton, koska palkisto
+  varjostaa sen alhaalta keilattaessa. Älä yritä tätä uudelleen.
+
 
 - **`_looks_like_retail` on tosiasiassa "ISO JA KORKEA", ei liiketila.** Ehto on
   pohja-ala + vapaa korkeus ≥4.5 m; Rohbau site_07:n ~10 m betonirunko täyttää
