@@ -136,6 +136,7 @@ Tarkkuus mitataan erillisillä QA-skripteillä — **aja tuotantomallia (`model.
 | `data/_beam_synth_qa.py` | **Palkit synteettistä GT:tä vasten**: kattavuus GT-palkin akselipituudesta ja tarkkuus mallin palkkipituudesta. Rohbaun palkit ovat 2.5–5.5 m jättiläisiä, joten tavallisen kokoluokan (300 mm) totuus on vain täällä |
 | `data/_soffit_probe.py`, `data/_soffit_sweep.py` | **Alapintalaikkujen mitat GT-luokan rinnalla**: portit valitaan mitatusta välistä. `_beam_probe.py` näyttää mihin porttiin kukin klusteri kaatuu |
 | `data/_beam_run.py` | Ajaa **pelkän palkkidetektion** valmiiseen malliin (`model.beams.json`) — porttien säätö ei vaadi putkiajoa |
+| `data/_opening_qa.py` | **Aukot GT:tä vasten** (Rohbau luokat 7/12/13/14): montako GT-aukkoinstanssia osuu mallin aukkoon ja päinvastoin |
 | `data/_qa_all.py` | **Kaikki mittarit yhtenä taulukkona**: aineisto × elementtityyppi × (kattavuus, tarkkuus). Ei aja putkea — näyttää mallin IÄN, jotta vanhentunut tulos ei mene uutena luvusta läpi (paljasti heti 2 vrk vanhat liiketilamallit) |
 | `data/_column_qa.py`, `data/_col_gate_gt.py`, `data/_column_run.py` | **Pilarit GT:tä vasten** ja mikä portti hylkää minkäkin GT-pilarin |
 | `data/_second_face_probe.py` | **Keksiikö katvepintahaku seiniä**: ajaa aineistot joilla ei ole GT:tä ja tulostaa löydetyt katveseinät tuki/jatkuvuus-lukuineen |
@@ -650,6 +651,17 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   voi jakaa skanneja, tämän voi. Ei koordinaatteja.
 
 ## Tunnetut rajoitukset
+
+- **AUKOT ON NYT MITATTU GT:tä VASTEN ENSIMMÄISTÄ KERTAA (18.8.2026).**
+  `data/_opening_qa.py`, Rohbau site_07 (86 GT-aukkoinstanssia viidessä
+  scenessä; runkovaiheessa ikkuna-aukot ovat luokassa 7 = Wall Cutout, ei 13):
+  | scene | GT-aukkoja (≥500 pist.) | löydetty | mallin aukkoja | tarkkuus |
+  |---|---|---|---|---|
+  | scene_07000 | 35 | 4 | 8 | **0.500** |
+  | scene_07002 | 23 | 6 | 10 | **0.500** |
+  Eli **kattavuus 0.11–0.26 ja joka toinen mallin aukko ei ole GT-aukon
+  kohdalla.** Tämä on lähtöluku, ei tavoite — sama tilanne kuin palkeissa ennen
+  alapintamallia (0.048). Älä väitä aukkojen toimivan ennen kuin tämä on ajettu.
 
 - **PALKKI ON ALAPINTA, EI PISTEKLUSTERI.** Vanha detektori klusteroi
   kattokaistan pisteet XY:ssä ja luki palkin leveyden klusterin XY-laajuudesta.

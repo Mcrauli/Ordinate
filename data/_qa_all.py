@@ -33,6 +33,15 @@ def _num(pat: str, text: str) -> str:
     return m.group(1) if m else "-"
 
 
+def _model(out_dir: Path) -> Path:
+    """Yksitiedostoajo kirjoittaa `model.json`:n juureen, monikerros floor_00:aan."""
+    a = out_dir / "floor_00" / "model.json"
+    b = out_dir / "model.json"
+    if a.exists() and b.exists():
+        return a if a.stat().st_mtime >= b.stat().st_mtime else b
+    return a if a.exists() else b
+
+
 def _age(p: Path) -> str:
     if not p.exists():
         return "-"
@@ -45,7 +54,7 @@ def rohbau(rows: list) -> None:
     if not site.exists():
         return
     for sc in sorted(p.name for p in site.iterdir() if p.is_dir()):
-        mj = DATA / "output" / f"_rohbau_site_07_{sc}" / "floor_00" / "model.json"
+        mj = _model(DATA / "output" / f"_rohbau_site_07_{sc}")
         if not mj.exists():
             rows.append((sc, "-", "ei mallia", "", "", ""))
             continue
@@ -54,6 +63,7 @@ def rohbau(rows: list) -> None:
         w = _run("_rohbau_qa.py", str(mj), coord, cls)
         b = _run("_beam_qa.py", str(mj), coord, cls)
         c = _run("_column_qa.py", str(mj), coord, cls)
+        o = _run("_opening_qa.py", str(mj), coord, cls)
         rows.append((sc, _age(mj), "seina",
                      _num(r"KATTAVUUS.*?([\d.]+)", w), _num(r"TARKKUUS.*?([\d.]+)", w),
                      f"ongelmaseinia {_num(r'ONGELMASEINIA (\d+)', w)}"))
@@ -65,12 +75,16 @@ def rohbau(rows: list) -> None:
                      _num(r"INSTANSSIKATTAVUUS \d+/\d+ = ([\d.]+)", c),
                      _num(r"TARKKUUS.*?([\d.]+)", c),
                      "pilasterit seinassa"))
+        rows.append(("", "", "aukko",
+                     _num(r"KATTAVUUS  GT-aukoista mallissa: \d+/\d+ = ([\d.]+)", o),
+                     _num(r"TARKKUUS   mallin aukoista GT-aukolla: \d+/\d+ = ([\d.]+)", o),
+                     _num(r"(GT-aukoista mallissa: \d+/\d+)", o)))
 
 
 def retail(rows: list) -> None:
     for tag in ("_retail_s", "_retail_l"):
         gt = DATA / f"{tag}.ply.gt.json"
-        mj = DATA / "output" / f"_2nd{tag}" / "floor_00" / "model.json"
+        mj = _model(DATA / "output" / f"_2nd{tag}")
         if not (gt.exists() and mj.exists()):
             continue
         b = _run("_beam_synth_qa.py", str(mj), str(gt))

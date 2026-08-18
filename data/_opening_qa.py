@@ -1,55 +1,103 @@
-"""Vertaa mallin aukot (ovet/ikkunat) generaattorin ovi-GT:hen.
-Aja: .venv\\Scripts\\python data/_opening_qa.py <out_dir> <gt.json>"""
+"""Aukot GT:ta vasten: Rohbau3D per-piste luokat 7/12/13/14.
+
+Aukkodetektiota ei ollut mitattu totuutta vasten lainkaan - sama tilanne kuin
+palkeissa, joissa lahtoluku oli 0.048. Rohbau site_07:ssa on 86 aukko-
+instanssia viidessa scenessa, joten kysymys on mitattavissa.
+
+GT-luokat: 14 = Door Rough Opening (oviaukon pielet), 7 = Wall Cutout,
+12 = Window Cutout, 13 = Window. Rohbau on runkovaihe, joten ikkunoita ei ole
+asennettu ja ikkuna-aukot ovat luokassa 7.
+
+KATTAVUUS : kuinka moni GT-aukkoinstanssi osuu mallin aukkoon.
+TARKKUUS  : kuinka moni mallin aukko osuu GT-aukkoon.
+
+Kaytto: _opening_qa.py <model.json> <coord.npy> <class.npy> [instance.npy]
+"""
 from __future__ import annotations
-import json, sys
-from pathlib import Path
+
+import json
+import pathlib
+import sys
+
 import numpy as np
 
-out_dir = Path(sys.argv[1]); gt = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
-mj = sorted(out_dir.glob("floor_*/model.json")) or [out_dir / "model.json"]
-m = json.loads(mj[0].read_text(encoding="utf-8"))
-walls = {w["id"]: w for w in m["walls"]}
+_OPEN = (7, 12, 13, 14)
+_TOL = 700.0        # mm — sallittu poikkeama aukon keskipisteesta
 
-# mallin aukot maailmakeskipisteiksi (wall_id + position_along)
-det = []
-for o in m.get("openings", []):
-    w = walls.get(o.get("wall_id"))
-    if not w:
-        continue
-    a = np.asarray(w["axis"][0], float); b = np.asarray(w["axis"][1], float)
-    L = np.linalg.norm(b - a)
-    if L < 1:
-        continue
+
+def _wall_xy(m, o):
+    """Aukon keskipiste maailmassa: seinan p0 + position_along + puoli leveytta."""
+    w = next((w for w in m["walls"] if w["id"] == o["wall_id"]), None)
+    if w is None:
+        return None
+    a = np.array(w["axis"][0], float)
+    b = np.array(w["axis"][1], float)
+    L = float(np.linalg.norm(b - a))
+    if L < 1.0:
+        return None
     u = (b - a) / L
-    wdt = float(o["width"])
-    # position_along = aukon ALKUREUNA seinaa pitkin → keskus = alku + leveys/2
-    ctr = a + (float(o["position_along"]) + wdt / 2.0) * u
-    det.append({"center": ctr, "width": wdt, "type": o["opening_type"]})
+    return a + u * (o["position_along"] + o["width"] / 2.0)
 
-gto = gt.get("openings", [])
-print(f"mallin aukkoja: {len(det)}, GT-aukkoja: {len(gto)}")
 
-TOL = 1500.0  # mm — keskipisteiden max etaisyys osumaksi
-used = set()
-hit = 0
-print("\n--- KATTAVUUS (GT-aukko -> lahin malliaukko) ---")
-for g in gto:
-    gc = np.asarray(g["center"], float)
-    best = None
-    for k, d in enumerate(det):
-        if k in used:
+def main(mj, coord_npy, class_npy, inst_npy=None):
+    m = json.loads(pathlib.Path(mj).read_text(encoding="utf-8"))
+    P = np.load(coord_npy).astype(np.float64)
+    C = np.load(class_npy).ravel()
+    if np.ptp(P[:, 0]) < 500.0:
+        P *= 1000.0
+    if inst_npy is None:
+        cand = pathlib.Path(class_npy).with_name("instance.npy")
+        inst_npy = str(cand) if cand.exists() else None
+    I = np.load(inst_npy).ravel() if inst_npy else None
+
+    gt = np.isin(C, _OPEN)
+    ops = m.get("openings", [])
+    zf = min((s["elevation"] for s in m["slabs"] if s["slab_type"] == "floor"), default=0.0)
+    print(f"GT-aukkopisteita {int(gt.sum()):,}   mallin aukkoja {len(ops)} "
+          f"(ovia {sum(1 for o in ops if o['opening_type'] == 'door')}, "
+          f"ikkunoita {sum(1 for o in ops if o['opening_type'] == 'window')})")
+    if I is None or not gt.any():
+        return
+
+    ids, cnts = np.unique(I[gt], return_counts=True)
+    gtc = []
+    for i, n in zip(ids, cnts):
+        q = P[gt][I[gt] == i]
+        gtc.append((int(i), q[:, :2].mean(0), float(q[:, 2].min()), float(q[:, 2].max()), int(n),
+                    float(np.hypot(*(q[:, :2].max(0) - q[:, :2].min(0))))))
+
+    det = []
+    for o in ops:
+        c = _wall_xy(m, o)
+        if c is None:
             continue
-        dist = float(np.linalg.norm(d["center"] - gc))
-        if best is None or dist < best[0]:
-            best = (dist, k, d)
-    if best and best[0] <= TOL:
-        used.add(best[1]); hit += 1
-        d = best[2]
-        dw = d["width"] - g["width"]
-        print(f"  {g['type']} ({gc[0]:.0f},{gc[1]:.0f}) w={g['width']:.0f} -> "
-              f"etaisyys={best[0]:.0f}mm leveysvirhe={dw:+.0f}mm tyyppi={'OK' if d['type']==g['type'] else d['type']}")
-    else:
-        print(f"  {g['type']} ({gc[0]:.0f},{gc[1]:.0f}) w={g['width']:.0f} -> EI LOYTYNYT")
+        det.append((o, c, zf + o["sill_height"], zf + o["sill_height"] + o["opening_height"]))
 
-extra = len(det) - len(used)
-print(f"\nRECALL: {hit}/{len(gto)}   yliMAARAISIA (ei GT-vastinetta): {extra}")
+    found = 0
+    print(f"\n{'inst':>6s} {'n':>8s} {'leveys':>7s} {'z':>7s}..{'':>6s} {'lahin malli':>12s}")
+    for i, c, z0, z1, n, w in sorted(gtc, key=lambda t: -t[4]):
+        best = None
+        for o, dc, dz0, dz1 in det:
+            d = float(np.linalg.norm(dc - c))
+            if best is None or d < best[0]:
+                best = (d, o)
+        ok = best is not None and best[0] <= max(_TOL, w / 2.0) and n >= 500
+        found += bool(ok)
+        tag = f"{best[1]['id']} {best[0]:.0f} mm" if best else "-"
+        print(f"{i:6d} {n:8,} {w:7.0f} {z0:7.0f}..{z1:6.0f} {tag:>12s}"
+              + ("" if ok else "   <== EI LOYDETTY" if n >= 500 else "   (alle 500 pist.)"))
+
+    big = [g for g in gtc if g[4] >= 500]
+    print(f"\nKATTAVUUS  GT-aukoista mallissa: {found}/{len(big)} = "
+          f"{found / max(len(big), 1):.3f}   (alle 500 pisteen instanssit ohitettu)")
+
+    hit = 0
+    for o, dc, dz0, dz1 in det:
+        if any(float(np.linalg.norm(dc - c)) <= max(_TOL, w / 2.0) for _, c, _, _, n, w in gtc if n >= 500):
+            hit += 1
+    print(f"TARKKUUS   mallin aukoista GT-aukolla: {hit}/{max(len(det), 1)} = "
+          f"{hit / max(len(det), 1):.3f}")
+
+
+if __name__ == "__main__":
+    main(*sys.argv[1:5])
