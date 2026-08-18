@@ -132,6 +132,7 @@ Tarkkuus mitataan erillisillä QA-skripteillä — **aja tuotantomallia (`model.
 | `data/_gap_probe.py` | **Mikä jää mallintamatta**: ryhmittelee lunastamattomat GT-seinäpisteet paloiksi ja tulostaa ne kokojärjestyksessä — kertoo onko vaje kokonaan puuttuvia seiniä, päitä vai sirontaa |
 | `data/_gap_view.py` | Sama kuvana: lunastettu (harmaa) vs puuttuva (punainen) GT-seinäpiste mallin akselien päällä |
 | `data/_rohbau_all.py` | **Yleistyvyys**: ajaa kaikki Rohbau-scenet erikseen ja tulostaa kattavuuden, tarkkuuden ja ongelmaseinät rinnakkain — kynnykset on viritetty vain sceneen 07000 |
+| `data/_beam_qa.py` | **Palkkien GT-vertailu**: mallin palkkilaatikoiden GT-luokkajakauma JA montako GT:n palkki-instanssia (`instance.npy`) löytyi. Seinäpuolen `_rohbau_qa.py`:n vastine — ilman tätä palkkidetektorin kynnyksiä ei ollut mitattu mitään vasten |
 | `data/_second_face_probe.py` | **Keksiikö katvepintahaku seiniä**: ajaa aineistot joilla ei ole GT:tä ja tulostaa löydetyt katveseinät tuki/jatkuvuus-lukuineen |
 | `data/_shelf_gt_probe.py` | Mitä `remove_shelf_front_walls` oikeasti poistaa — poistettujen GT-luokkajakauma Rohbaussa |
 | `data/_cont_rule_probe.py` | Vertaa jatkuvuussääntöjä (kiinteä 5 / ≥1 / suhteellinen) eri tiheyksillä ja tulostaa erottelun aito−palkki — tällä valittiin suhteellinen sääntö |
@@ -644,6 +645,36 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   voi jakaa skanneja, tämän voi. Ei koordinaatteja.
 
 ## Tunnetut rajoitukset
+
+- **PALKKIDETEKTORI ON MITATTU GT:tä VASTEN (18.8.2026) JA SE EI TOIMI.**
+  `data/_beam_qa.py`, Rohbau3D site_07, kaikki viisi sceneä:
+  | scene | GT-palkki-instansseja | löydetty | mallin palkkeja | tarkkuus |
+  |---|---|---|---|---|
+  | scene_07000 | 14 | **0** | 8 | **0.048** |
+  | scene_07001 | 19 | 0 | 0 | – |
+  | scene_07002 | 15 | 0 | 0 | – |
+  | scene_07003 | 15 | 0 | 0 | – |
+  | scene_07004 | 14 | 0 | 0 | – |
+  Eli **0/77 aitoa palkkia** ja ainoan sceneen syntyneet 8 palkkia ovat
+  laatikoltaan 79–100 % **TGA**:ta (talotekniikka), yksi 64 % Beam. Nämä
+  menevät IFC:hen `IfcBeam`-elementteinä, eli malli väittää putkiriviä palkiksi.
+  **Syy ei ole kynnyksen hienosäätö vaan suunnitteluikkuna:** site_07:n palkit
+  ovat 2.5–5.5 m leveitä ja 1.3–2.9 m syviä alaslaskettuja palkistoja joiden
+  alapinta on 1.5–2.8 m kattolaatan alla, kun detektori hakee `_MAX_WIDTH_MM`
+  600 mm ja `_SOFFIT_BAND` 800 mm katon alta. Ikkunan sisällä tässä
+  aineistossa **ei ole yhtään aitoa palkkia** — kaikki kapea ja kattoon
+  kiinnittynyt on TGA:ta.
+  **Kaksi erottelijaehdokasta mitattu ja molemmat kumoutuivat:**
+  - *Soffit-kiinnitys* (`_SOFFIT_ATTACH_MM`, koodissa jo): kaikkien kahdeksan
+    väärän klusterin lakipiste on kattotason YLÄPUOLELLA (−43…−306 mm) — tämän
+    aineiston kaapelihyllyt ja kanavat kulkevat kiinni laatassa, eivät roiku.
+  - *Soffitin tasaisuus* (per 200 mm solun alapinnan hajonta): väärät
+    IQR 6–37 mm, GT-aidot palkit IQR 50–122 mm. Erottelu on **väärinpäin** —
+    suora kaapelihylly on tasaisempi kuin 27 m betonipalkki.
+  **Älä yritä neljättä kynnystä ennen kuin on aineisto jossa on aitoja
+  palkkeja suunnitteluikkunan sisällä.** Ilman yhtäkään tosipositiivista ei
+  voi mitata mitä sääntö maksaa. Ks. myös asunnon `beam_000` (hormi), jossa
+  kolme muuta ehdokassääntöä kumoutui samalla tavalla.
 
 - **`_looks_like_retail` on tosiasiassa "ISO JA KORKEA", ei liiketila.** Ehto on
   pohja-ala + vapaa korkeus ≥4.5 m; Rohbau site_07:n ~10 m betonirunko täyttää
