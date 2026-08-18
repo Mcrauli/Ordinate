@@ -16,6 +16,13 @@ _TALL_SPAN_MM = 4600.0       # tätä korkeampi viipale voi sisältää 2 tasoa
 _SLAB_PEAK_FRAC = 0.30       # laattapiikin min-korkeus (osuus maksimista)
 _SLAB_GROUP_MM = 600.0       # piikit tämän sisällä = sama laatta (kaksi pintaa)
 _SLAB_OVERLAP = 300.0        # jaetun laatan molemmat puolet saavat laatan evidenssin
+_SLAB_PAIR_MIN = 100.0       # kerrosjako vaatii PINTAPARIN: alemman kerroksen katto JA
+_SLAB_PAIR_MAX = 600.0       # ylemman lattia. Yksi vaakapinta on palkiston alapinta tai
+                             # parven reuna, ei kerrosjako. Mitattu: aito jako
+                             # (test_multiscan) 3000 + 3296 = 296 mm, Rohbau site_07:n
+                             # palkiston alapinta 5450 yksin. Kolme muuta ehdokasta
+                             # (jalanjaljen peitto, pisteet ylapuolella, kavelytaso)
+                             # kumoutuivat mittauksessa - ks. AGENTS.md
 
 
 def detect_floors(z: np.ndarray) -> list[tuple[float, float]]:
@@ -106,7 +113,12 @@ def _split_tall_slice(z: np.ndarray, lo: float, hi: float) -> list[tuple[float, 
             groups[-1].append(float(c))
         else:
             groups.append([float(c)])
-    slabs = [float(np.mean(g)) for g in groups]
+    # Kerrosjako vaatii pintaparin (katto + lattia). Yksi pinta = palkiston
+    # alapinta: se on 10 m hallissa tiheampi kuin oikea katto, joten pelkka
+    # suosio keksii kerroksen palkiston kohdalle.
+    slabs = [float(np.mean(g)) for g in groups
+             if _SLAB_PAIR_MIN <= (max(g) - min(g)) <= _SLAB_PAIR_MAX
+             or g is groups[0] or g is groups[-1]]
     if len(slabs) < 3:
         return [(lo, hi)]
     # sisäiset laatat = jakokohdat; hylkää jako joka tuottaisi <2m tason

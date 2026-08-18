@@ -76,16 +76,43 @@ def test_sparse_ghost_floor_skipped():
 
 def test_two_levels_without_empty_gap_split_at_slab():
     """Tyomaa: portaikko/aukot yhdistavat tasot → ei tyhjaa z-kaistaa.
-    Jako on tehtava SISAISEN laattapiikin kohdalta (kaksi laattaparia)."""
+    Jako on tehtava SISAISEN laattapiikin kohdalta (kaksi laattaparia).
+
+    Valipohja on KAKSI pintaa: alemman kerroksen katto ja ylemman lattia.
+    Mitattu aidosta kaksikerroksisesta keilauksesta (`data/raw/test_multiscan`):
+    3000 ja 3296 mm. Yhden pinnan fixture ei erottaisi kerrosjakoa palkiston
+    alapinnasta, joka on juuri se virhe jonka takia Rohbau site_07:aan
+    keksittiin toinen kerros."""
     rng = np.random.RandomState(3)
     z = np.concatenate([
         _slab(0, rng=rng),                     # alalattia
-        _slab(3000, n=60000, rng=rng),         # valipohja (molempien pinta)
+        _slab(3000, n=60000, rng=rng),         # valipohjan alapinta (alakerran katto)
+        _slab(3300, n=60000, rng=rng),         # valipohjan ylapinta (ylakerran lattia)
         _slab(6000, rng=rng),                  # ylakatto
         rng.uniform(0, 6000, 50000),           # seinat + portaikko (EI tyhjaa)
     ])
     floors = detect_floors(z)
     assert len(floors) == 2, f"kerroksia {len(floors)}, odotettiin 2"
     (l0, h0), (l1, h1) = sorted(floors)
-    assert l0 < 100 and 2900 < h0 < 3600, f"alakerros {l0}..{h0}"
-    assert 2400 < l1 < 3100 and h1 > 5900, f"ylakerros {l1}..{h1}"
+    assert l0 < 100 and 2900 < h0 < 3700, f"alakerros {l0}..{h0}"
+    assert 2500 < l1 < 3300 and h1 > 5900, f"ylakerros {l1}..{h1}"
+
+
+def test_beam_soffit_is_not_a_storey_split():
+    """10 m halli jossa palkiston alapinta on TIHEAMPI kuin oikea katto.
+
+    Mitattu Rohbau3D site_07 scene_07001: alapintapiikki 2.9 M pistetta,
+    kattopiikki 2.8 M. Pelkka suosio keksi toisen kerroksen palkiston kohdalle
+    ja katkaisi palkit kesken (`data/_beam_qa.py`: instanssikattavuus 0.21 vs
+    muiden 0.53-0.60). Yksi vaakapinta ei ole kerrosjako.
+    """
+    rng = np.random.RandomState(7)
+    z = np.concatenate([
+        _slab(0, n=90000, rng=rng),            # lattia
+        _slab(7450, n=30000, rng=rng),         # palkiston alapinta, YKSI pinta
+        _slab(10000, n=28000, rng=rng),        # oikea katto, heikompi
+        rng.uniform(0, 10000, 60000),          # seinat + pilarit
+    ])
+    floors = detect_floors(z)
+    assert len(floors) == 1, \
+        f"palkiston alapinnasta tuli kerrosjako: {[(round(a), round(b)) for a, b in floors]}"

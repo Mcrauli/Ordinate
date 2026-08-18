@@ -721,6 +721,24 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   Taas **väärinpäin**: palkiston alapinta saa suurimman arvon, koska palkin omat
   pystykyljet ja lakipinta täyttävät ikkunan. Kaksi kumoutunutta ehdokasta —
   seuraava yritys ei saa olla kolmas muunnelma vaakapinnan tiheydestä.
+  **KUMOUTUNUT KORJAUSEHDOTUS 3 — kävelytaso ei myöskään erota.** Ajatus:
+  aito kerros on jakotason varassa, eli ylemmän viipaleen soluista valtaosan
+  alin piste on jakotasolla. Mitattu `data/_split_floor_probe.py`: keksitty
+  jako 07001 **0.66**, 07004 **0.68**, aito lattia 07000 **0.61**. Ei eroa.
+  **RATKAISU — PINTAPARI, ei pinnan tiheys.** Kerrosjako on kaksi vaakapintaa:
+  alemman kerroksen katto JA ylemmän lattia. Palkiston alapinta on YKSI pinta.
+  Mitattu 700 mm ikkunassa jakotason ympärillä (25 mm binit, ≥30 % maksimista):
+  | aineisto | taso | pintoja |
+  |---|---|---|
+  | test_multiscan (aito 2 kerrosta) | 3150 | **2** — 3000 ja 3296 |
+  | Rohbau 07001 | 5450 (palkiston alapinta) | **1** |
+  | Rohbau 07004 | 5442 | **1** |
+  | Rohbau, rakennuksen lattia / katto | −2081 / 8080 | 1 / 1 (oikein) |
+  `_split_tall_slice` vaatii nyt sisäiseltä laatalta pintaparin 100–600 mm.
+  Tulos: 07001 ja 07004 eivät enää pilkkoudu, test_multiscan pilkkoutuu yhä.
+  **ANSA — `tests/test_floor_splitter.py`:n välipohja oli YKSI pinta.** Fixture
+  ei siis erottanut kerrosjakoa palkiston alapinnasta eli koodasi juuri tämän
+  bugin. Se on nyt kaksi pintaa (3000 + 3300) kuten aidossa keilauksessa.
 
 
 - **`_looks_like_retail` on tosiasiassa "ISO JA KORKEA", ei liiketila.** Ehto on
