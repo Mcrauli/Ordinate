@@ -136,6 +136,8 @@ Tarkkuus mitataan erillisillä QA-skripteillä — **aja tuotantomallia (`model.
 | `data/_beam_synth_qa.py` | **Palkit synteettistä GT:tä vasten**: kattavuus GT-palkin akselipituudesta ja tarkkuus mallin palkkipituudesta. Rohbaun palkit ovat 2.5–5.5 m jättiläisiä, joten tavallisen kokoluokan (300 mm) totuus on vain täällä |
 | `data/_soffit_probe.py`, `data/_soffit_sweep.py` | **Alapintalaikkujen mitat GT-luokan rinnalla**: portit valitaan mitatusta välistä. `_beam_probe.py` näyttää mihin porttiin kukin klusteri kaatuu |
 | `data/_beam_run.py` | Ajaa **pelkän palkkidetektion** valmiiseen malliin (`model.beams.json`) — porttien säätö ei vaadi putkiajoa |
+| `data/_wall_inst_qa.py` | **Seinät instansseina, ei pisteinä**: montako GT-seinäinstanssia on mallissa. Pistekattavuus 0.81–0.89 piilottaa sen että puolet seinistä puuttuu |
+| `data/_opening_view.py`, `data/_opening_probe.py`, `data/_opening_run.py` | **Aukot kuvana ja syittäin**: erottaa 'aukko seinällä jota ei ole mallinnettu' 'aukosta jota detektori ei löydä', ja katsoo näkyykö reikä pilvessä lainkaan |
 | `data/_opening_qa.py` | **Aukot GT:tä vasten** (Rohbau luokat 7/12/13/14): montako GT-aukkoinstanssia osuu mallin aukkoon ja päinvastoin |
 | `data/_qa_all.py` | **Kaikki mittarit yhtenä taulukkona**: aineisto × elementtityyppi × (kattavuus, tarkkuus). Ei aja putkea — näyttää mallin IÄN, jotta vanhentunut tulos ei mene uutena luvusta läpi (paljasti heti 2 vrk vanhat liiketilamallit) |
 | `data/_column_qa.py`, `data/_col_gate_gt.py`, `data/_column_run.py` | **Pilarit GT:tä vasten** ja mikä portti hylkää minkäkin GT-pilarin |
@@ -651,6 +653,21 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   voi jakaa skanneja, tämän voi. Ei koordinaatteja.
 
 ## Tunnetut rajoitukset
+
+- **PISTEKATTAVUUS PIILOTTAA PUUTTUVAT SEINÄT — MITTAA INSTANSSIT.**
+  `data/_rohbau_qa.py` antaa seinille kattavuuden 0.81–0.89, ja se on totta:
+  perimetriseinillä on valtaosa pisteistä. `data/_wall_inst_qa.py` laskee saman
+  GT-instansseina (≥2000 pistettä, ≥30 % pisteistä mallin kaistassa):
+  | scene | pistekattavuus | INSTANSSIkattavuus | mallin seiniä |
+  |---|---|---|---|
+  | scene_07000 | 0.887 | **24/49 = 0.490** | 8 |
+  | scene_07002 | 0.860 | **15/44 = 0.341** | 8 |
+  | scene_07003 | 0.807 | **8/27 = 0.296** | 7 |
+  Puuttuvien joukossa on 8.5 m, 5.4 m ja 3.7 m seiniä. Sama nimittäjäharha joka
+  piilotti palkkien 0/77:n: iso pistemäärä yhdessä elementissä peittää monta
+  puuttuvaa pientä. **Optimoi instanssikattavuutta, älä pistekattavuutta.**
+  Tämä selittää myös aukot: 19/35 GT-aukosta on seinällä jota mallissa ei ole
+  (`data/_opening_view.py`, mitattu etäisyys lähimpään mallin seinään 2.3–9 m).
 
 - **AUKOT ON NYT MITATTU GT:tä VASTEN ENSIMMÄISTÄ KERTAA (18.8.2026).**
   `data/_opening_qa.py`, Rohbau site_07 (86 GT-aukkoinstanssia viidessä
