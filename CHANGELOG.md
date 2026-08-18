@@ -6,6 +6,18 @@ sovellus päivittää itsensä sieltä.
 
 ## Julkaisematon
 
+- **Kerrosjako vaatii pintaparin, ei tiheintä vaakapintaa.** 10 m hallissa
+  palkiston alapinta on tiheämpi kuin oikea katto (Rohbau scene_07001: 2.9 M vs
+  2.8 M pistettä), joten `_split_tall_slice` keksi kerroksen palkiston kohdalle
+  ja katkaisi palkit kesken. Aito kerrosjako on kaksi pintaa — alemman kerroksen
+  katto ja ylemmän lattia (mitattu aidosta kaksikerroksisesta keilauksesta:
+  3000 ja 3296 mm). Sisäinen laatta vaatii nyt parin 100–600 mm.
+  Palkit: scene_07001 instanssikattavuus 0.21 → **0.42**, tarkkuus
+  0.354 → **0.812**; kaikki scenet yhteensä 34/77 → **38/77**.
+- **Pilarin korkeus ja alapää mitataan, ei oleteta.** Pystytäyttö lasketaan
+  yhtenäisenä jaksona ja `base_z` tulee jaksosta; ennen se oli aina lattian
+  taso riippumatta siitä missä jäsen oikeasti on.
+
 - **Palkki mitataan alapinnasta, ei pisteklusterista.** Vanha detektori
   klusteroi kattokaistan pisteet XY:ssä ja luki palkin leveyden klusterin
   XY-laajuudesta. Skannattu palkki ei ole umpikappale vaan kaksi pystypintaa ja

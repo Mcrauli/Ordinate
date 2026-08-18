@@ -739,6 +739,28 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   **ANSA — `tests/test_floor_splitter.py`:n välipohja oli YKSI pinta.** Fixture
   ei siis erottanut kerrosjakoa palkiston alapinnasta eli koodasi juuri tämän
   bugin. Se on nyt kaksi pintaa (3000 + 3300) kuten aidossa keilauksessa.
+  **Tulos palkeille:** scene_07001 instanssikattavuus 0.21 → **0.42** ja
+  tarkkuus 0.354 → **0.812**; scene_07004 kattavuus 0.36 (ennallaan), tarkkuus
+  0.963 → 0.810. Kaikki viisi sceneä yhteensä **38/77** (alun perin 0/77).
+
+- **PILARI EI AINA YLLÄ LATTIASTA KATTOON — JA SE OLI DETEKTORIN OLETUS.**
+  `detect_columns` laski solun pystytäytön OSUUTENA koko huonekaistasta
+  (`_VFILL_MIN` 0.70) ja kirjasi `base_z = floor_z` kysymättä. Rohbau site_07:n
+  pilarit kantavat palkistoa ja ovat 3.1 m korkeita 9.2 m kaistassa → osuus
+  0.31, eivätkä koskaan päässeet ehdokkaiksi. Mitattu `data/_column_qa.py`:
+  **0/15 instanssia, 0 pilaria mallissa.**
+  Korjattu: täyttö mitataan YHTENÄISENÄ jaksona ja jakso on myös pilarin
+  mitattu `base_z` ja `height`. Vaatimus on `min(0.70 × kaista, 2300 mm)`,
+  joten matala huone toimii kuten ennen. Poikkileikkauksen vakaus ja
+  vyötärötesti ajetaan nyt jäsenen omassa jaksossa, ei huoneen kaistassa.
+  **KESKEN — tämä EI vielä riitä.** GT-pilarit muuttuvat nyt ehdokkaiksi
+  (jokaisella on 3200–3400 mm yhtenäinen jakso ja komponentti joka läpäisee
+  ext-portin), mutta jokin myöhempi portti pudottaa ne yhä: mitattu edelleen
+  **0/15**, ja mallin 4 pilaria eivät ole GT-pilareita. Estävää porttia ei ole
+  eristetty — ehdokkaat ovat 2–4 solun kokoisia (pilarista näkyy 1–2 kylkeä),
+  joten epäillyt ovat footprint-, aspekti- ja `_surrounded`-portit.
+  Liiketilan 34/34 pilaria säilyivät muuttumattomina, joten muutos ei maksanut
+  mitään — mutta älä väitä pilareita korjatuiksi.
 
 
 - **`_looks_like_retail` on tosiasiassa "ISO JA KORKEA", ei liiketila.** Ehto on

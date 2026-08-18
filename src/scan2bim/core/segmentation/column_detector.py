@@ -123,9 +123,12 @@ def detect_columns(cloud, walls: list[Wall], floor_z: float, ceiling_z: float) -
         return int((d < _RING_TOL).sum()) >= _RING_HITS
 
     # vyötärökaistan (1.0–1.8 m) pisteet irrallisuustestiin — vain jos kaista mahtuu
-    _waist_mask = (pts[:, 2] > floor_z + _WAIST_LO) & (pts[:, 2] < floor_z + _WAIST_HI)
-    _waist_pts = pts[_waist_mask, :2] if int(_waist_mask.sum()) > 200 else None
-    _waist_tree = cKDTree(_waist_pts) if _waist_pts is not None else None
+    def _waist(z_from: float):
+        m = (pts[:, 2] > z_from + _WAIST_LO) & (pts[:, 2] < z_from + _WAIST_HI)
+        q = pts[m, :2] if int(m.sum()) > 200 else None
+        return q, (cKDTree(q) if q is not None else None)
+
+    _waist_cache: dict[int, tuple] = {}
 
     x0 = float(free[:, 0].min()); y0 = float(free[:, 1].min())
     ix = ((free[:, 0] - x0) / _CELL_MM).astype(np.int64)
@@ -136,11 +139,24 @@ def detect_columns(cloud, walls: list[Wall], floor_z: float, ceiling_z: float) -
     nz = max(int((ceiling_z - _Z_MARGIN - z_lo) / _ZBIN_MM), 1)
     iz = np.clip(iz, 0, nz - 1)
 
-    # per-solu pystytäyttö: montako eri z-biniä on ≥2 pistettä
+    # per-solu pystytäyttö YHTENÄISENÄ jaksona, ei kokonaisosuutena. Pilari ei
+    # aina yllä lattiasta kattoon: Rohbau site_07:n pilarit kantavat palkistoa
+    # ja ovat 3.1 m korkeita 9.4 m kaistassa → osuus 0.31 eivätkä koskaan
+    # päässeet ehdokkaiksi (mitattu `data/_column_qa.py`: 0/15). Jakson pituus
+    # on se mikä tekee pilarin, ja se on myös pilarin MITATTU korkeus.
     flat = (ix * ny + iy) * nz + iz
     counts = np.bincount(flat, minlength=nx * ny * nz).reshape(nx, ny, nz)
-    vfill = (counts >= 2).sum(axis=2) / nz
-    cand = vfill >= _VFILL_MIN
+    filled = (counts >= 2).astype(np.int32)
+    run = np.zeros_like(filled)
+    run[:, :, 0] = filled[:, :, 0]
+    for k in range(1, nz):
+        run[:, :, k] = (run[:, :, k - 1] + 1) * filled[:, :, k]
+    best = run.max(axis=2)
+    run_end = run.argmax(axis=2)
+    run_start = run_end - best + 1
+    band_mm = nz * _ZBIN_MM
+    need = min(_VFILL_MIN * band_mm, _MIN_ABS_HEIGHT)
+    cand = best * _ZBIN_MM >= need
 
     labels, ncomp = _cc_label(cand, structure=np.ones((3, 3), dtype=int))
     columns: list[Column] = []
@@ -170,6 +186,16 @@ def detect_columns(cloud, walls: list[Wall], floor_z: float, ceiling_z: float) -
         cl = free[in_comp]
         if len(cl) < _MIN_CLUSTER_PTS:
             continue
+        # Pilarin pystyjakso mitataan komponentin soluista, ei oleteta lattiasta
+        # kattoon — muuten korkealla oleva kannatinpilari saisi väärän
+        # sijainnin ja korkeuden.
+        k_lo = int(run_start[cells_x, cells_y].min())
+        k_hi = int(run_end[cells_x, cells_y].max())
+        base_z = z_lo + k_lo * _ZBIN_MM
+        top_z = z_lo + (k_hi + 1) * _ZBIN_MM
+        cl = cl[(cl[:, 2] >= base_z - _ZBIN_MM) & (cl[:, 2] <= top_z + _ZBIN_MM)]
+        if len(cl) < _MIN_CLUSTER_PTS:
+            continue
         z_extent = float(cl[:, 2].max() - cl[:, 2].min())
         if z_extent < min(_MIN_HEIGHT_FRAC * room_h, _MIN_ABS_HEIGHT):
             continue
@@ -196,10 +222,19 @@ def detect_columns(cloud, walls: list[Wall], floor_z: float, ceiling_z: float) -
         if not _surrounded(cx, cy):
             continue
         # Poikkileikkauksen vakaus: kasattu kaluste heiluu, aito pilari ei.
-        if not _cross_section_stable(cl, floor_z, ceiling_z):
+        # Testit ajetaan jasenen OMASSA jaksossa, ei huoneen kaistassa:
+        # kantava pilari elaa 2.1-5.3 m korkeudella eika sen vakautta voi
+        # mitata kaistasta jossa sita ei ole.
+        if not _cross_section_stable(cl, base_z - _Z_MARGIN, top_z + _Z_MARGIN):
             continue
         # Vyötärö-sektoripeitto: seinänpätkä/donitsi/kaappi on kiinni massassa.
-        if not _waist_isolated(cx, cy, max(wx, wy), _waist_pts, _waist_tree):
+        # Vyötärökaista lasketaan jäsenen omasta alapäästä: huoneen lattiasta
+        # mitattu kaista on tyhjä sellaiselle pilarille joka alkaa 4 m ylempää.
+        _key = int(base_z // 500)
+        if _key not in _waist_cache:
+            _waist_cache[_key] = _waist(base_z)
+        _wp, _wt = _waist_cache[_key]
+        if not _waist_isolated(cx, cy, max(wx, wy), _wp, _wt):
             continue
         shape, w, d = _profile(xy, cx, cy, wx, wy)
         # Luottamus heijastaa kompaktiutta (ei enää satu 1.0:aan): kompakti +
@@ -212,8 +247,8 @@ def detect_columns(cloud, walls: list[Wall], floor_z: float, ceiling_z: float) -
             classification="column",
             source=ElementSource(method="cluster", notes="vertical-fill"),
             location=[round(cx, 1), round(cy, 1)],
-            base_z=round(floor_z, 1),
-            height=round(min(z_extent + 2 * _Z_MARGIN, room_h), 1),
+            base_z=round(base_z, 1),
+            height=round(min(top_z - base_z, room_h), 1),
             profile=ColumnProfile(shape=shape, width=round(w, 1), depth=round(d, 1)),
         ))
     return columns
