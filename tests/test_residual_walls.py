@@ -110,3 +110,19 @@ def test_sparse_scan_finds_the_same_wall():
 def test_no_residual_when_the_model_covers_everything():
     walls, pts = _room()
     assert find_residual_walls(walls, _cloud(*pts), floor_z=0.0, ceiling_z=_H) == []
+
+
+def test_other_face_of_a_known_wall_is_not_a_new_wall():
+    """Mallin seinan toinen pinta ei ole uusi seina.
+
+    Mitattu Rohbau scene_07000: ilman tata ehdokkaat sulautuivat
+    deduplikoinnissa oikeisiin seiniin ja LYHENSIVAT niita — pistekattavuus
+    0.887 -> 0.689 ja 30.3 m seina katkesi 15.4 m:iin.
+    """
+    walls, pts = _room()
+    # Malli tuntee seinan liian ohuena (80 mm) -> sen ulkopinta jaa lunastamatta
+    thin = _wall("w4", 8000, 4000, 8000, 12000, th=80.0)
+    seg = _face((8000, 4000), (8000, 12000), th=300.0)
+    got = find_residual_walls(walls + [thin], _cloud(*pts, seg),
+                              floor_z=0.0, ceiling_z=_H)
+    assert got == [], f"seinan toinen pinta tuli uudeksi seinaksi: {[w.axis for w in got]}"

@@ -44,7 +44,9 @@ def _perp_overlap(a0, a1, b0, b1):
 def main() -> None:
     out_dir = Path(sys.argv[1])
     gt = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
-    mj = sorted(out_dir.glob("floor_*/model.json"))
+    # Yksitiedostoajo kirjoittaa model.json:n juureen, monikerros floor_NN:aan.
+    mj = sorted(out_dir.glob("floor_*/model.json")) or (
+        [out_dir / "model.json"] if (out_dir / "model.json").exists() else [])
     if not mj:
         print(f"ei model.json:ia hakemistossa {out_dir}")
         return

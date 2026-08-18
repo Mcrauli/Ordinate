@@ -35,6 +35,15 @@ _MIN_VSPAN = 0.5         # osuus kaistan korkeudesta jonka pisteiden on katettav
 _PAIR_MIN, _PAIR_MAX = 60.0, 500.0   # mm — vastakkaisten pintojen väli = paksuus
 _PAIR_COS = 0.985                    # cos 10°
 _PAIR_OVERLAP = 0.5                  # osuus lyhyemmästä pinnasta
+_NEAR_EXISTING = 600.0               # mm — tätä lähempänä samansuuntaista mallin
+                                     # seinää oleva ehdokas ON se seinä (sen toinen
+                                     # pinta tai liian ohueksi mitattu paksuus), ei
+                                     # uusi seinä. Ilman tätä ehdokkaat sulautuivat
+                                     # deduplikoinnissa oikeisiin seiniin ja
+                                     # LYHENSIVÄT niitä: mitattu Rohbau scene_07000
+                                     # pistekattavuus 0.887 → 0.689, 30.3 m seinä
+                                     # katkesi 15.4 m:iin.
+_NEAR_COS = 0.966                    # cos 15°
 _WAIST_LO, _WAIST_HI = 0.25, 0.65   # kaista lattiasta osuutena huonekorkeudesta
 _DEFAULT_THICKNESS = 200.0
 
@@ -115,7 +124,39 @@ def find_residual_walls(walls: list[Wall], cloud, floor_z: float,
         p_hi = cq + u * float(sq.max())
         out.append((p_lo, p_hi, u, float(sq.ptp())))
 
-    return _to_walls(_pair_faces(out), h_w, th_w, z_min_w)
+    return _to_walls(_drop_near_existing(_pair_faces(out), walls), h_w, th_w, z_min_w)
+
+
+def _drop_near_existing(pairs: list, walls: list[Wall]) -> list:
+    """Pudota ehdokkaat jotka ovat olemassa olevan seinän toinen pinta."""
+    out = []
+    for p0, p1, thickness in pairs:
+        a = np.asarray(p0, dtype=float)
+        b = np.asarray(p1, dtype=float)
+        L = float(np.linalg.norm(b - a))
+        if L < 1.0:
+            continue
+        u = (b - a) / L
+        dup = False
+        for w in walls:
+            wa = np.asarray(w.axis[0], dtype=float)
+            wb = np.asarray(w.axis[1], dtype=float)
+            Lw = float(np.linalg.norm(wb - wa))
+            if Lw < 500.0:
+                continue
+            uw = (wb - wa) / Lw
+            if abs(float(u @ uw)) < _NEAR_COS:
+                continue
+            nw = np.array([-uw[1], uw[0]])
+            if max(abs(float((a - wa) @ nw)), abs(float((b - wa) @ nw))) > _NEAR_EXISTING:
+                continue
+            sa = sorted([float((a - wa) @ uw), float((b - wa) @ uw)])
+            if min(sa[1], Lw) - max(sa[0], 0.0) > 0.3 * L:
+                dup = True
+                break
+        if not dup:
+            out.append((p0, p1, thickness))
+    return out
 
 
 def _pair_faces(faces: list) -> list:
