@@ -682,6 +682,28 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   puuttuvaa pientä. **Optimoi instanssikattavuutta, älä pistekattavuutta.**
   Tämä selittää myös aukot: 19/35 GT-aukosta on seinällä jota mallissa ei ole
   (`data/_opening_view.py`, mitattu etäisyys lähimpään mallin seinään 2.3–9 m).
+  **Pituusluokittain (neljä sceneä, sama kuvio joka kerta):**
+  | luokka | 07000 | 07002 | 07003 | 07004 |
+  |---|---|---|---|---|
+  | yli 4 m | 0.80 | 1.00 | 0.67 | 0.83 |
+  | 2–4 m | 0.43 | 0.29 | 0.27 | 0.27 |
+  | 1–2 m | **0/3** | **0/7** | **0/2** | **0/1** |
+  Malli saa pitkät seinät ja menettää keskipitkät; 1–2 m seiniä ei löydy
+  yhtään (0/13 yhteensä).
+  **KUMOUTUNUT SELITYS — `wall_histogram._MIN_WALL_LENGTH` ei ole syy.** A/B
+  scene_07000:lla koko putkella (2000 vs 1200 mm): **kaikki luvut identtiset**
+  — 24/49 instanssia, pistekattavuus 0.887, tarkkuus 0.924, 0 ongelmaseinää,
+  samat pituusluokat. Syy näkyy mallista: histogrammidetektori tuotti
+  **4 seinää ja kaikki ovat 27–30 m** (loput 2 ovat `floorplan`- ja 2
+  `second_face`-seiniä). Kynnys ei sido, koska lyhyestä seinästä ei synny
+  globaalia piikkiä lainkaan. **Histogrammi mallintaa vain hallitsevat
+  seinälinjat** — lyhyet väliseinät ovat menetelmän ulkopuolella, eivät
+  kynnyksen takana.
+  **HUOM reititysvalinta on tehty PISTEkattavuudella.** "Liiketila → histogrammi"
+  perusteltiin +0.234 pistekattavuudella vs −0.027 tarkkuudella. Tänään
+  opittiin että pistekattavuus on painotettu elementin koolla, joten se on juuri
+  se mittari joka suosii neljää 30 m seinää. **Mittaa reititys uudelleen
+  instanssikattavuudella ennen kuin siihen nojaa.**
 
 - **AUKOT ON NYT MITATTU GT:tä VASTEN ENSIMMÄISTÄ KERTAA (18.8.2026).**
   `data/_opening_qa.py`, Rohbau site_07 (86 GT-aukkoinstanssia viidessä
