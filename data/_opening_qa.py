@@ -23,6 +23,8 @@ import numpy as np
 
 _OPEN = (7, 12, 13, 14)
 _TOL = 700.0        # mm — sallittu poikkeama aukon keskipisteesta
+_MIN_W = 300.0      # mm — tata kapeampi ei ole kuljettava eika mallinnettava aukko
+_MIN_H = 300.0      # mm
 
 
 def _wall_xy(m, o):
@@ -37,6 +39,17 @@ def _wall_xy(m, o):
         return None
     u = (b - a) / L
     return a + u * (o["position_along"] + o["width"] / 2.0)
+
+
+def _real(width: float, height: float) -> bool:
+    """Onko GT-instanssi aukko jonka malli voi loytaa.
+
+    Nimittaja EI saa olla pistemaara: `n >= 500` sitoo mittarin skannin
+    tiheyteen, jolloin harvempi skanni pudottaa pienet aukot pois nimittajasta
+    ja kattavuus NAYTTAA paremmalta ilman etta mikaan parani. Koko on
+    fysikaalinen ja mitattavissa samana jokaisesta skannista.
+    """
+    return width >= _MIN_W and height >= _MIN_H
 
 
 def main(mj, coord_npy, class_npy, inst_npy=None):
@@ -81,19 +94,23 @@ def main(mj, coord_npy, class_npy, inst_npy=None):
             d = float(np.linalg.norm(dc - c))
             if best is None or d < best[0]:
                 best = (d, o)
-        ok = best is not None and best[0] <= max(_TOL, w / 2.0) and n >= 500
+        real = _real(w, z1 - z0)
+        ok = best is not None and best[0] <= max(_TOL, w / 2.0) and real
         found += bool(ok)
         tag = f"{best[1]['id']} {best[0]:.0f} mm" if best else "-"
         print(f"{i:6d} {n:8,} {w:7.0f} {z0:7.0f}..{z1:6.0f} {tag:>12s}"
-              + ("" if ok else "   <== EI LOYDETTY" if n >= 500 else "   (alle 500 pist.)"))
+              + ("" if ok else "   <== EI LOYDETTY" if real
+                 else f"   (alle {_MIN_W:.0f} mm)"))
 
-    big = [g for g in gtc if g[4] >= 500]
+    big = [g for g in gtc if _real(g[5], g[3] - g[2])]
     print(f"\nKATTAVUUS  GT-aukoista mallissa: {found}/{len(big)} = "
-          f"{found / max(len(big), 1):.3f}   (alle 500 pisteen instanssit ohitettu)")
+          f"{found / max(len(big), 1):.3f}   "
+          f"(alle {_MIN_W:.0f} x {_MIN_H:.0f} mm instanssit ohitettu)")
 
     hit = 0
     for o, dc, dz0, dz1 in det:
-        if any(float(np.linalg.norm(dc - c)) <= max(_TOL, w / 2.0) for _, c, _, _, n, w in gtc if n >= 500):
+        if any(float(np.linalg.norm(dc - c)) <= max(_TOL, w / 2.0)
+               for _, c, z0, z1, n, w in gtc if _real(w, z1 - z0)):
             hit += 1
     print(f"TARKKUUS   mallin aukoista GT-aukolla: {hit}/{max(len(det), 1)} = "
           f"{hit / max(len(det), 1):.3f}")

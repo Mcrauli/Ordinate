@@ -201,6 +201,42 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
 
 ## Kovalla työllä opitut asiat — ÄLÄ keksi uudelleen
 
+- **Portti joka mittaa NÄKYVYYTTÄ hylkää sen mitä ei nähdä, ei sitä mikä on
+  väärin.** Palkkien kiinnitysportti (`_attached`) vaati, ettei alapinnan ja
+  laatan välissä ole 300 mm tyhjää. Korkeassa tilassa lattialta keilattaessa
+  palkin uuma on katsomissuunnan takana eikä sitä skannata lainkaan, joten
+  portti hylkäsi aidon palkin siitä ettei sitä nähdä. Ablaatio kaikilla viidellä
+  Rohbau-scenellä (`data/_beam_attach_abl.py`): portti päällä 39/77 tarkkuudella
+  0.824, pois 62/77 tarkkuudella 0.808 — **23 aitoa palkkia hinnaksi 0.016
+  tarkkuudesta**. Liiketila-S, liiketila-L ja asunto antoivat TÄSMÄLLEEN saman
+  tuloksen kummallakin (`_beam_attach_abl2.py`), eli portti ei estänyt niissä
+  mitään. Kysy jokaisesta portista: mittaako se rakennetta vai skannerin
+  sijaintia? Jälkimmäinen ei yleisty.
+- **Solun MINIMI on tiheysmittari, ei geometriamittari.** 200 mm solussa on
+  4 mm skannissa ~2500 pistettä ja 70 mm skannissa ~8, joten yksi harhapiste
+  (kaapeli, putki, kohina) painaa solun alapinnan alas sitä varmemmin mitä
+  tiheämpi skanni on — ja `z_free`n alle painunut solu POISTETAAN kartasta, eli
+  tiheys repii laikun palasiksi eikä vain siirrä sitä. Sama koskee jokaista
+  `.min()`- ja `.max()`-tilastoa solua kohti. Korvaa PINNALLA: alin taso jonka
+  ympärille kertyy OSUUS solun omista pisteistä. Osuus on tiheysriippumaton.
+  Mitattu: kattavuus säilyi 12/14 joka tiheydellä, tarkkuus 0.838 → 0.866 …
+  0.882 → 0.911 (`data/_beam_density.py`).
+- **Aja tiheyssweep ennen kuin lupaat mitään tuntemattomasta skannista.**
+  `data/_beam_density.py` ja `data/_density_sweep.py` ajavat SAMAN tilan usealla
+  pistevälillä. Jos tulos muuttuu, mittari on sidottu skannin tiheyteen eikä
+  rakennukseen. Tämä paljasti `_attached`in: koko putken kattavuus heitteli
+  0.000 ja 0.643 välillä pelkästä harventamisesta, ja HARVA pilvi voitti tiheän.
+- **Väärä mittari on pahempi kuin ei mittaria.** `_beam_qa` raportoi palkin
+  leveydeksi maailman akselien mukaisen laatikon, joten vino 27 m palkki näytti
+  5458 mm leveältä kun se on 1464. Luku sai GT-palkit näyttämään `_MAX_WIDTH`in
+  rikkojilta ja ohjasi etsinnän väärään porttiin. Instanssin mitat on luettava
+  sen OMALTA akselilta (PCA), ei maailman akseleilta.
+- **Yksikkötunnistus ei saa nojata rakennuksen kokoon.** Vanha sääntö oli
+  "laajuus < 200 → metrit"; 250 m halli metreissä jäi skaalaamatta ja koko putki
+  mallinsi 250 mm rakennuksen ilman yhtään virhettä. Pisteväli erottaa yksiköt
+  koosta riippumatta: mitattu Rohbau (metrit) 0.016–0.024, mm-pilvet 2–124.
+  `loader.metre_scale` on ainoa paikka jossa sääntö saa olla.
+
 - **"Kuvaohjattu" aukkodetektio EI käytä kuvien pikseleitä.** `image_openings.py`
   päättää kokonaan pistepilven syvyyspuskurista: näkeekö skannerin säde
   seinätason ohi. Kuvia tarvitaan vain skanneriasemien SIJAINTIIN (pose) ja
