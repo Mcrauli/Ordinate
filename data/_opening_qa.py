@@ -25,6 +25,7 @@ _OPEN = (7, 12, 13, 14)
 _TOL = 700.0        # mm — sallittu poikkeama aukon keskipisteesta
 _MIN_W = 300.0      # mm — tata kapeampi ei ole kuljettava eika mallinnettava aukko
 _MIN_H = 300.0      # mm
+_HOST = 800.0       # mm — aukon keskipiste nain lahella mallin seinaa = isanta on mallissa
 
 
 def _wall_xy(m, o):
@@ -39,6 +40,28 @@ def _wall_xy(m, o):
         return None
     u = (b - a) / L
     return a + u * (o["position_along"] + o["width"] / 2.0)
+
+
+def _host_wall(m, c):
+    """Onko GT-aukon kohdalla mallin seina — eli onko aukko taman mittarin vastuulla.
+
+    Aukkokattavuus ei voi ylittaa seinakattavuutta: jos isantaseinaa ei ole
+    mallissa, aukon puuttuminen on SEINAvaje eika aukkodetektorin virhe. Sama
+    jako korjasi seinaluvun lukemisen (jalanjaljen sisalla vs ulkopuolella).
+    """
+    best = None
+    for w in m["walls"]:
+        a = np.array(w["axis"][0], float)
+        b = np.array(w["axis"][1], float)
+        L = float(np.linalg.norm(b - a))
+        if L < 1.0:
+            continue
+        u = (b - a) / L
+        t = float(np.clip((c - a) @ u, 0.0, L))
+        d = float(np.linalg.norm(c - (a + t * u)))
+        if best is None or d < best:
+            best = d
+    return best is not None and best <= _HOST
 
 
 def _real(width: float, height: float) -> bool:
@@ -87,6 +110,7 @@ def main(mj, coord_npy, class_npy, inst_npy=None):
         det.append((o, c, zf + o["sill_height"], zf + o["sill_height"] + o["opening_height"]))
 
     found = 0
+    hits_in, hits_out = [], []
     print(f"\n{'inst':>6s} {'n':>8s} {'leveys':>7s} {'z':>7s}..{'':>6s} {'lahin malli':>12s}")
     for i, c, z0, z1, n, w in sorted(gtc, key=lambda t: -t[4]):
         best = None
@@ -95,7 +119,10 @@ def main(mj, coord_npy, class_npy, inst_npy=None):
             if best is None or d < best[0]:
                 best = (d, o)
         real = _real(w, z1 - z0)
+        host = _host_wall(m, c)
         ok = best is not None and best[0] <= max(_TOL, w / 2.0) and real
+        if real:
+            (hits_in if host else hits_out).append(bool(ok))
         found += bool(ok)
         tag = f"{best[1]['id']} {best[0]:.0f} mm" if best else "-"
         print(f"{i:6d} {n:8,} {w:7.0f} {z0:7.0f}..{z1:6.0f} {tag:>12s}"
@@ -106,6 +133,12 @@ def main(mj, coord_npy, class_npy, inst_npy=None):
     print(f"\nKATTAVUUS  GT-aukoista mallissa: {found}/{len(big)} = "
           f"{found / max(len(big), 1):.3f}   "
           f"(alle {_MIN_W:.0f} x {_MIN_H:.0f} mm instanssit ohitettu)")
+    fi = sum(hits_in)
+    fo = sum(hits_out)
+    print(f"  ISANTASEINA MALLISSA {fi}/{len(hits_in)} = "
+          f"{fi / max(len(hits_in), 1):.3f}   <== taman aukkodetektori omistaa")
+    print(f"  ISANTASEINA PUUTTUU  {fo}/{len(hits_out)} = "
+          f"{fo / max(len(hits_out), 1):.3f}   (seinavaje, ei aukkovirhe)")
 
     hit = 0
     for o, dc, dz0, dz1 in det:
