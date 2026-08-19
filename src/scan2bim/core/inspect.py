@@ -81,7 +81,7 @@ def _read_sampled(path: Path, sample: int) -> tuple[np.ndarray, int, np.ndarray]
     ajettavaksi — 32 GB E57 ei mahdu muistiin, mutta sen oletukset pitää nähdä
     ENNEN ajoa, ei sen jälkeen.
     """
-    from scan2bim.core.geometry.loader import load_point_cloud
+    from scan2bim.core.geometry.loader import load_point_cloud, metre_scale
 
     if path.suffix.lower() == ".e57":
         try:
@@ -106,7 +106,9 @@ def _read_sampled(path: Path, sample: int) -> tuple[np.ndarray, int, np.ndarray]
                 chunks.append(xyz[::step].astype(np.float64))
             if chunks:
                 q = np.vstack(chunks)
-                scale = 1000.0 if np.ptp(q[:, 0]) < 200.0 else 1.0   # metrit → mm
+                # Sama yksikkösääntö kuin loaderilla — mitattuna, ei arvattuna.
+                # Tiheys luetaan yhtenäisestä lohkosta, ei harvennetusta näytteestä.
+                scale = metre_scale(dense if dense is not None else q)
                 return q * scale, total, (dense * scale if dense is not None else q)
         except Exception:  # noqa: BLE001 — pudotaan tavalliseen lataukseen
             pass

@@ -10,13 +10,48 @@ import open3d as o3d
 log = logging.getLogger(__name__)
 
 
+_SPAN_MM = 200.0        # tätä pienempi laajuus ei ole rakennus millimetreinä
+_SPACING_M = 0.5        # metripilven pisteväli; mitattu mm-pilvistä ≥ 2
+
+
+def metre_scale(xyz: np.ndarray) -> float:
+    """1000.0 jos pilvi on metreissä, muuten 1.0.
+
+    Pelkkä laajuus sitoisi säännön rakennuksen KOKOON: 250 m halli metreissä
+    jää skaalaamatta ja koko putki näkee 250 mm rakennuksen — ilman virhettä.
+    Pisteväli on koosta riippumaton: mitattu Rohbau (metrit) 0.016–0.024,
+    mm-pilvet (retail, apartment) 2–124.
+    """
+    if len(xyz) == 0:
+        return 1.0
+    if float((xyz.max(axis=0) - xyz.min(axis=0)).max()) < _SPAN_MM:
+        return 1000.0
+    sp = _nn_spacing(np.asarray(xyz, dtype=np.float64))
+    return 1000.0 if sp == sp and sp < _SPACING_M else 1.0
+
+
+def _nn_spacing(xyz: np.ndarray) -> float:
+    """Mediaanietäisyys lähimpään naapuriin; nan jos ei mitattavissa.
+
+    Nollaetäisyydet karsitaan: kaksoiskappaleet vetäisivät mediaanin nollaan ja
+    väittäisivät jokaista pilveä metreiksi.
+    """
+    from scipy.spatial import cKDTree
+
+    if len(xyz) < 100:
+        return float("nan")
+    n = min(len(xyz), 20_000)
+    idx = np.linspace(0, len(xyz) - 1, n).astype(np.int64)
+    d, _ = cKDTree(xyz).query(xyz[idx], k=2)
+    d = d[:, 1]
+    d = d[d > 0.0]
+    return float(np.median(d)) if len(d) else float("nan")
+
+
 def _autoscale(cloud: o3d.geometry.PointCloud) -> o3d.geometry.PointCloud:
-    """Jos pilvi on metreissä (max laajuus < 200), skaalaa → mm."""
+    """Jos pilvi on metreissä, skaalaa → mm."""
     pts = np.asarray(cloud.points)
-    if len(pts) == 0:
-        return cloud
-    span = pts.max(axis=0) - pts.min(axis=0)
-    if span.max() < 200.0:
+    if len(pts) and metre_scale(pts) != 1.0:
         cloud.points = o3d.utility.Vector3dVector(pts * 1000.0)
     return cloud
 
@@ -228,8 +263,8 @@ def ply_band_chunks(path: Path, z_lo: float, z_hi: float, chunk: int = 4_000_000
 
 def ply_autoscale_factor(path: Path) -> float:
     """Metri→mm-kerroin (_autoscale sama sääntö) ilman koko tiedoston latausta:
-    lukee vain ensimmäisen lohkon ja katsoo laajuuden. Rakennuksen osittainenkin
-    laajuus ylittää 200 mm reippaasti → metri-vs-mm-päätös on turvallinen otoksesta."""
+    lukee vain ensimmäisen lohkon. Lohko on yhtenäinen, joten myös pisteväli on
+    siitä mitattavissa → metri-vs-mm-päätös on turvallinen otoksesta."""
     parsed = _ply_dtype(path)
     if parsed is None:
         return 1.0
@@ -241,8 +276,7 @@ def ply_autoscale_factor(path: Path) -> float:
     if len(buf) == 0:
         return 1.0
     xyz = np.column_stack([buf[nm["x"]], buf[nm["y"]], buf[nm["z"]]]).astype(np.float64)
-    span = xyz.max(axis=0) - xyz.min(axis=0)
-    return 1000.0 if span.max() < 200.0 else 1.0
+    return metre_scale(xyz)
 
 
 _E57_CHUNK = 4_000_000
@@ -314,8 +348,7 @@ def e57_autoscale_factor(path: Path) -> float:
     for xyz in _e57_scan_chunks(e57, 0, min(_E57_CHUNK, 1_000_000)):
         if len(xyz) == 0:
             continue
-        span = xyz.max(axis=0) - xyz.min(axis=0)
-        return 1000.0 if span.max() < 200.0 else 1.0
+        return metre_scale(xyz)
     return 1.0
 
 

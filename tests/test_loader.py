@@ -214,3 +214,40 @@ def test_truncated_ply_warns_or_raises(tmp_path, caplog):
     assert any("vajaa" in r.message for r in caplog.records), \
         "vajaa tiedosto luettiin ilman varoitusta"
     assert len(cloud.points) < 10000
+
+
+def _floor_grid(x_m: float, y_m: float, step_m: float) -> np.ndarray:
+    x = np.arange(0.0, x_m, step_m)
+    y = np.arange(0.0, y_m, step_m)
+    xx, yy = np.meshgrid(x, y)
+    return np.column_stack([xx.ravel(), yy.ravel(), np.zeros(xx.size)])
+
+
+def test_long_building_in_metres_is_still_scaled(tmp_path):
+    """250 m halli metreissä: laajuus > 200 mutta kyse on metreistä.
+
+    Pelkkä laajuussääntö sitoo yksikkötunnistuksen rakennuksen KOKOON ja jättää
+    tämän skaalaamatta — putki näkisi 250 mm rakennuksen eikä valittaisi.
+    Pisteväli (0.1) erottaa yksiköt koosta riippumatta.
+    """
+    from scan2bim.core.geometry.loader import metre_scale, ply_autoscale_factor
+    xyz = _floor_grid(250.0, 3.0, 0.1)
+    assert np.ptp(xyz, axis=0).max() > 200.0
+    assert metre_scale(xyz) == 1000.0
+    p = tmp_path / "hall_m.ply"
+    _write_binary_ply(p, xyz)
+    assert ply_autoscale_factor(p) == 1000.0
+
+
+def test_large_building_in_millimetres_is_not_scaled(tmp_path):
+    """Sama halli millimetreinä pysyy millimetreinä — pisteväli 100 mm."""
+    from scan2bim.core.geometry.loader import metre_scale
+    assert metre_scale(_floor_grid(250_000.0, 3000.0, 100.0)) == 1.0
+
+
+def test_duplicate_points_do_not_force_metres():
+    """Kaksoiskappaleiden nollaetäisyys vetäisi mediaanin nollaan ja väittäisi
+    jokaista pilveä metreiksi."""
+    from scan2bim.core.geometry.loader import metre_scale
+    xyz = np.repeat(_floor_grid(250_000.0, 3000.0, 100.0), 3, axis=0)
+    assert metre_scale(xyz) == 1.0
