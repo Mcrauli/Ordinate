@@ -36,11 +36,20 @@ def main(cloud_path: str, model_path: str) -> None:
     zc = max((s["elevation"] for s in m["slabs"] if s["slab_type"] == "ceiling"))
     height = zc - zf
     z_free = max(zf + 0.5 * height, zc - max(B._MAX_DEPTH, B._MAX_DEPTH_FRAC * height))
+    min_depth = B._min_depth(height)
     print(f"lattia {zf:.0f}  katto {zc:.0f}  korkeus {height:.0f}")
-    print(f"soffit-kaista {z_free:.0f} .. {zc - B._MIN_DEPTH:.0f}"
-          f"   (_MAX_DEPTH {B._MAX_DEPTH:.0f}, frac {B._MAX_DEPTH_FRAC * height:.0f})")
+    print(f"soffit-kaista {z_free:.0f} .. {zc - min_depth:.0f}"
+          f"   (_MAX_DEPTH {B._MAX_DEPTH:.0f}, frac {B._MAX_DEPTH_FRAC * height:.0f}, "
+          f"min_depth {min_depth:.0f})")
 
-    cells = B._soffit_cells(pts, zf + 200.0, zc - 30.0, z_free, zc - B._MIN_DEPTH)
+    cells = B._soffit_cells(pts, zf + 200.0, zc - 30.0, z_free, zc - min_depth)
+    # Detektori pudottaa seinasolut ENNEN laikutusta; ilman tata luotain nayttaa
+    # eri laikut kuin mita koodi oikeasti kasittelee.
+    from scan2bim.schemas.model import StructuralModel
+    walls = StructuralModel.load(model_path).walls
+    if walls:
+        cells = B._drop_wall_cells(cells, walls)
+    print(f"seinasolujen poiston jalkeen {len(cells)}")
     print(f"soffit-soluja {len(cells)}")
     comps = list(B._patches(cells))
     print(f"laikkuja (>= {B._MIN_CELLS} solua) {len(comps)}")
@@ -56,7 +65,7 @@ def main(cloud_path: str, model_path: str) -> None:
         u, n = V[:, 1], V[:, 0]
         length = float(np.ptp(A @ u)) + B._CELL
         width = float(np.ptp(A @ n)) + B._CELL
-        soffit = float(np.median([cells[k] for k in comp]))
+        soffit = float(np.median([cells[k][0] for k in comp]))
         depth = zc - soffit
         fill = len(comp) / max((length / B._CELL) * (width / B._CELL), 1e-9)
         gate = "-"
@@ -68,10 +77,8 @@ def main(cloud_path: str, model_path: str) -> None:
             gate = f"_MIN_ASPECT {B._MIN_ASPECT:.1f}"
         elif fill < B._MIN_FILL:
             gate = f"_MIN_FILL {B._MIN_FILL:.2f}"
-        elif depth < B._MIN_DEPTH:
-            gate = f"_MIN_DEPTH {B._MIN_DEPTH:.0f}"
-        elif not B._attached(pts, c, u, n, length, width, soffit, zc):
-            gate = "_attached"
+        elif depth < min_depth:
+            gate = f"_MIN_DEPTH {min_depth:.0f}"
         rows.append((len(comp), length, width, depth, soffit, fill,
                      length / max(width, 1e-9), gate))
     for i, r in enumerate(sorted(rows, key=lambda r: -r[1])):
