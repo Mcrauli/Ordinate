@@ -52,6 +52,19 @@ def _box_mask(beam, P):
             & (np.abs(t) < half_w) & (np.abs(dz) < half_h)), L
 
 
+def _pca_xy(q):
+    """Instanssin OMA pituus ja leveys, ei maailman akselien mukainen laatikko.
+
+    Vinossa oleva 27 m palkki nayttaa akselisuuntaisessa laatikossa 5 m
+    levealta — se luku sai `_MAX_WIDTH`-vertailun nayttamaan silta etta GT:n
+    palkit ovat leveita vaikka ne ovat vinossa.
+    """
+    xy = q[:, :2] - q[:, :2].mean(axis=0)
+    _, V = np.linalg.eigh(xy.T @ xy / len(xy))
+    proj = xy @ V[:, ::-1]
+    return float(np.ptp(proj[:, 0])), float(np.ptp(proj[:, 1]))
+
+
 def main(mj, coord_npy, class_npy, inst_npy=None):
     m = json.loads(pathlib.Path(mj).read_text(encoding="utf-8"))
     P = np.load(coord_npy).astype(np.float64)
@@ -112,7 +125,7 @@ def main(mj, coord_npy, class_npy, inst_npy=None):
     for k in order:
         q = P[gt][I[gt] == ids[k]]
         d = q.max(0) - q.min(0)
-        long_xy, short_xy = max(d[0], d[1]), min(d[0], d[1])
+        long_xy, short_xy = _pca_xy(q)
         print(f"{ids[k]:6d} {cnts[k]:10,} {long_xy:7.0f} {short_xy:6.0f} {d[2]:6.0f} "
               f"{q[:, 2].min():9.0f} {hit[k]:6.2f}"
               + ("" if hit[k] >= _HIT else "   <== EI LOYDETTY"))
