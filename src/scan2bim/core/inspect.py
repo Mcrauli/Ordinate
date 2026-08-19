@@ -18,6 +18,8 @@ _MIN_SPAN_MM = 1500.0        # tätä pienempi rakennus ei ole rakennus
 _TALL_SPAN_MM = 12000.0      # yli tämän: joko monikerros tai rekisteröintivirhe
 _SPARSE_MM = 60.0            # mediaanipisteväli: tätä harvempi ei kanna 100 mm seinää
 _DENSE_MM = 2.0
+_WORK_VOXEL = 25.0           # mm — pipelinen `_AUTO_VOXEL_MAX`: karkein mihin se menee
+_BIG_WORK = 25_000_000       # työpilven pistemäärä josta ajo alkaa maksaa
 
 
 def inspect_scan(path: Path, sample: int = 2_000_000) -> dict:
@@ -68,10 +70,36 @@ def inspect_scan(path: Path, sample: int = 2_000_000) -> dict:
     if out["room_height_mm"] < _MIN_SPAN_MM:
         out["warnings"].append(
             f"lattian ja katon väli {out['room_height_mm']:.0f} mm — tasoja ei eroteltu")
+    exact = total <= len(pts)
+    work = _work_points(pts)
+    out["work_points"] = int(work)
+    out["work_exact"] = bool(exact)
+    if work > _BIG_WORK:
+        out["warnings"].append(
+            f"työpilvi {'' if exact else 'vähintään '}{work / 1e6:.1f} M pistettä "
+            f"({_WORK_VOXEL:.0f} mm voxelin jälkeen) — varaa muistia ja aikaa")
     if len(out["floors"]) > 1:
         out["warnings"].append(
             f"{len(out['floors'])} kerrosta — jokainen mallinnetaan erikseen")
     return out
+
+
+def _work_points(pts: np.ndarray) -> int:
+    """Montako pistettä putki oikeasti käsittelee.
+
+    `_auto_voxel` harventaa korkeintaan `_AUTO_VOXEL_MAX`:iin, joten iso
+    rakennus EI harvene 4 M pisteeseen vaan pitää tarkkuutensa ja kasvattaa
+    työpilveä. Se on oikea valinta laadulle mutta se on nähtävä ETUKÄTEEN,
+    ei vasta kun ajo hyytyy.
+
+    Näytteestä laskettu luku on ALARAJA: koko pilvi voi täyttää vain enemmän
+    voxeleita, ei vähempää.
+    """
+    import open3d as o3d
+
+    pc = o3d.geometry.PointCloud()
+    pc.points = o3d.utility.Vector3dVector(pts)
+    return len(pc.voxel_down_sample(_WORK_VOXEL).points)
 
 
 def _read_sampled(path: Path, sample: int) -> tuple[np.ndarray, int, np.ndarray]:
@@ -146,6 +174,9 @@ def format_report(info: dict) -> str:
         f"  pisteväli       {info['spacing_mm']:.1f} mm (mediaani lähimpään naapuriin)",
         f"  lattia / katto  {info['floor_mm']:.0f} / {info['ceiling_mm']:.0f} mm"
         f"  → vapaa korkeus {info['room_height_mm'] / 1000.0:.2f} m",
+        f"  työpilvi        {'' if info.get('work_exact', True) else '≥ '}"
+        f"{info.get('work_points', 0) / 1e6:.1f} M pistettä "
+        f"({_WORK_VOXEL:.0f} mm voxelilla)",
         f"  kerroksia       {len(info['floors'])}",
     ]
     for a, c in info["floors"]:

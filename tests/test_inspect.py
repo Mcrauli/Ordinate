@@ -94,3 +94,26 @@ def test_density_is_not_inflated_by_sampling(tmp_path):
     assert abs(part["spacing_mm"] - full["spacing_mm"]) < 8.0, \
         f"naytteistys vaaristi tiheyden: {part['spacing_mm']} vs {full['spacing_mm']}"
     assert not any("harva" in w for w in part["warnings"]), part["warnings"]
+
+
+def test_working_cloud_size_is_reported(tmp_path):
+    """Putki harventaa korkeintaan 25 mm:iin, joten iso rakennus EI kutistu
+    kiinteaan pistebudjettiin vaan kasvattaa tyopilvea. Se on nahtava ennen
+    ajoa, ei vasta kun ajo hyytyy."""
+    info = inspect_scan(_room_ply(tmp_path, step=10.0, name="dense.ply"))
+    assert info["work_points"] > 0
+    assert info["work_points"] < info["points"], \
+        "25 mm voxeli ei harventanut 10 mm skannia"
+    assert "työpilvi" in format_report(info)
+
+
+def test_working_cloud_size_from_a_sample_is_marked_as_a_lower_bound(tmp_path):
+    """Naytteesta laskettu luku on ALARAJA — koko pilvi tayttaa vain enemman
+    voxeleita. Sita ei saa esittaa tarkkana."""
+    p = _room_ply(tmp_path, size=9000.0, step=20.0, name="big2.ply")
+    part = inspect_scan(p, sample=50_000)
+    assert part["work_exact"] is False
+    assert "≥" in format_report(part)
+    full = inspect_scan(p, sample=10_000_000)
+    assert full["work_exact"] is True
+    assert part["work_points"] <= full["work_points"]
