@@ -138,7 +138,14 @@ def _looks_like_retail(cloud) -> bool:
     Tunnistus tehdään ENNEN detektiota raakapilvestä: hyllyvaleseinien poisto
     (PointNet-suodatin) hyödyttää liiketilaa mutta regressoi asuintaloa, joten se
     kytketään vain kun sekä pohjan pinta-ala että vapaa korkeus ylittävät rajan.
-    Korkeus on avainerotin: asuinkerros ~2.7 m jää aina alle 4.5 m rajan."""
+    Korkeus on avainerotin: asuinkerros ~2.7 m jää aina alle 4.5 m rajan.
+
+    Ala mitataan MIEHITYSALANA eikä percentiililaatikkona. Percentiili on
+    tiheyspainotettu, joten skannerin ympärillä oleva tiheä alue kutistaa sen:
+    mitattu Rohbau scene_07004, sama pilvi harvennettuna — percentiiliala
+    588 → 1002 → 1112 → 1142 → 1162 → 1172 m², eli päätös vaihtui rajan 600
+    yli pelkästä harventamisesta. Miehitysala samalla sarjalla 802 → 783.
+    Rakenteellinen päätös ei saa riippua siitä montako pistettä skannissa on."""
     pts = np.asarray(cloud.points)
     if len(pts) < 1000:
         return False
@@ -146,11 +153,7 @@ def _looks_like_retail(cloud) -> bool:
     height = float(np.percentile(z, 99) - np.percentile(z, 1))
     if height < _RETAIL_MIN_HEIGHT_MM:
         return False
-    x, y = pts[:, 0], pts[:, 1]
-    dx = float(np.percentile(x, 99) - np.percentile(x, 1))
-    dy = float(np.percentile(y, 99) - np.percentile(y, 1))
-    area_m2 = (dx * dy) / 1.0e6
-    return area_m2 >= _RETAIL_MIN_AREA_M2
+    return _occupancy_area_m2(cloud) >= _RETAIL_MIN_AREA_M2
 
 
 _LARGE_SPACE_M2 = 400.0   # m² — tätä suurempi POHJA-ala (miehitetyt ruudut, ei
