@@ -268,3 +268,72 @@ def test_deep_beam_in_a_tall_hall_is_found():
                          floor_z=0.0, ceiling_z=12000.0, has_ceiling=True)
     assert len(beams) == 1, f"syva palkki korkeassa hallissa katosi ({len(beams)} kpl)"
     assert beams[0].profile.height > 3000, f"syvyys {beams[0].profile.height:.0f}"
+
+
+def _beam_surfaces(x0, x1, y, w=300.0, soffit=2350.0, top=2690.0, step=20.0):
+    """Palkki niin kuin se skannataan: alapinta + kaksi kylkea, ei umpikappale."""
+    x = np.arange(x0, x1, step)
+    yy = np.arange(y - w / 2, y + w / 2, step)
+    gx, gy = np.meshgrid(x, yy)
+    bottom = np.column_stack([gx.ravel(), gy.ravel(), np.full(gx.size, soffit)])
+    z = np.arange(soffit, top, step)
+    sx, sz = np.meshgrid(x, z)
+    sides = [np.column_stack([sx.ravel(), np.full(sx.size, y + sgn * w / 2), sz.ravel()])
+             for sgn in (-1.0, 1.0)]
+    return np.vstack([bottom, *sides])
+
+
+def _stray_pts(x0, x1, y, z, n=60):
+    """Yksittaisia harhapisteita palkin alla: kaapeli, putki, kohina."""
+    return np.column_stack([_RNG.uniform(x0, x1, n),
+                            _RNG.uniform(y - 150.0, y + 150.0, n),
+                            _RNG.uniform(z - 50.0, z + 50.0, n)])
+
+
+def _flat_ceiling(step):
+    x = np.arange(0.0, 6000.0, step)
+    y = np.arange(0.0, 5000.0, step)
+    gx, gy = np.meshgrid(x, y)
+    return np.column_stack([gx.ravel(), gy.ravel(), np.full(gx.size, 2700.0)])
+
+
+def _beam_scene(step):
+    walls = [_wall("w0", 0, 0, 6000, 0), _wall("w1", 0, 5000, 6000, 5000)]
+    cloud = _cloud([_beam_surfaces(500, 5500, 2500, step=step),
+                    _stray_pts(500, 5500, 2500, 1600.0),
+                    _wall_face_pts(0, 6000, 0), _wall_face_pts(0, 6000, 5000),
+                    _flat_ceiling(step)])
+    return walls, cloud
+
+
+def test_stray_points_under_a_beam_do_not_erase_it():
+    """Yksi kaapeli palkin alla ei saa poistaa palkkia.
+
+    Alin PISTE solussa on tiheysmittari: mita tiheampi skanni, sita varmemmin
+    harhapiste osuu soluun ja painaa alapinnan alas — ja `z_free`n alle
+    painunut solu poistetaan kartasta kokonaan.
+    """
+    walls, cloud = _beam_scene(step=20.0)
+    beams = detect_beams(cloud, walls, floor_z=0.0, ceiling_z=2700.0, has_ceiling=True)
+    assert len(beams) == 1, f"palkkeja {len(beams)}, odotettiin 1"
+    soffit = beams[0].axis[0][2] - beams[0].profile.height / 2.0
+    assert abs(soffit - 2350.0) < 120.0, f"alapinta {soffit:.0f}, odotettiin ~2350"
+
+
+def test_same_beam_is_found_at_four_times_the_point_spacing():
+    """Sama tila, sama geometria, nelinkertainen pisteväli -> sama palkki.
+
+    Tama on yleistyvyyden testi: tuntemattoman skannin tiheytta ei tiedeta
+    etukateen, joten tuloksen ei saa riippua siita.
+    """
+    out = []
+    for step in (20.0, 80.0):
+        walls, cloud = _beam_scene(step=step)
+        beams = detect_beams(cloud, walls, floor_z=0.0, ceiling_z=2700.0,
+                             has_ceiling=True)
+        out.append(beams)
+    assert len(out[0]) == len(out[1]) == 1, \
+        f"palkkeja {len(out[0])} vs {len(out[1])}"
+    so = [b[0].axis[0][2] - b[0].profile.height / 2.0 for b in out]
+    assert abs(so[0] - so[1]) < 120.0, f"alapinta {so[0]:.0f} vs {so[1]:.0f}"
+    assert abs(so[0] - 2350.0) < 120.0, f"alapinta {so[0]:.0f}, odotettiin ~2350"

@@ -31,6 +31,8 @@ log = logging.getLogger(__name__)
 
 _CELL = 200.0            # mm — alapintakartan solu
 _MIN_PTS = 3             # pistettä solussa jotta alapinta on mitattu
+_SURF_MM = 60.0          # mm — pinnan paksuus: tämän sisällä olevat ovat samaa pintaa
+_SURF_FRAC = 0.10        # osuus solun pisteistä jotka pinnan on kerättävä
 _Z_TOL = 150.0           # mm — naapurisolu samaa laikkua jos alapinta tällä välillä
 _MAX_DEPTH = 3000.0      # mm — tätä syvemmälle laatasta roikkuva ei ole palkki
 _MAX_DEPTH_FRAC = 0.35   # …mutta korkeassa hallissa palkki on syvempi: raja on
@@ -111,11 +113,34 @@ def _soffit_cells(pts: np.ndarray, z_lo: float, z_hi: float,
     for s, e in zip(starts, ends):
         if e - s < _MIN_PTS:
             continue
-        zb = float(z_s[s:e].min())
-        if zb < z_free or zb > z_top:
+        zb = _surface_z(np.sort(z_s[s:e]))
+        if zb != zb or zb < z_free or zb > z_top:
             continue
         out[int(key_s[s])] = (zb, int(e - s))
     return out
+
+
+def _surface_z(z_sorted: np.ndarray) -> float:
+    """Solun alin PINTA, ei alin piste. nan jos solussa ei ole pintaa.
+
+    Minimi on tiheysmittari eikä geometriamittari: 200 mm solussa on 4 mm
+    skannissa ~2500 pistettä ja 70 mm skannissa ~8, joten yksi harhapiste
+    (putki, kaapeli, kohina) painaa solun alapinnan alas sitä varmemmin mitä
+    tiheämpi skanni on. Ja koska `z_free`n alle painunut solu POISTETAAN
+    kartasta, tiheys ei vain siirrä alapintaa vaan repii laikun palasiksi.
+
+    Mitattu scene_07000 (`data/_beam_density.py`): sama scene, sama geometria,
+    pelkkä tiheys eri — instanssikattavuus heitteli 0.000 ja 0.643 välillä ja
+    HARVA pilvi voitti tiheän.
+
+    Pinta = alin taso jonka ympärille `_SURF_MM`:n sisään kertyy `_SURF_FRAC`
+    osuus solun OMISTA pisteistä. Osuus on tiheysriippumaton, pistemäärä ei.
+    """
+    n = len(z_sorted)
+    need = max(_SURF_FRAC * n, 2.0)
+    hi = np.searchsorted(z_sorted, z_sorted + _SURF_MM, side="right")
+    ok = np.flatnonzero((hi - np.arange(n)) >= need)
+    return float(z_sorted[ok[0]]) if len(ok) else float("nan")
 
 
 def _cell_xy(keys: np.ndarray) -> np.ndarray:
