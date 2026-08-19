@@ -48,6 +48,9 @@ _MIN_ASPECT = 3.0        # pituus/leveys — alle tämän on pilari tai laatan p
 _MIN_FILL = 0.5          # laikun solut / suorakaiteen solut — palkin alapinta on
                          # täysi suorakaide; kulmassa kääntyvä kanava ei ole
 _MAX_WIDTH = 3000.0      # mm — tätä leveämpi on alaslaskettu katto, ei palkki
+_MAX_WIDTH_DEPTH = 2.0   # leveys/syvyys: kantava palkki on kapea ja syvä, kotelo
+                         # leveä ja matala. Mitattu GT-palkeista 0.3–0.8 (Rohbau)
+                         # ja 0.44 (liiketila); asunnon kotelo 2.6. Ks. `_patch_to_beam`.
 _MIN_CELLS = 20
 
 _OFF = 500_000           # solukoordinaatit positiivisiksi ennen avaimen laskua
@@ -245,6 +248,15 @@ def _patch_to_beam(comp: list[int], cells: dict, pts: np.ndarray,
     soffit = float(np.median(z))
     depth = ceiling_z - soffit
     if depth < min_depth:
+        return None
+    # Poikkileikkaus, ei pohjakuva. `_MIN_ASPECT` mittaa pituutta suhteessa
+    # leveyteen eikä katso syvyyttä lainkaan, joten 3.1 m pitkä, 965 mm leveä
+    # ja 373 mm syvä kotelo asunnon katonrajassa meni läpi (aspect 3.3).
+    # Kantava palkki on kapea ja syvä. Mitattu (`data/_beam_profile_sweep.py`,
+    # viisi Rohbau-sceneä + liiketila + asunto): kaikilla GT-aineistoilla
+    # TÄSMÄLLEEN samat luvut jokaisella katolla 3.0 … 1.2 — kantaviin palkkeihin
+    # tämä ei kosketa. Asunnon kotelo katoaa kun katto on 2.0 tai tiukempi.
+    if _MAX_WIDTH_DEPTH and width > _MAX_WIDTH_DEPTH * depth:
         return None
 
     p0 = c + s.min() * u

@@ -384,3 +384,35 @@ def test_same_shallow_drop_in_a_low_room_is_a_beam():
                          has_ceiling=True)
     assert len(beams) == 1, f"matalan huoneen palkki katosi ({len(beams)} kpl)"
     assert beams[0].profile.height < 400.0, beams[0].profile.height
+
+
+def test_wide_shallow_bulkhead_is_not_a_beam():
+    """Kotelo: 3.1 m pitka, 965 mm levea, 373 mm syva asunnon katonrajassa.
+
+    `_MIN_ASPECT` mittaa pituutta suhteessa leveyteen (3.3 -> lapi) eika katso
+    poikkileikkausta lainkaan. Kantava palkki on kapea ja syva: mitattu
+    GT-palkeista leveys/syvyys 0.3-0.8 (Rohbau) ja 0.44 (liiketila), tama 2.6.
+    """
+    walls = [_wall("w0", 0, 0, 6000, 0), _wall("w1", 0, 5000, 6000, 5000)]
+    duct = _beam_surfaces(1000, 4100, 2500, w=965.0, soffit=2320.0, top=2690.0,
+                          step=20.0)
+    cloud = _cloud([duct, _wall_face_pts(0, 6000, 0), _wall_face_pts(0, 6000, 5000),
+                    _flat_ceiling(20.0)])
+    beams = detect_beams(cloud, walls, floor_z=0.0, ceiling_z=2700.0,
+                         has_ceiling=True)
+    assert beams == [], f"kotelo tuli palkiksi: {[b.profile for b in beams]}"
+
+
+def test_narrow_deep_beam_of_the_same_length_is_still_found():
+    """Sama pituus, sama tila — kapea ja syva profiili -> palkki.
+
+    Raja ei saa olla 'kaikki lyhyet pois' vaan 'levea SUHTEESSA syvyyteen pois'.
+    """
+    walls = [_wall("w0", 0, 0, 6000, 0), _wall("w1", 0, 5000, 6000, 5000)]
+    beam = _beam_surfaces(1000, 4100, 2500, w=300.0, soffit=2320.0, top=2690.0,
+                          step=20.0)
+    cloud = _cloud([beam, _wall_face_pts(0, 6000, 0), _wall_face_pts(0, 6000, 5000),
+                    _flat_ceiling(20.0)])
+    beams = detect_beams(cloud, walls, floor_z=0.0, ceiling_z=2700.0,
+                         has_ceiling=True)
+    assert len(beams) == 1, f"kapea palkki katosi ({len(beams)} kpl)"
