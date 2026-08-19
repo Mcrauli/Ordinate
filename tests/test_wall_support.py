@@ -418,3 +418,54 @@ def test_confidence_still_used_when_support_not_measured():
     model = StructuralModel(walls=[_wall("w_x", 0, 0, 3000, 0, conf=0.25)])
     assert model.walls[0].support is None
     assert [f["id"] for f in flag_low_confidence(model)] == ["w_x"]
+
+
+def _sparse_face(x0, y0, x1, y1, keep=400):
+    """Pinta josta on niin vahan pisteita ettei jatkuvuutta voi vaittaa."""
+    q = _face_points(x0, y0, x1, y1)
+    return q[:: max(len(q) // keep, 1)]
+
+
+def _floor_clutter_face(x0, y0, x1, y1, z_hi=700.0, step=50.0):
+    """Pintaa vain lattian tuntumassa: vyotarolla ei ole yhtaan pistetta.
+
+    Nain jatkuvuus jaa mittaamatta (`_CONT_MIN_WAIST`) vaikka tuki mitataan —
+    juuri Rohbaun wall_ext_002:n tilanne.
+    """
+    q = _face_points(x0, y0, x1, y1, step=step)
+    return q[q[:, 2] < z_hi]
+
+
+def test_wall_whose_continuity_could_not_be_measured_is_not_taken_as_proven():
+    """Mittaamattomuus ei ole todiste tuesta.
+
+    Jatkuvuus jaa mittaamatta juuri silloin kun vyotarolla ei ole pisteita
+    (`_CONT_MIN_WAIST`), joten seina jolla on VAHITEN evidenssia paasi
+    portista lapi. Mitattu Rohbau: wall_ext_002 sup=0.022 cont=None
+    (scene_07001) ja sup=0.034 cont=None (scene_07003) jaivat malliin, ja QA
+    merkitsi molemmat vaaran luokan seiniksi. Aitojen seinien tuki samoissa
+    malleissa on 0.329-0.923.
+    """
+    from scan2bim.core.semantics.wall_semantics import prune_unsupported_walls
+    real = _face_points(0, 0, 6000, 0)
+    clutter = _floor_clutter_face(0, 9000, 6000, 9000)
+    model = StructuralModel(walls=[
+        _wall("w_real", 0, 0, 6000, 0),
+        _wall("w_ghost", 0, 9000, 6000, 9000),   # 6 m perimetrihaamu lattiaroinan paalla
+    ])
+    pts = np.vstack([real, clutter])
+    measure_wall_support(model, _cloud(pts))
+    ghost = next(w for w in model.walls if w.id == "w_ghost")
+    assert ghost.continuity is None, f"jatkuvuus {ghost.continuity} — fikstuuri ei osu"
+    assert prune_unsupported_walls(model, _cloud(pts)) == ["w_ghost"]
+
+
+def test_measured_support_still_saves_a_wall_without_continuity():
+    """Jos tuki on MITATTU ja hyva, jatkuvuuden puuttuminen ei saa poistaa seinaa."""
+    from scan2bim.core.semantics.wall_semantics import prune_unsupported_walls
+    pts = _face_points(0, 0, 6000, 0)
+    model = StructuralModel(walls=[_wall("w_real", 0, 0, 6000, 0)])
+    measure_wall_support(model, _cloud(pts))
+    w = model.walls[0]
+    assert w.support is not None and w.support >= 0.15, w.support
+    assert prune_unsupported_walls(model, _cloud(pts)) == []

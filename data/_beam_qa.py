@@ -89,11 +89,13 @@ def main(mj, coord_npy, class_npy, inst_npy=None):
     print(f"mallin lattia {zf} katto {zc}")
 
     claimed = np.zeros(len(P), bool)
+    boxes = []
     if beams:
         print(f"\n{'beam':10s} {'L':>6s} {'lev':>5s} {'kork':>5s} {'z':>6s} | "
               f"{'n':>8s}  GT-jakauma laatikossa")
     for b in sorted(beams, key=lambda b: b["id"]):
         sel, L = _box_mask(b, P)
+        boxes.append(sel)
         claimed |= sel
         tot = int(sel.sum())
         pr = b["profile"]
@@ -129,6 +131,20 @@ def main(mj, coord_npy, class_npy, inst_npy=None):
         print(f"{ids[k]:6d} {cnts[k]:10,} {long_xy:7.0f} {short_xy:6.0f} {d[2]:6.0f} "
               f"{q[:, 2].min():9.0f} {hit[k]:6.2f}"
               + ("" if hit[k] >= _HIT else "   <== EI LOYDETTY"))
+    # Pirstoutuminen: kuinka moni MALLIN palkki osuu samaan GT-instanssiin.
+    # 12/14 loydettya 25 elementilla tarkoittaa etta yksi 27 m palkki on
+    # viety IFC:hen useana kappaleena — kattavuus ei nayta sita.
+    per = []
+    for i in ids:
+        mi = I[gt] == i
+        per.append(sum(1 for bm in boxes if (bm[gt] & mi).sum() / max(mi.sum(), 1) >= _HIT))
+    nz = [v for v in per if v]
+    if nz:
+        print("")
+        print(f"PIRSTOUTUMINEN {len(boxes)} mallin palkkia / {len(nz)} loydettya "
+              f"GT-instanssia = {len(boxes) / len(nz):.2f}   "
+              f"(sama instanssi useana: {sum(1 for v in nz if v > 1)} kpl, "
+              f"enintaan {max(nz)})")
     found = int((hit >= _HIT).sum())
     print(f"\nINSTANSSIKATTAVUUS {found}/{len(ids)} = {found / len(ids):.3f}"
           f"  (kynnys {_HIT:.0%} instanssin pisteista)")

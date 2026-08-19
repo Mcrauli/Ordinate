@@ -314,7 +314,10 @@ def measure_wall_support(model: StructuralModel, cloud) -> None:
         w.support = round(s, 3)
         w.continuity = None if c is None else round(c, 3)
         w.support_offset = None
-        if (s < _SUP_THR or c < _CONT_THR) and len(w.axis) >= 2:
+        # `c is None` = jatkuvuutta ei voitu mitata. Se ei ole todiste tuesta,
+        # joten pinta haetaan silloinkin. Ilman tarkistusta rivi myos KAATUU
+        # (None < float) heti kun tuki on hyva mutta vyotarolla ei ole pisteita.
+        if (s < _SUP_THR or c is None or c < _CONT_THR) and len(w.axis) >= 2:
             w.support_offset = _nearest_surface(w, pts_all, index)
 
 

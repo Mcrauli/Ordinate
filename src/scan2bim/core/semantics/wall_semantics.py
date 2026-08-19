@@ -626,6 +626,7 @@ def remove_shelf_front_walls(walls, dist_lo=300.0, dist_hi=1500.0,
     return [w for k, w in enumerate(walls) if k not in remove]
 
 
+_SUP_THR = 0.15            # mitattu pintatuki: alle tämän pinnalla ei ole tukea
 _PRUNE_CONT = 0.15         # jatkuvuus vyötäröllä — alle tämän ei ole yhtenäinen seinä
 _PRUNE_OFFSET = 250.0      # mm — tätä kauempana oleva pinta = seinä on SIIRTYNYT, ei valhe
 _PRUNE_MIN_LEN = 4000.0    # mm — lyhyt seinä ei voi todistaa palkkilinjaa
@@ -689,14 +690,31 @@ def prune_unsupported_walls(model, cloud=None) -> list[str]:
     pts = np.asarray(cloud.points) if cloud is not None else None
     drop = []
     for w in model.walls:
-        if w.continuity is None or w.continuity >= _PRUNE_CONT:
+        if w.continuity is None:
+            # Mittaamattomuus EI ole todiste tuesta: jatkuvuus jää mittaamatta
+            # juuri silloin kun vyötäröllä ei ole pisteitä, eli seinä jolla on
+            # VÄHITEN evidenssiä pääsi portista läpi (Rohbau wall_ext_002:
+            # tuki 0.022 ja 0.034, QA merkitsi molemmat väärän luokan seiniksi).
+            # Lyhyttä seinää tämä ei silti tuomitse — `support` ja naapurimäärä
+            # ovat molemmat tiheysriippuvaisia ja harva 1 m seinä saa matalat
+            # arvot ilman että siinä on mitään vikaa. Yli 4 m matkalla
+            # pisteiden puuttuminen vyötäröltä on itsessään mittaustulos.
+            if _axis_length(w) < _PRUNE_MIN_LEN:
+                continue
+        elif w.continuity >= _PRUNE_CONT:
             continue
         if w.support_offset is not None and w.support_offset >= _PRUNE_OFFSET:
             continue
         if _axis_length(w) < _PRUNE_MIN_LEN:
             nb = _waist_neighbours(w, pts)
-            empty = (not w.support) if nb is None else (nb < _PRUNE_MIN_NB)
-            if not empty:
+            # Täysin tyhjä seinä on tyhjä vaikka sen VIERESSÄ olisi pisteitä:
+            # naapurit ovat lattiaa ja kalustetta, eivät tämän seinän pintaa.
+            if w.support is not None and w.support <= 0.0:
+                pass
+            elif nb is None:
+                if w.support:
+                    continue
+            elif nb >= _PRUNE_MIN_NB:
                 continue
         drop.append(w.id)
     if not drop:
