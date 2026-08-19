@@ -11,17 +11,19 @@ from scan2bim.schemas.model import ElementSource, Slab
 _MIN_SLAB_AREA  = 1_000_000.0   # mm²
 _MIN_PLANE_PTS  = 100
 _THICKNESS_DEFAULT = 200.0       # mm — betonirakenteen oletuspaksuus
-_GRID_MM        = 25.0           # mm/pikseli kontuuriverkkoon (oli 80)
-_DILATE_PX      = 3              # morfologinen laajennus pikseleinä
-_CLOSE_PX       = 5              # closing-ydinkoko aukkojen sulkemiseen
+_GRID_MM        = 25.0           # mm/pikseli — TARKIN ruutu, ei kiinteä: ruutu ei
+                                 # saa olla skannin pisteväliä pienempi. Ks. `_cell_mm`.
+_GRID_SPACING_K = 1.0            # ruutu ei saa alittaa mitattua pisteväliä
+_DILATE_MM      = 75.0           # morfologinen laajennus (oli 3 px × 25 mm)
+_CLOSE_MM       = 125.0          # closing-ydin aukkojen sulkemiseen (oli 5 px × 25 mm)
 _SIMPLIFY_MM    = 150.0          # approxPolyDP epsilon ABSOLUUTTISENA — suhteellinen
                                  # (0.008×arcLength) räjähtää lahdekkaalla kontuurilla:
                                  # varjolahdet paisuttavat arcLengthin → epsilon ~800 mm →
                                  # lahdet romahtavat ITSENSÄ LEIKKAAVAKSI siksakiksi
 _Z_BAND_MM      = 8.0            # ±mm lasertason ympärillä
 _FOOT_BAND_MM   = 40.0           # ±mm huonealan maskin z-kaista (8 mm on liian ohut → reikäinen)
-_FOOT_CLOSE_PX  = 16             # 400 mm — sulkee kalusteiden keilausvarjot huonealasta
-_FOOT_DILATE_PX = 2              # mitattu: reuna osuu aitoon sisäpintaan (3 px = +25 mm bias)
+_FOOT_CLOSE_MM  = 400.0          # sulkee kalusteiden keilausvarjot huonealasta
+_FOOT_DILATE_MM = 50.0           # mitattu: reuna osuu aitoon sisäpintaan (75 mm = +25 mm bias)
 _FOOT_MIN_FLOOR_FRAC = 0.20      # huonealueen pinta-alasta oltava LATTIApisteiden peitossa:
                                  # katto vain sulkee varjot, se EI saa luoda aluetta. Mitattu
                                  # apt2: keilausvuoto lasin/oviaukon läpi 0.02, aidot huoneet
@@ -195,7 +197,7 @@ def detect_floor_contours(
     alueen ULKOreunaan ja aito seinä kuolee snap-kaskadissa."""
     pts = np.asarray(cloud.points)
     zs = [elevation] if ceiling_elevation is None else [elevation, ceiling_elevation]
-    grid = _occupancy_grid(pts, zs, _FOOT_BAND_MM, _FOOT_CLOSE_PX, _FOOT_DILATE_PX,
+    grid = _occupancy_grid(pts, zs, _FOOT_BAND_MM, _FOOT_CLOSE_MM, _FOOT_DILATE_MM,
                            fill_holes=True)
     grid = _cut_walls(grid, walls)
     return _contours_from_grid(grid, min_area_m2 * 1e6,
@@ -206,12 +208,12 @@ _CUT_MIN_MM = 120.0   # mm — katkaisuviivan minimileveys (ohut seinä ei katka
 
 
 def _cut_walls(
-    grid: tuple[np.ndarray, float, float] | None, walls: list | None
-) -> tuple[np.ndarray, float, float] | None:
+    grid: tuple[np.ndarray, float, float, float] | None, walls: list | None
+) -> tuple[np.ndarray, float, float, float] | None:
     """Nollaa seinien peittämät pikselit → huoneala katkeaa seinän kohdalta."""
     if grid is None or not walls:
         return grid
-    binary, x_min, y_min = grid
+    binary, x_min, y_min, cell = grid
     binary = binary.copy()
     for w in walls:
         axis = getattr(w, "axis", None)
@@ -227,30 +229,63 @@ def _cut_walls(
         n = np.array([-u[1], u[0]])
         half = max(float(getattr(w, "thickness", 0.0)), _CUT_MIN_MM) / 2.0
         quad = np.array([p0 + n * half, p1 + n * half, p1 - n * half, p0 - n * half])
-        px = np.column_stack([(quad[:, 0] - x_min) / _GRID_MM,
-                              (quad[:, 1] - y_min) / _GRID_MM])
+        px = np.column_stack([(quad[:, 0] - x_min) / cell,
+                              (quad[:, 1] - y_min) / cell])
         cv2.fillPoly(binary, [np.round(px).astype(np.int32)], 0)
-    return binary, x_min, y_min
+    return binary, x_min, y_min, cell
 
 
 def _contour_boundary(
     pts: np.ndarray, z: float
 ) -> list[tuple[float, float]] | None:
     """Pisteet z-tasolla → OpenCV-kontuuri → suurin monikulmio."""
-    grid = _occupancy_grid(pts, [z], _Z_BAND_MM, _CLOSE_PX, _DILATE_PX, fill_holes=False)
+    grid = _occupancy_grid(pts, [z], _Z_BAND_MM, _CLOSE_MM, _DILATE_MM, fill_holes=False)
     polys = _contours_from_grid(grid, min_area_mm2=0.0)
     return polys[0] if polys else None
+
+
+def _cell_mm(plane_pts: np.ndarray) -> float:
+    """Ruudun koko: `_GRID_MM` tai pisteväli kerrottuna, kumpi suurempi.
+
+    Kiinteä 25 mm ruutu olettaa skannin tarkkuuden sen sijaan että mittaisi sen.
+    Kun pisteväli ylittää ruudun, osa lattian ruuduista jää tyhjäksi ja maski
+    kuvaa keilaustiheyttä eikä lattiaa. Mitattu Rohbau scene_07000, sama pilvi
+    harvennettuna: kontuureja 3, 3, 2 ja **0** pisteväleillä 4, 17, 35 ja 70 mm
+    — 70 mm:llä lattiaa ei löydy lainkaan. Tällä säännöllä 3, 3, 3, 2.
+
+    Kerroin on 1.0 EIKÄ enemmän, ja se on mitattu: kertoimella 2.0 ruutu kasvaa
+    myös putken omalla työtiheydellä (auto-voxel 24 mm → ruutu 48 mm) ja
+    seinäkattavuus romahti scene_07002:ssa 0.860 → 0.565 ja instanssit
+    15/44 → 8/44. Kertoimella 1.0 `max` palauttaa 25 mm aina kun pisteväli sen
+    alittaa, joten jokainen skanni jonka nykyinen koodi kestää käyttäytyy
+    TÄSMÄLLEEN kuten ennenkin; sääntö vain pelastaa sitä karkeammat.
+    """
+    from scipy.spatial import cKDTree  # noqa: PLC0415
+
+    if len(plane_pts) < 200:
+        return _GRID_MM
+    n = min(len(plane_pts), 20_000)
+    idx = np.linspace(0, len(plane_pts) - 1, n).astype(np.int64)
+    d, _ = cKDTree(plane_pts).query(plane_pts[idx], k=2)
+    d = d[:, 1]
+    d = d[d > 0.0]
+    if not len(d):
+        return _GRID_MM
+    return max(_GRID_MM, _GRID_SPACING_K * float(np.median(d)))
 
 
 def _occupancy_grid(
     pts: np.ndarray,
     z_levels: list[float],
     band: float,
-    close_px: int,
-    dilate_px: int,
+    close_mm: float,
+    dilate_mm: float,
     fill_holes: bool,
-) -> tuple[np.ndarray, float, float] | None:
-    """Binäärimaski (rivi=y, sarake=x) annettujen z-tasojen pisteistä."""
+) -> tuple[np.ndarray, float, float, float] | None:
+    """Binäärimaski (rivi=y, sarake=x) annettujen z-tasojen pisteistä.
+
+    Palauttaa myös ruudun koon: ilman sitä jokainen lukija joutuisi arvaamaan
+    sen `_GRID_MM`:stä ja mittakaava eriytyisi hiljaa."""
     sel = np.zeros(len(pts), dtype=bool)
     for z in z_levels:
         sel |= np.abs(pts[:, 2] - z) < band
@@ -258,25 +293,30 @@ def _occupancy_grid(
     if len(plane_pts) < 10:
         return None
 
+    cell = _cell_mm(plane_pts)
     x_min = float(plane_pts[:, 0].min())
     y_min = float(plane_pts[:, 1].min())
-    cols = max(int((plane_pts[:, 0].max() - x_min) / _GRID_MM) + 2, 4)
-    rows = max(int((plane_pts[:, 1].max() - y_min) / _GRID_MM) + 2, 4)
+    cols = max(int((plane_pts[:, 0].max() - x_min) / cell) + 2, 4)
+    rows = max(int((plane_pts[:, 1].max() - y_min) / cell) + 2, 4)
 
     grid, _, _ = np.histogram2d(
         plane_pts[:, 0], plane_pts[:, 1],
         bins=[cols, rows],
-        range=[[x_min, x_min + cols * _GRID_MM],
-               [y_min, y_min + rows * _GRID_MM]],
+        range=[[x_min, x_min + cols * cell],
+               [y_min, y_min + rows * cell]],
     )
     binary = (grid.T >= 1).astype(np.uint8) * 255
 
+    # Ytimet annetaan MILLIMETREINÄ: pikseleinä ne kutistuisivat fyysisesti
+    # aina kun ruutu kasvaa, eli kaksi asiaa muuttuisi kerralla.
+    close_px = max(int(round(close_mm / cell)), 1)
+    dilate_px = max(int(round(dilate_mm / cell)), 1)
     binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE,
                               np.ones((close_px, close_px), np.uint8))
     binary = cv2.dilate(binary, np.ones((dilate_px, dilate_px), np.uint8))
     if fill_holes:
         binary = _fill_holes(binary)
-    return binary, x_min, y_min
+    return binary, x_min, y_min, cell
 
 
 def _fill_holes(binary: np.ndarray) -> np.ndarray:
@@ -294,35 +334,35 @@ def _level_mask(
     """Raaka (morfologioimaton) maski yhdeltä z-tasolta samaan ruudukkoon."""
     if grid is None:
         return None
-    binary, x_min, y_min = grid
+    binary, x_min, y_min, cell = grid
     rows, cols = binary.shape
     sel = np.abs(pts[:, 2] - z) < _FOOT_BAND_MM
     if not sel.any():
         return None
     hist, _, _ = np.histogram2d(
         pts[sel, 0], pts[sel, 1], bins=[cols, rows],
-        range=[[x_min, x_min + cols * _GRID_MM], [y_min, y_min + rows * _GRID_MM]],
+        range=[[x_min, x_min + cols * cell], [y_min, y_min + rows * cell]],
     )
     return hist.T >= 1
 
 
 def _contours_from_grid(
-    grid: tuple[np.ndarray, float, float] | None,
+    grid: tuple[np.ndarray, float, float, float] | None,
     min_area_mm2: float,
     floor_mask: np.ndarray | None = None,
 ) -> list[list[tuple[float, float]]]:
     if grid is None:
         return []
-    binary, x_min, y_min = grid
+    binary, x_min, y_min, cell = grid
     contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    px_area = _GRID_MM * _GRID_MM
+    px_area = cell * cell
     polys: list[tuple[float, list[tuple[float, float]]]] = []
     for c in sorted(contours, key=cv2.contourArea, reverse=True):
         area = float(cv2.contourArea(c)) * px_area
         if polys and area < min_area_mm2:
             break
-        approx = cv2.approxPolyDP(c, _SIMPLIFY_MM / _GRID_MM, True)
-        poly = [(x_min + float(pt[0][0]) * _GRID_MM, y_min + float(pt[0][1]) * _GRID_MM)
+        approx = cv2.approxPolyDP(c, _SIMPLIFY_MM / cell, True)
+        poly = [(x_min + float(pt[0][0]) * cell, y_min + float(pt[0][1]) * cell)
                 for pt in approx]
         poly = _repair_polygon(poly)
         if poly is None:

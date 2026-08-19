@@ -149,3 +149,44 @@ def test_furniture_shadows_do_not_break_contour():
     # vanha koodi: 34 karkea, 24.2 m2, is_valid=False
     assert poly.is_valid, "kontuuri leikkaa itsensa"
     assert poly.area > 55e6, f"huoneala {poly.area / 1e6:.1f} m2, odotettiin ~64 m2"
+
+
+def test_grid_cell_is_the_default_for_a_dense_scan():
+    """25 mm ruutu sailyy aina kun skanni sen kestaa.
+
+    Jokainen skanni jonka nykyinen koodi jo kasittelee kayttaytyy TASMALLEEN
+    kuten ennenkin — mitattu: koko Rohbau site_07 -matriisi (5 scenea x 5
+    elementtityyppia) on identtinen ennen ja jalkeen.
+    """
+    from scan2bim.core.segmentation.slab_detector import _GRID_MM, _cell_mm
+    dense = _plane(0, 6000, 0, 6000, 0.0, step=10.0)[:, :2]
+    assert _cell_mm(dense) == _GRID_MM
+
+
+def test_grid_cell_follows_a_coarse_scan():
+    """Karkeammalla skannilla ruutu seuraa pistevalia.
+
+    25 mm ruutu on 70 mm pistevalilla PIENEMPI kuin skannin resoluutio, jolloin
+    suurin osa lattian ruuduista on tyhjia eika maski kuvaa lattiaa vaan
+    keilaustiheytta.
+    """
+    from scan2bim.core.segmentation.slab_detector import _GRID_MM, _cell_mm
+    coarse = _plane(0, 20000, 0, 20000, 0.0, step=70.0)[:, :2]
+    cell = _cell_mm(coarse)
+    assert cell > _GRID_MM
+    assert 55.0 < cell < 90.0, f"ruutu {cell:.0f} mm, pistevali 70 mm"
+
+
+def test_coarse_floor_still_produces_a_contour():
+    """70 mm pistevalilla lattiaa EI loytynyt lainkaan (0 kontuuria).
+
+    Mitattu Rohbau scene_07000 harvennussarjassa: kontuureja 3, 3, 2 ja 0
+    pisteväleilla 4, 17, 35 ja 70 mm.
+    """
+    from scan2bim.core.segmentation.slab_detector import detect_floor_contours
+    cloud = _cloud(_plane(0, 12000, 0, 9000, 0.0, step=70.0))
+    polys = detect_floor_contours(cloud, 0.0)
+    assert polys, "karkea lattia ei tuottanut yhtaan kontuuria"
+    area = abs(sum(p[i][0] * p[(i + 1) % len(p)][1] - p[(i + 1) % len(p)][0] * p[i][1]
+                   for p in polys for i in range(len(p)))) / 2.0
+    assert area > 80e6, f"kontuurin ala {area / 1e6:.1f} m2, odotettiin ~108"
