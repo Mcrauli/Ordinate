@@ -17,12 +17,32 @@ _SLAB_PEAK_FRAC = 0.30       # laattapiikin min-korkeus (osuus maksimista)
 _SLAB_GROUP_MM = 600.0       # piikit tämän sisällä = sama laatta (kaksi pintaa)
 _SLAB_OVERLAP = 300.0        # jaetun laatan molemmat puolet saavat laatan evidenssin
 _SLAB_PAIR_MIN = 100.0       # kerrosjako vaatii PINTAPARIN: alemman kerroksen katto JA
-_SLAB_PAIR_MAX = 600.0       # ylemman lattia. Yksi vaakapinta on palkiston alapinta tai
+_SLAB_PAIR_MAX = 600.0
+_SLAB_PAIR_EMPTY = 0.15      # osuus ryhman huipusta: tama alittava bini on umpibetonia       # ylemman lattia. Yksi vaakapinta on palkiston alapinta tai
                              # parven reuna, ei kerrosjako. Mitattu: aito jako
                              # (test_multiscan) 3000 + 3296 = 296 mm, Rohbau site_07:n
                              # palkiston alapinta 5450 yksin. Kolme muuta ehdokasta
                              # (jalanjaljen peitto, pisteet ylapuolella, kavelytaso)
                              # kumoutuivat mittauksessa - ks. AGENTS.md
+
+
+def _is_slab_pair(group: list[float], centers: np.ndarray, hist: np.ndarray) -> bool:
+    """Onko piikkiryhma kaksi pintaa joiden valissa on umpinaista rakennetta.
+
+    Betoni ei palauta pistetta, joten laatan alapinnan ja ylapinnan valissa on
+    aidosti tyhja kaista. Palkiston alapinta on yksi pinta jonka hajonta voi
+    olla saman levyinen — mutta sen sisalla on pisteita joka binissa.
+    Tyhjyys mitataan OSUUTENA ryhman omasta huipusta, ei pistemaarana, jotta
+    saanto ei muutu skannin tiheyden mukana.
+    """
+    lo, hi = min(group), max(group)
+    if not (_SLAB_PAIR_MIN <= hi - lo <= _SLAB_PAIR_MAX):
+        return False
+    inner = hist[(centers > lo) & (centers < hi)]
+    if not len(inner):
+        return False
+    peak = float(hist[(centers >= lo) & (centers <= hi)].max())
+    return bool((inner <= _SLAB_PAIR_EMPTY * peak).any())
 
 
 def detect_floors(z: np.ndarray) -> list[tuple[float, float]]:
@@ -113,11 +133,15 @@ def _split_tall_slice(z: np.ndarray, lo: float, hi: float) -> list[tuple[float, 
             groups[-1].append(float(c))
         else:
             groups.append([float(c)])
-    # Kerrosjako vaatii pintaparin (katto + lattia). Yksi pinta = palkiston
-    # alapinta: se on 10 m hallissa tiheampi kuin oikea katto, joten pelkka
-    # suosio keksii kerroksen palkiston kohdalle.
+    # Kerrosjako vaatii pintaparin (katto + lattia) JA niiden valissa betonin.
+    # Pelkka levays ei erota parin yhdesta paksusta pinnasta: mitattu
+    # scene_07000, palkiston alapinta z 5363..5563 — levays 200 mm eli "pari",
+    # mutta sen sisalla ei ole yhtaan tyhjaa binia. Aidon laatan sisalla on:
+    # alapinta, umpibetoni, ylapinta. Ilman tyhjyysehtoa jako oli kiinni
+    # TIHEYDESSA: sama scene jakautui kahteen kerrokseen voxeleilla 20 ja 40
+    # mutta ei voxeleilla 0, 10 ja 80.
     slabs = [float(np.mean(g)) for g in groups
-             if _SLAB_PAIR_MIN <= (max(g) - min(g)) <= _SLAB_PAIR_MAX
+             if _is_slab_pair(g, centers, hist)
              or g is groups[0] or g is groups[-1]]
     if len(slabs) < 3:
         return [(lo, hi)]

@@ -116,3 +116,88 @@ def test_beam_soffit_is_not_a_storey_split():
     floors = detect_floors(z)
     assert len(floors) == 1, \
         f"palkiston alapinnasta tuli kerrosjako: {[(round(a), round(b)) for a, b in floors]}"
+
+
+def _thick_surface(z0, thickness, n, rng):
+    """Yksi pinta jonka hajonta on `thickness` — EI kahta pintaa."""
+    return rng.uniform(z0, z0 + thickness, n)
+
+
+def _hist(levels, n_bins=8, lo=5300.0, step=100.0):
+    """Histogrammi ja sen binikeskipisteet: `levels` = {bini-indeksi: pistemaara}."""
+    centers = lo + step * (np.arange(n_bins) + 0.5)
+    hist = np.zeros(n_bins)
+    for i, v in levels.items():
+        hist[i] = v
+    return centers, hist
+
+
+def test_slab_pair_requires_concrete_between_the_two_surfaces():
+    """Kaksi pintaa 300 mm etaisyydella JA valissa tyhjaa = valipohja."""
+    from scan2bim.core.geometry.floor_splitter import _is_slab_pair
+    centers, hist = _hist({0: 50000, 1: 400, 2: 300, 3: 48000})
+    group = [float(centers[0]), float(centers[3])]
+    assert _is_slab_pair(group, centers, hist)
+
+
+def test_one_thick_surface_is_not_a_slab_pair():
+    """Sama levays, mutta valissa on pisteita joka binissa = YKSI paksu pinta.
+
+    Mitattu Rohbau scene_07000 voxelilla 20 mm: piikkiryhma z 5363..5563,
+    levays 200 mm eli vanhan saannon mukaan "pintapari", mutta binit sisalla
+    olivat 198868 ja 263273 — ei yhtaan tyhjaa. Betoni ei palauta pistetta.
+    """
+    from scan2bim.core.geometry.floor_splitter import _is_slab_pair
+    centers, hist = _hist({0: 50000, 1: 46000, 2: 44000, 3: 48000})
+    group = [float(centers[0]), float(centers[3])]
+    assert not _is_slab_pair(group, centers, hist)
+
+
+def test_slab_pair_emptiness_is_relative_to_the_group_peak():
+    """Tyhjyys on OSUUS ryhman huipusta, ei pistemaara — muuten saanto muuttuu
+    skannin tiheyden mukana. Sama muoto kymmenesosalla pisteita = sama tulos."""
+    from scan2bim.core.geometry.floor_splitter import _is_slab_pair
+    centers, hist = _hist({0: 5000, 1: 40, 2: 30, 3: 4800})
+    group = [float(centers[0]), float(centers[3])]
+    assert _is_slab_pair(group, centers, hist)
+    centers, hist = _hist({0: 5000, 1: 4600, 2: 4400, 3: 4800})
+    assert not _is_slab_pair([float(centers[0]), float(centers[3])], centers, hist)
+
+
+def test_thick_beam_soffit_is_not_a_slab_pair():
+    """Palkiston alapinta 200 mm hajonnalla ei ole valipohja.
+
+    Mitattu Rohbau scene_07000 voxelilla 20 mm: piikkiryhma z 5363..5563,
+    levays 200 mm eli "pintapari" — mutta ryhman sisalla ei ole yhtaan tyhjaa
+    binia. Aidon laatan sisalla on umpibetoni. Ilman tyhjyysehtoa jako oli
+    kiinni TIHEYDESSA: sama scene jakautui kahteen kerrokseen voxeleilla 20 ja
+    40 mutta ei voxeleilla 0, 10 ja 80.
+    """
+    rng = np.random.RandomState(11)
+    z = np.concatenate([
+        _slab(0, n=90000, rng=rng),
+        _thick_surface(5350, 220.0, 150000, rng),  # palkiston alapinta, paksu
+        _slab(10000, n=28000, rng=rng),
+        rng.uniform(0, 10000, 60000),
+    ])
+    floors = detect_floors(z)
+    assert len(floors) == 1, \
+        f"paksusta alapinnasta tuli kerrosjako: {[(round(a), round(b)) for a, b in floors]}"
+
+
+def test_storey_count_does_not_change_with_point_density():
+    """Sama rakennus harvennettuna: kerrosmaaran on pysyttava samana.
+
+    Tama on yleistyvyyden ydin — tuntemattoman skannin tiheytta ei tiedeta
+    etukateen. Mitattu Rohbau scene_07000: ennen tata sama scene antoi 1, 1, 2,
+    2, 1 kerrosta pistevaleilla 4, 10, 17, 35 ja 70 mm.
+    """
+    rng = np.random.RandomState(13)
+    z = np.concatenate([
+        _slab(0, n=90000, rng=rng),
+        _thick_surface(5350, 220.0, 150000, rng),
+        _slab(10000, n=28000, rng=rng),
+        rng.uniform(0, 10000, 60000),
+    ])
+    counts = [len(detect_floors(z[::k])) for k in (1, 2, 4, 8, 16)]
+    assert len(set(counts)) == 1, f"kerrosmaara vaihteli tiheyden mukana: {counts}"
