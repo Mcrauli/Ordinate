@@ -44,7 +44,6 @@ _MIN_ASPECT = 3.0        # pituus/leveys — alle tämän on pilari tai laatan p
 _MIN_FILL = 0.5          # laikun solut / suorakaiteen solut — palkin alapinta on
                          # täysi suorakaide; kulmassa kääntyvä kanava ei ole
 _MAX_WIDTH = 3000.0      # mm — tätä leveämpi on alaslaskettu katto, ei palkki
-_ATTACH = 300.0          # mm — laikun laen etäisyys kattoon (irti roikkuva = talotekniikka)
 _MIN_CELLS = 20
 
 _OFF = 500_000           # solukoordinaatit positiivisiksi ennen avaimen laskua
@@ -55,9 +54,9 @@ def detect_beams(cloud, walls, floor_z: float, ceiling_z: float,
                  has_ceiling: bool = False) -> list[Beam]:
     """Alapintalaikut kattovyöhykkeessä -> palkit.
 
-    `has_ceiling=True` (kattolaatta löydetty) ottaa käyttöön kattoon
-    kiinnittymisen vaatimuksen. Työmaalla `ceiling_z` on vain seinänlaki-
-    varasija, jolloin vaatimus katkoisi aidot palkit.
+    `has_ceiling` on jäljellä kutsujien vuoksi eikä enää vaikuta: kattoon
+    kiinnittymisen vaatimus poistettiin, koska se mittasi näkyvyyttä eikä
+    kiinnitystä. Ks. `_patch_to_beam`.
     """
     pts = np.asarray(cloud.points, dtype=np.float64)
     height = ceiling_z - floor_z
@@ -165,6 +164,23 @@ def _patches(cells: dict):
 
 def _patch_to_beam(comp: list[int], cells: dict, pts: np.ndarray,
                    ceiling_z: float, has_ceiling: bool) -> Beam | None:
+    """Laikku palkiksi, tai None jos jokin portti hylkää.
+
+    Kiinnitysporttia EI ole: se vaati, ettei alapinnan ja laatan välissä ole
+    300 mm tyhjää, mutta korkeassa tilassa lattialta keilattaessa palkin uuma
+    jää katsomissuunnan taakse eikä sitä skannata lainkaan. Portti hylkäsi siis
+    palkin siitä, ettei sitä nähdä — ei siitä, ettei se ole kiinni.
+
+    Mitattu ablaationa (`data/_beam_attach_abl.py`, kaikki viisi Rohbau-sceneä,
+    pelkkä detektori): portti päällä 39/77 instanssia tarkkuudella 0.824, pois
+    62/77 tarkkuudella 0.808. Liiketila-S, liiketila-L ja asunto antoivat
+    TÄSMÄLLEEN saman tuloksen kummallakin (`_beam_attach_abl2.py`), eli portti
+    ei estänyt niissä mitään.
+
+    Hinta: katosta roikkuva kanava valmiissa tilassa tulee nyt palkiksi, jos se
+    läpäisee pituus-, leveys-, suhde- ja täyttöportit. Se on tiedossa ja
+    testattu (`test_hanging_mep_becomes_a_beam_without_the_attachment_gate`).
+    """
     xy = _cell_xy(np.asarray(comp, dtype=np.int64))
     z = np.array([cells[k][0] for k in comp], dtype=np.float64)
     c = xy.mean(axis=0)
@@ -185,8 +201,6 @@ def _patch_to_beam(comp: list[int], cells: dict, pts: np.ndarray,
     depth = ceiling_z - soffit
     if depth < _MIN_DEPTH:
         return None
-    if has_ceiling and not _attached(pts, c, u, n, length, width, soffit, ceiling_z):
-        return None
 
     p0 = c + s.min() * u
     p1 = c + s.max() * u
@@ -199,32 +213,6 @@ def _patch_to_beam(comp: list[int], cells: dict, pts: np.ndarray,
               [round(float(p1[0]), 1), round(float(p1[1]), 1), round(z_mid, 1)]],
         profile=BeamProfile(width=round(width, 1), height=round(depth, 1)),
     )
-
-
-def _attached(pts: np.ndarray, c: np.ndarray, u: np.ndarray, n: np.ndarray,
-              length: float, width: float, soffit: float, ceiling_z: float) -> bool:
-    """Yltääkö kappale alapinnasta laattaan asti ilman ilmarakoa.
-
-    Valettu palkki on laatan kanssa yhtä; ripustettu kanava/putki jättää välin.
-    Rako mitataan laikun sisältä pystyhistogrammina — laatikon KORKEIN piste ei
-    kelpaa, koska laatan oma pinta on aina laatikossa ja tekisi testistä turhan.
-    """
-    box = _in_box(pts[:, :2], c, u, n, length, width)
-    z = pts[box][:, 2]
-    z = z[(z >= soffit) & (z < ceiling_z - 30.0)]
-    if len(z) < _MIN_PTS:
-        return False
-    span = ceiling_z - 30.0 - soffit
-    if span <= _ATTACH:
-        return True
-    nb = max(int(span / 100.0), 1)
-    filled = np.zeros(nb, dtype=bool)
-    filled[np.clip(((z - soffit) / span * nb).astype(np.int64), 0, nb - 1)] = True
-    run = gap = 0
-    for f in filled:
-        run = 0 if f else run + 1
-        gap = max(gap, run)
-    return gap * (span / nb) <= _ATTACH
 
 
 def _in_box(xy: np.ndarray, c: np.ndarray, u: np.ndarray, n: np.ndarray,
