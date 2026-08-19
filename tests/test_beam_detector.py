@@ -337,3 +337,50 @@ def test_same_beam_is_found_at_four_times_the_point_spacing():
     so = [b[0].axis[0][2] - b[0].profile.height / 2.0 for b in out]
     assert abs(so[0] - so[1]) < 120.0, f"alapinta {so[0]:.0f} vs {so[1]:.0f}"
     assert abs(so[0] - 2350.0) < 120.0, f"alapinta {so[0]:.0f}, odotettiin ~2350"
+
+
+def _tall_hall(rib_depth, hall_h=10000.0, step=40.0):
+    """Korkea halli jossa katosta roikkuu YKSI matala pitkanomainen ripa."""
+    walls = [_wall("w0", 0, 0, 20000, 0), _wall("w1", 0, 12000, 20000, 12000)]
+    x = np.arange(0.0, 20000.0, step)
+    y = np.arange(0.0, 12000.0, step)
+    gx, gy = np.meshgrid(x, y)
+    ceiling = np.column_stack([gx.ravel(), gy.ravel(), np.full(gx.size, hall_h)])
+    rib = _beam_surfaces(1000, 19000, 6000, w=400.0,
+                         soffit=hall_h - rib_depth, top=hall_h - 20.0, step=step)
+    return walls, _cloud([ceiling, rib])
+
+
+def test_shallow_rib_in_a_tall_hall_is_not_a_beam():
+    """10 m hallissa 400 mm alaslasku on ripa tai kanava, ei palkki.
+
+    Mitattu Rohbau scene_07000: kiintea 150 mm raja paasti lapi 460-1700 mm
+    syvat kappaleet joiden alapinta (7100-7740) oli KAIKKIEN GT-palkkien
+    ylapuolella (5176-6378).
+    """
+    walls, cloud = _tall_hall(rib_depth=400.0)
+    beams = detect_beams(cloud, walls, floor_z=0.0, ceiling_z=10000.0,
+                         has_ceiling=True)
+    assert beams == [], f"matala ripa tuli palkiksi: {[b.id for b in beams]}"
+
+
+def test_deep_beam_in_the_same_tall_hall_is_still_found():
+    """Sama halli, sama koodi, 1500 mm syva palkki -> loytyy. Raja ei saa olla
+    'kaikki matalat pois' vaan 'matala SUHTEESSA huonekorkeuteen pois'."""
+    walls, cloud = _tall_hall(rib_depth=1500.0)
+    beams = detect_beams(cloud, walls, floor_z=0.0, ceiling_z=10000.0,
+                         has_ceiling=True)
+    assert len(beams) == 1, f"syva palkki katosi ({len(beams)} kpl)"
+
+
+def test_same_shallow_drop_in_a_low_room_is_a_beam():
+    """2.7 m huoneessa 350 mm alaslasku ON palkki — sama mitta, eri tila.
+
+    Tama lukitsee sen ettei raja ole absoluuttinen: jos se olisi, korkean
+    hallin siivous poistaisi asunnon aidon alaslaskun.
+    """
+    walls, cloud = _beam_scene(step=20.0)
+    beams = detect_beams(cloud, walls, floor_z=0.0, ceiling_z=2700.0,
+                         has_ceiling=True)
+    assert len(beams) == 1, f"matalan huoneen palkki katosi ({len(beams)} kpl)"
+    assert beams[0].profile.height < 400.0, beams[0].profile.height

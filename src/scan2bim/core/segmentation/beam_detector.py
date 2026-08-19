@@ -40,6 +40,8 @@ _MAX_DEPTH_FRAC = 0.35   # …mutta korkeassa hallissa palkki on syvempi: raja o
                          # 2.6 m syviä eli kiinni 3000 mm:n rajassa, joten
                          # kiinteä luku olisi pudottanut seuraavan hallin palkit
 _MIN_DEPTH = 150.0       # mm — tätä matalampi ei erotu laatasta
+_MIN_DEPTH_FRAC = 0.08   # …mutta korkeassa hallissa 460 mm alaslasku on ripa tai
+                         # kanava, ei palkki: raja skaalautuu huonekorkeudella
 _WALL_MARGIN = 250.0     # mm — seinälinjaa lähempänä oleva alapinta on seinän, ei palkin
 _MIN_LENGTH = 1200.0     # mm
 _MIN_ASPECT = 3.0        # pituus/leveys — alle tämän on pilari tai laatan pudotus
@@ -67,8 +69,9 @@ def detect_beams(cloud, walls, floor_z: float, ceiling_z: float,
 
     z_free = max(floor_z + 0.5 * height,
                  ceiling_z - max(_MAX_DEPTH, _MAX_DEPTH_FRAC * height))
+    min_depth = _min_depth(height)
     cells = _soffit_cells(pts, floor_z + 200.0, ceiling_z - 30.0,
-                          z_free, ceiling_z - _MIN_DEPTH)
+                          z_free, ceiling_z - min_depth)
     if walls:
         cells = _drop_wall_cells(cells, walls)
     if len(cells) < _MIN_CELLS:
@@ -76,7 +79,7 @@ def detect_beams(cloud, walls, floor_z: float, ceiling_z: float,
 
     cand = []
     for comp in _patches(cells):
-        b = _patch_to_beam(comp, cells, pts, ceiling_z, has_ceiling)
+        b = _patch_to_beam(comp, cells, pts, ceiling_z, has_ceiling, min_depth)
         if b is not None:
             cand.append(b)
     beams = _merge_collinear(cand)
@@ -187,8 +190,25 @@ def _patches(cells: dict):
             yield comp
 
 
+def _min_depth(height: float) -> float:
+    """Kuinka syvälle laatasta on roikuttava jotta on palkki eikä ripa.
+
+    Kiinteä 150 mm on oikein 2.7 m huoneessa ja väärin 10 m hallissa: siellä
+    se päästi läpi 460–1700 mm syvät kattoripat ja kanavat, joiden alapinta
+    (7100–7740) oli KAIKKIEN GT-palkkien yläpuolella (5176–6378).
+
+    Mitattu (`data/_beam_depth_sweep.py`, pelkkä detektori, viisi Rohbau-sceneä
+    + synteettinen liiketila): osuudella 0.08 instanssikattavuus säilyi
+    JOKAISESSA aineistossa täsmälleen samana ja tarkkuus nousi 0.866→0.905,
+    0.738→0.799, 0.744→0.850, 0.814→0.869, 0.876→0.877; liiketila ei muuttunut
+    lainkaan. Osuudet 0.03 ja 0.05 eivät tuoneet mitään.
+    """
+    return max(_MIN_DEPTH, _MIN_DEPTH_FRAC * height)
+
+
 def _patch_to_beam(comp: list[int], cells: dict, pts: np.ndarray,
-                   ceiling_z: float, has_ceiling: bool) -> Beam | None:
+                   ceiling_z: float, has_ceiling: bool,
+                   min_depth: float = _MIN_DEPTH) -> Beam | None:
     """Laikku palkiksi, tai None jos jokin portti hylkää.
 
     Kiinnitysporttia EI ole: se vaati, ettei alapinnan ja laatan välissä ole
@@ -224,7 +244,7 @@ def _patch_to_beam(comp: list[int], cells: dict, pts: np.ndarray,
         return None
     soffit = float(np.median(z))
     depth = ceiling_z - soffit
-    if depth < _MIN_DEPTH:
+    if depth < min_depth:
         return None
 
     p0 = c + s.min() * u
