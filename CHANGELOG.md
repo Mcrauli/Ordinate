@@ -6,6 +6,49 @@ sovellus päivittää itsensä sieltä.
 
 ## Julkaisematon
 
+- **Palkkien kiinnitysportti poistettu — se mittasi näkyvyyttä, ei kiinnitystä.**
+  Portti vaati, ettei alapinnan ja laatan välissä ole 300 mm tyhjää. Korkeassa
+  tilassa lattialta keilattaessa palkin uuma on katsomissuunnan takana eikä sitä
+  skannata lainkaan, joten portti hylkäsi aidon palkin siitä ettei sitä nähdä.
+  Ablaatio kaikilla viidellä Rohbau-scenellä (pelkkä detektori): portti päällä
+  39/77 tarkkuudella 0.824, pois **62/77** tarkkuudella 0.808 — 23 aitoa palkkia
+  hinnaksi 0.016 tarkkuudesta. Liiketila-S, liiketila-L ja asunto antoivat
+  täsmälleen saman tuloksen kummallakin. Hinta on tiedossa ja testattu:
+  valmiissa tilassa roikkuva kanava tulee nyt palkiksi.
+- **Alapinta luetaan solun alimmasta PINNASTA, ei alimmasta pisteestä.** Minimi
+  on tiheysmittari: 200 mm solussa on 4 mm skannissa ~2500 pistettä ja 70 mm
+  skannissa ~8, joten yksi harhapiste painaa alapinnan alas sitä varmemmin mitä
+  tiheämpi skanni on — ja `z_free`n alle painunut solu poistetaan kartasta
+  kokonaan. Pinta = alin taso jonka ympärille kertyy osuus solun omista
+  pisteistä. Kattavuus 12/14 joka tiheydellä ennen ja jälkeen, tarkkuus
+  0.838 → 0.866 (4 mm) … 0.882 → 0.911 (70 mm).
+- **Palkin minimisyvyys skaalautuu huonekorkeudesta.** Kiinteä 150 mm on oikein
+  2.7 m huoneessa ja väärin 10 m hallissa: se päästi läpi 460–1700 mm syvät
+  kattorivat ja kanavat, joiden alapinta oli kaikkien GT-palkkien yläpuolella.
+  Raja on nyt suurempi luvuista 150 mm ja 8 % vapaasta korkeudesta. Mitattu
+  kuudella aineistolla: instanssikattavuus säilyi **täsmälleen samana**
+  jokaisessa ja tarkkuus nousi 0.866→0.905, 0.738→0.799, 0.744→0.850,
+  0.814→0.869, 0.876→0.877; liiketila ennallaan 1.000.
+- **Yhteisvaikutus palkkeihin läpi putken: 31/77 → 59/77** (0.403 → 0.766),
+  tarkkuus 0.877 / 0.818 / 0.851 / 0.932 / 0.859.
+
+- **Yksikkötunnistus ei enää riipu rakennuksen koosta.** Sääntö oli "laajuus
+  < 200 → metrit", joten 250 m halli metreissä jäi skaalaamatta ja koko putki
+  mallinsi 250 mm rakennuksen ilman yhtään virhettä. Pisteväli erottaa yksiköt
+  koosta riippumatta (mitattu: Rohbau metreissä 0.016–0.024, mm-pilvet 2–124).
+  Sääntö oli neljänä kopiona — loader, PLY-luotain, E57-luotain ja `inspect`
+  joka katsoi vain x-akselia; kaikki kutsuvat nyt samaa `metre_scale`ia.
+- **Mittaamaton jatkuvuus ei ole todiste seinän tuesta.** Kolme vikaa samassa
+  paikassa: `deviation.py` kaatui `None < float`-vertailuun heti kun tuki on
+  hyvä mutta vyötäröllä ei ole pisteitä; karsinta päästi läpi juuri sen seinän
+  jolla oli VÄHITEN evidenssiä; ja lyhyen seinän suoja oli ristiriidassa oman
+  dokumentaationsa kanssa. Mitattu: ongelmaseiniä 7 → **4**, seinäinstanssit ja
+  pistekattavuus täsmälleen ennallaan, tarkkuus 0.860 → 0.864 ja 0.927 → 0.928.
+- **Aukkomittarin nimittäjä on fysikaalinen, ei pistemäärä.** `_opening_qa`
+  ohitti alle 500 pisteen GT-instanssit, jolloin harvempi skanni pudottaa
+  pienet aukot nimittäjästä ja kattavuus näyttää paremmalta ilman että mikään
+  paranee. Nyt raja on 300 × 300 mm.
+
 - **Aukon leveyskatto 2500 → 3000 mm.** Runkovaiheen oviaukot ovat 2.5–3.0 m ja
   jäivät kiinteään kattoon; suhteellinen katto (50 % seinän pituudesta) hoitaa
   varsinaisen rajauksen. Mitattu Rohbau3D:n GT:tä vasten: scene_07000
