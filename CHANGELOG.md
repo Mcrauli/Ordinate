@@ -6,6 +6,18 @@ sovellus päivittää itsensä sieltä.
 
 ## Julkaisematon
 
+- **Kerrosjako vaatii pintojen VÄLIIN betonin, ei pelkkää väliä.** Jako oli
+  kiinni pisteiden tiheydessä: sama scene antoi 1 kerroksen pistevälillä 4, 10
+  ja 70 mm mutta 2 kerrosta pistevälillä 17 ja 35 mm. Jakautuessaan palkit
+  menivät kahteen kerrokseen ja `floor_00` jäi tyhjäksi — palkkikattavuus
+  0.857, 0.929, **0.000**, **0.000**, 0.857 vaikka detektori yksin antoi 12/14
+  joka tiheydellä; seinäkattavuus heitteli 0.327–0.490. Vanha sääntö tarkisti
+  vain piikkiryhmän leveyden (100–600 mm); mitattu scene_07000 voxelilla 20:
+  ryhmä z 5363..5563 on 200 mm leveä mutta sen sisällä ei ole yhtään tyhjää
+  binia — yksi paksu pinta, ei kaksi. Nyt vaaditaan tyhjä kaista pintojen
+  välissä, ja tyhjyys on osuus ryhmän omasta huipusta. **Tulos: 1 kerros joka
+  tiheydellä, kaikilla viidellä scenellä.**
+
 - **Palkkien kiinnitysportti poistettu — se mittasi näkyvyyttä, ei kiinnitystä.**
   Portti vaati, ettei alapinnan ja laatan välissä ole 300 mm tyhjää. Korkeassa
   tilassa lattialta keilattaessa palkin uuma on katsomissuunnan takana eikä sitä

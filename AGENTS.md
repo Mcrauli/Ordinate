@@ -201,6 +201,31 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
 
 ## Kovalla työllä opitut asiat — ÄLÄ keksi uudelleen
 
+- **Kerrosjako oli kiinni TIHEYDESSÄ, ja se sotki kaiken muun.** Sama scene,
+  sama geometria, vain harvennus eri: Rohbau scene_07000 antoi 1 kerroksen
+  pistevälillä 4, 10 ja 70 mm mutta **2 kerrosta** pistevälillä 17 ja 35 mm.
+  Kun se jakautui, palkit menivät kahteen kerrokseen ja `floor_00` jäi tyhjäksi
+  — palkkikattavuus 0.857, 0.929, **0.000**, **0.000**, 0.857 vaikka detektori
+  yksin antoi 12/14 joka tiheydellä. Sama epävakaus liikutti seinäkattavuutta
+  välillä 0.327–0.490. **Jos jokin luku heittelee harvennuksessa, älä etsi
+  syytä siitä detektorista jonka luku heittelee — etsi se siitä mikä päättää
+  MIHIN rakennus katkaistaan.**
+- **Pintapari ei ole pelkkä leveys.** Vanha sääntö hyväksyi 100–600 mm levyisen
+  piikkiryhmän välipohjaksi. Mitattu scene_07000 voxelilla 20: ryhmä z
+  5363..5563 on 200 mm leveä mutta sen sisällä binit ovat 198 868 ja 263 273 —
+  ei yhtään tyhjää. Se on yksi paksu pinta (palkiston alapinta). Aidon laatan
+  sisällä on umpibetoni eikä betoni palauta pistettä. Tyhjyys on mitattava
+  OSUUTENA ryhmän omasta huipusta, ei pistemääränä.
+- **Testi joka ei kaadu mutaatiosta ei todista mitään.** Kirjoitin
+  kerrosjakokorjaukselle testin `detect_floors`-tasolle; se meni läpi myös
+  ilman korjausta, koska synteettinen fikstuuri ei koskaan päässyt sille
+  portille asti. Kirjoita testi sille tasolle jolla se oikeasti mittaa
+  väitettään, ja **tarkista mutatoimalla** että se kaatuu ilman korjausta.
+- **Aukkokattavuus ei voi ylittää seinäkattavuutta.** 50/113 Rohbaun
+  GT-aukosta istuu seinillä joita mallissa ei ole; yksikään niistä ei löydy
+  eikä voi löytyä. Aukkodetektorin oma luku on 19/63 = 0.302, ei 19/113.
+  `data/_opening_qa.py` erottelee nämä (`ISANTASEINA MALLISSA` vs `PUUTTUU`).
+
 - **Portti joka mittaa NÄKYVYYTTÄ hylkää sen mitä ei nähdä, ei sitä mikä on
   väärin.** Palkkien kiinnitysportti (`_attached`) vaati, ettei alapinnan ja
   laatan välissä ole 300 mm tyhjää. Korkeassa tilassa lattialta keilattaessa
