@@ -1292,6 +1292,52 @@ class Pipeline:
                        f"({100*len(out.points)/max(n0,1):.0f}% rakenteellisia)")
         return out
 
+    def _best_detector(self, cloud, names: list[str]):
+        """Aja ehdokkaat ja valitse se joka kattaa pilven seinäpinnat parhaiten.
+
+        Reitinvalinta oli aiemmin kokomittari: iso pohja-ala → histogrammi,
+        joka on rakennettu SUORAKULMAISEEN AVOIMEEN liiketilaan. Koulun kellari
+        on iso mutta sokkeloinen ja matala, ja siellä sama sääntö valitsi
+        väärin: mitattu kattavuus 0.009 histogrammilla ja 0.045 contourilla
+        — viisinkertainen ero pelkästä valinnasta.
+
+        Muoto on vaikea mitata etukäteen, mutta lopputulos on helppo mitata
+        jälkikäteen: `wall_coverage` toimii millä tahansa skannilla ilman
+        ground truthia. Valittu on siis määritelmän mukaan vähintään yhtä
+        hyvä kuin mikä tahansa ehdokas erikseen. Tasapelin ratkaisee
+        järjestys, jotta ajo pysyy deterministisenä.
+        """
+        from scan2bim.core.qa.coverage import wall_coverage  # noqa: PLC0415
+        from scan2bim.core.segmentation.base import DetectorRegistry  # noqa: PLC0415
+        from scan2bim.core.segmentation.slab_detector import detect_slabs  # noqa: PLC0415
+
+        best_model = None
+        best_name = names[0]
+        best_cov = -1.0
+        pts = np.asarray(cloud.points)
+        for name in names:
+            detector = DetectorRegistry.get(name)()
+            # Semanttiset labelit detektorille jos suodatin tuotti ne. Muut
+            # detektorit eivät tunne kenttää → ei vaikutusta niihin.
+            if self._sem_labels is not None and hasattr(detector, "semantic_labels"):
+                detector.semantic_labels = self._sem_labels
+            candidate = detector.detect(cloud)
+            if len(names) == 1:
+                return candidate, name
+            slabs = detect_slabs(cloud)
+            floor = next((s for s in slabs if s.slab_type == "floor"), None)
+            ceiling = next((s for s in slabs if s.slab_type == "ceiling"), None)
+            if floor is None or ceiling is None:
+                cov = 0.0
+            else:
+                cov = wall_coverage(pts, candidate.walls, floor.elevation, ceiling.elevation)
+            self._progress(f"    {name}: kattavuus {cov:.3f} ({len(candidate.walls)} seinää)")
+            if cov > best_cov:
+                best_model, best_name, best_cov = candidate, name, cov
+        self._progress(f"  valittu {best_name} (kattavuus {best_cov:.3f})")
+        return best_model, best_name
+
+
     def _detect(self, cloud, source_path: Path, refine_cloud=None, thick_cloud=None) -> StructuralModel:
         import scan2bim.core.segmentation.wall_ransac  # noqa: F401
         import scan2bim.core.segmentation.wall_density  # noqa: F401
@@ -1321,15 +1367,13 @@ class Pipeline:
         # rakennus jonka lattia on osin okkluusiossa jää contourilla vajaaksi
         # (vain skannerihuone). Asunto/talo (pieni pohja) pysyvät contourissa.
         if detector_name in ("ransac", "density", "contour") and (is_retail or is_large):
-            detector_name = "histogram"
+            candidates = [detector_name, "histogram"]
             why = "liiketila" if is_retail else "iso tila"
-            self._progress(f"  {why} → histogrammi-detektori (deterministinen)")
-        detector = DetectorRegistry.get(detector_name)()
-        # Semanttiset labelit detektorille jos suodatin tuotti ne. Muut
-        # detektorit eivät tunne kenttää → ei vaikutusta niihin.
-        if self._sem_labels is not None and hasattr(detector, "semantic_labels"):
-            detector.semantic_labels = self._sem_labels
-        model = detector.detect(cloud)
+            self._progress(f"  {why} → mitataan kumpi detektori kattaa enemmän")
+        else:
+            candidates = [detector_name]
+
+        model, detector_name = self._best_detector(cloud, candidates)
         model.slabs = detect_slabs(cloud)
 
         floor_slab = next((s for s in model.slabs if s.slab_type == "floor"), None)

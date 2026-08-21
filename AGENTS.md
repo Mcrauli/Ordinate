@@ -843,6 +843,16 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   opittiin että pistekattavuus on painotettu elementin koolla, joten se on juuri
   se mittari joka suosii neljää 30 m seinää. **Mittaa reititys uudelleen
   instanssikattavuudella ennen kuin siihen nojaa.**
+  **RATKAISTU OSITTAIN (21.8.2026): reititystä ei enää arvata, se mitataan.**
+  `_looks_like_retail`/`is_large` valitsee nyt vain EHDOKKAAT; `_best_detector`
+  ajaa ne ja valitsee sen jonka `core/qa/coverage.py::wall_coverage` on suurin.
+  Valittu on siis määritelmän mukaan vähintään yhtä hyvä kuin vanha reititys.
+  Mitattu koulun kellarilla (5697 m², matala ja sokkeloinen): histogrammi 0.009
+  ja 6 seinää, contour 0.045 ja 23 seinää → putki valitsee nyt contourin ja
+  antaa 23 seinää ja 4 tilaa entisen 6:n ja 1:n sijaan.
+  **Mittari on silti PISTEpohjainen eli sama painotusharha koskee sitä.**
+  Kellarin ero on 5-kertainen eikä muutu painotuksesta, mutta ennen kuin
+  valintaan lisätään uusia ehdokkaita, se on mitattava myös instansseina.
 
 - **AUKOT ON NYT MITATTU GT:tä VASTEN ENSIMMÄISTÄ KERTAA (18.8.2026).**
   `data/_opening_qa.py`, Rohbau site_07 (86 GT-aukkoinstanssia viidessä
