@@ -958,7 +958,10 @@ class Pipeline:
         # Diagnostiikka: kerää kaikki vaihelokit jaettavaan raporttiin (ei
         # geometriaa) — pilottiasiakas ei voi jakaa skanneja, tämän voi.
         from scan2bim.core.qa.diagnostics import DiagnosticsLog
+        from scan2bim.core.qa.runlog import RunLog
+        from scan2bim._version import __version__
         diag = DiagnosticsLog()
+        self._runlog = RunLog(__version__)
         for p in paths:
             diag.add_input(p)
         _user_progress = self._progress
@@ -969,13 +972,23 @@ class Pipeline:
         self._progress = _tee
 
         try:
-            return self._run_floors_inner(paths, output_dir, diag)
+            models = self._run_floors_inner(paths, output_dir, diag)
+            self._runlog.result(
+                floors=len(models),
+                walls=sum(len(m.walls) for m in models),
+                openings=sum(len(m.openings) for m in models),
+                columns=sum(len(m.columns) for m in models),
+                beams=sum(len(m.beams) for m in models),
+                spaces=sum(len(m.spaces) for m in models),
+            )
+            return models
         except Exception as e:
             diag.error = f"{type(e).__name__}: {e}"
             raise
         finally:
             self._progress = _user_progress
             diag.write(output_dir / "diagnostics.txt")
+            self._runlog.write()
 
     def _run_floors_inner(self, paths: list[Path], output_dir: Path, diag) -> list[StructuralModel]:
         self._progress(f"Skannaustiedostoja: {len(paths)}")
@@ -1314,6 +1327,7 @@ class Pipeline:
         best_model = None
         best_name = names[0]
         best_cov = -1.0
+        scores: dict[str, float] = {}
         pts = np.asarray(cloud.points)
         for name in names:
             detector = DetectorRegistry.get(name)()
@@ -1323,6 +1337,9 @@ class Pipeline:
                 detector.semantic_labels = self._sem_labels
             candidate = detector.detect(cloud)
             if len(names) == 1:
+                log = getattr(self, "_runlog", None)
+                if log is not None:
+                    log.choice("detector", name)
                 return candidate, name
             slabs = detect_slabs(cloud)
             floor = next((s for s in slabs if s.slab_type == "floor"), None)
@@ -1332,9 +1349,13 @@ class Pipeline:
             else:
                 cov = wall_coverage(pts, candidate.walls, floor.elevation, ceiling.elevation)
             self._progress(f"    {name}: kattavuus {cov:.3f} ({len(candidate.walls)} seinää)")
+            scores[name] = cov
             if cov > best_cov:
                 best_model, best_name, best_cov = candidate, name, cov
         self._progress(f"  valittu {best_name} (kattavuus {best_cov:.3f})")
+        log = getattr(self, "_runlog", None)
+        if log is not None:
+            log.choice("detector", best_name, scores)
         return best_model, best_name
 
 
@@ -1361,7 +1382,14 @@ class Pipeline:
         # nappaa pilarilinjoja). Asunnot/talot voivat olla ei-Manhattan (vinot
         # seinät) → niissä histogrammi löytää vähemmän → pidä configin detektori.
         is_retail = _looks_like_retail(cloud)
-        is_large = _occupancy_area_m2(cloud) >= _LARGE_SPACE_M2
+        area = _occupancy_area_m2(cloud)
+        is_large = area >= _LARGE_SPACE_M2
+        log = getattr(self, "_runlog", None)
+        if log is not None:
+            pts_all = np.asarray(cloud.points)
+            span = pts_all.max(axis=0) - pts_all.min(axis=0) if len(pts_all) else np.zeros(3)
+            log.scan(points=int(len(pts_all)), occupancy_area_m2=round(float(area), 1),
+                     span_mm=[round(float(v)) for v in span], is_retail=bool(is_retail))
         detector_name = self.config.detector
         # Iso tila TAI liiketila → histogrammi (myös contour-oletuksesta): iso
         # rakennus jonka lattia on osin okkluusiossa jää contourilla vajaaksi
