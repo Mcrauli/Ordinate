@@ -25,3 +25,31 @@ def test_cli_detector_choices_are_registered():
     for name in opt.type.choices:
         assert DetectorRegistry.get(name) is not None, f"detektoria ei rekisteröity: {name}"
     assert "histogram" in opt.type.choices    # liiketiladetektori valittavissa
+
+
+def test_report_characters_survive_a_cp1252_console():
+    """CLI ei saa kaatua siihen ettei konsoli osaa raportin merkkejä.
+
+    Mitattu: `scan2bim inspect` kaatui UnicodeEncodeErroriin Windowsin
+    oletuskonsolissa (cp1252) heti kun raporttiin tuli `→`. Poikkeus tuli
+    kesken tulostuksen eikä prosessi poistunut siististi, joten vika näytti
+    jumilta eikä kaatumiselta.
+    """
+    import io
+    import sys
+
+    from scan2bim.cli import force_utf8_output
+
+    raw = io.BytesIO()
+    stdout, stderr = sys.stdout, sys.stderr
+    sys.stdout = io.TextIOWrapper(raw, encoding="cp1252", newline="")
+    sys.stderr = io.TextIOWrapper(io.BytesIO(), encoding="cp1252", newline="")
+    try:
+        force_utf8_output()
+        sys.stdout.write("  → vapaa korkeus 2.80 m  ≥ 3.1 M pistettä")
+        sys.stdout.flush()
+    finally:
+        out = sys.stdout
+        sys.stdout, sys.stderr = stdout, stderr
+    assert "→" in raw.getvalue().decode("utf-8")
+    assert out.encoding.lower().replace("-", "") == "utf8"
