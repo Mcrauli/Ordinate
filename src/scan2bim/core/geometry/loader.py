@@ -56,11 +56,37 @@ def _autoscale(cloud: o3d.geometry.PointCloud) -> o3d.geometry.PointCloud:
     return cloud
 
 
-def load_and_merge(paths: list[Path]) -> o3d.geometry.PointCloud:
-    """Lataa useita pistepilviä ja yhdistää ne yhdeksi."""
+_MERGE_VOXEL_MM = 10.0        # mm — esiharvennus monen skannin yhdistämisessä
+_MERGE_RAW_LIMIT = 60_000_000  # pistettä: tätä isompi yhdistelmä ei mahdu raakana
+
+
+def load_and_merge(paths: list[Path], voxel: float | None = None) -> o3d.geometry.PointCloud:
+    """Lataa useita pistepilviä ja yhdistää ne yhdeksi.
+
+    Jokainen pilvi harvennetaan ENNEN yhdistämistä, koska muuten koko
+    keilausprojekti on hetken raakana muistissa: koulun kellari on 37 asemaa
+    ja miljardi pistettä eli ~24 GB pelkkää geometriaa, vaikka työpilvi on
+    lopulta 25 M pistettä. Käyttöliittymä sallii kaikkien asemien valinnan,
+    joten ilman tätä se lupaa jotain mitä kone ei kestä.
+
+    Harvennus on tässä kohdassa ilmaista: esikäsittely voxeloi saman pilven
+    joka tapauksessa, ja `_MERGE_VOXEL_MM` on selvästi tiheämpi kuin
+    detektiovoxel (auto-voxel 25 mm), joten mitattava geometria ei muutu.
+    Yhden tiedoston polku EI harvenna — silloin muistiongelmaa ei ole eikä
+    tulos saa muuttua bittiäkään.
+    """
+    if len(paths) == 1:
+        return load_point_cloud(paths[0])
+
+    step = _MERGE_VOXEL_MM if voxel is None else max(float(voxel), 1.0)
     merged = o3d.geometry.PointCloud()
     for p in paths:
-        merged += load_point_cloud(p)
+        cloud = load_point_cloud(p)
+        if len(cloud.points) and step > 0.0:
+            cloud = cloud.voxel_down_sample(step)
+        merged += cloud
+        if len(merged.points) > _MERGE_RAW_LIMIT:
+            merged = merged.voxel_down_sample(step)
     return merged
 
 
