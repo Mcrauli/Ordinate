@@ -1365,6 +1365,7 @@ class Pipeline:
         import scan2bim.core.segmentation.wall_normals  # noqa: F401
         import scan2bim.core.segmentation.wall_contour  # noqa: F401
         import scan2bim.core.segmentation.wall_histogram  # noqa: F401
+        import scan2bim.core.segmentation.wall_normals  # noqa: F401
         import scan2bim.core.floorplan.detector  # noqa: F401
         from scan2bim.core.segmentation.base import DetectorRegistry
         from scan2bim.core.segmentation.slab_detector import detect_slabs
@@ -1395,9 +1396,9 @@ class Pipeline:
         # rakennus jonka lattia on osin okkluusiossa jää contourilla vajaaksi
         # (vain skannerihuone). Asunto/talo (pieni pohja) pysyvät contourissa.
         if detector_name in ("ransac", "density", "contour") and (is_retail or is_large):
-            candidates = [detector_name, "histogram"]
+            candidates = [detector_name, "histogram", "normals"]
             why = "liiketila" if is_retail else "iso tila"
-            self._progress(f"  {why} → mitataan kumpi detektori kattaa enemmän")
+            self._progress(f"  {why} → mitataan mikä detektori kattaa eniten")
         else:
             candidates = [detector_name]
 

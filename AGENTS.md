@@ -201,6 +201,35 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
 
 ## Kovalla työllä opitut asiat — ÄLÄ keksi uudelleen
 
+- **DETEKTORI ILMAN KARSINTAA EI OLE DETEKTORI — mittaa se putken läpi.**
+  Normaalipohjainen seinähaku (`wall_normals.py`) toimi erillisenä skriptinä
+  kellarissa loistavasti mutta Rohbaussa surkeasti, ja päättelin siitä että
+  menetelmä ei yleisty. Se oli väärä johtopäätös: skripti ohitti koko
+  semantics-ketjun, joka on rakennettu juuri palkkilinjojen ja pilaririvien
+  karsintaan. Sama menetelmä rekisteröitynä detektorina, saman ketjun läpi:
+  | scene_07004 | skriptinä | putken läpi |
+  |---|---|---|
+  | GT-kattavuus | 0.052 | **0.554** |
+  | GT-tarkkuus | 0.260 | **0.955** |
+  Älä koskaan vertaa prototyyppiä tuotantoon ennen kuin molemmat ovat kulkeneet
+  saman ketjun. **Sama koskee GT-vapaata mittaria**: se erotteli raa'an
+  prototyypin ja tuotannon välillä väärin (2/5), mutta kun molemmat ajettiin
+  putken läpi, se osui **5/5**.
+- **UUDEN MENETELMÄN EI TARVITSE VOITTAA KAIKKIALLA.** Viisi peräkkäistä
+  korjausyritystä kaatui siihen että ne yrittivät tehdä YHDESTÄ menetelmästä
+  kaikkiin rakennuksiin sopivan, ja jokainen paransi yhtä aineistoa ja rikkoi
+  toisen. `_best_detector` ajaa ehdokkaat ja valitsee mitatusti, joten uusi
+  menetelmä tarvitsee vain voittaa siellä missä se on aidosti parempi.
+  Mitattu: `normals` voittaa kellarissa (0.226 vs contour 0.045) ja Rohbau
+  scene_07003:ssa myös GT:llä (0.839 vs 0.807), ja häviää muissa neljässä —
+  valinta ottaa sen vain siellä missä se voittaa.
+- **KUVA KERTOO SEN MITÄ LUKU EI.** `data/_model_view.py` piirtää pohjan, 3D:n
+  ja leikkauksen samasta mallista. Kellarissa kaikki tuotantovariantit
+  (contour 23, histogrammi 58, normals 168 seinää) näyttivät kuvassa
+  ahtautuvan SAMAAN nurkkaan, kun sama normals-menetelmä skriptinä kattoi koko
+  rakennuksen — se johti oikeaan diagnoosiin (karsintaketju) jota pelkät
+  kattavuusluvut eivät olisi paljastaneet. Aja se aina uudesta aineistosta.
+
 - **Kerrosjako oli kiinni TIHEYDESSÄ, ja se sotki kaiken muun.** Sama scene,
   sama geometria, vain harvennus eri: Rohbau scene_07000 antoi 1 kerroksen
   pistevälillä 4, 10 ja 70 mm mutta **2 kerrosta** pistevälillä 17 ja 35 mm.
