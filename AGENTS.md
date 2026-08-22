@@ -1216,8 +1216,14 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
      pilarit 51/65→65/65, ei ulkopuolisia seiniä (vision).
   2. AUKI: perimetrin ulkopinta erotellaan omaksi seinäksi (`wall_ext_*`, ~414 mm
      irti aitosta akselista) isoilla ulkoseinillä → tuplaseinä.
-  3. AUKI: lattia-katto-hylly AIVAN seinää vasten (30–50 mm irti) jää valeseinäksi
-     — `remove_shelf_front_walls` alaraja on 300 mm, ei nappaa <300 mm skiniä.
+  3. ~~AUKI: lattia-katto-hylly AIVAN seinää vasten (30–50 mm irti) jää
+     valeseinäksi~~ **KORJATTU (22.8.2026)**: `remove_shelf_front_walls`
+     hyväksyy nyt liiketilassa myös 15–150 mm etäisyyden (`_SKIN_MIN`/
+     `_SKIN_MAX`). Raja on fysikaalinen eikä viritetty: ohuinkin seinä on
+     66 mm, joten sitä lähempänä oleva rinnakkainen pinta ei voi olla oma
+     seinänsä. Mitattu: union-kokeessa syntyi neljä hyllyvaleseinää 32–33 mm
+     perimetristä → 0, GT-kattavuus 8/9 säilyi. Tuotanto ennallaan
+     (retail_s 9/9 GT-seinää, 0 ylimääräistä, 0.724/0.842).
   4. ~~Takahuoneen väliseinät jäivät löytymättä~~ **KORJATTU (recall 6/9→9/9):
      RANSAC-confidence oli koko-suhteinen (`inliers/(total×0.05)`) → isossa
      myymälässä aito 12 m sisäseinä = murto-osa pilvestä → conf ~0.01 → filtteri

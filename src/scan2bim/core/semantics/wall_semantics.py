@@ -550,6 +550,10 @@ def _measure_thickness(proj: np.ndarray, T_ref: float = 200.0) -> float | None:
     return float(thickness)
 
 
+_SKIN_MIN = 15.0      # mm — tätä lähempänä on sama pinta kahtena, ei oma seinä
+_SKIN_MAX = 150.0     # mm — ohuempi kuin ohuinkin seinä (66 mm) + mittausvara
+
+
 def remove_shelf_front_walls(walls, dist_lo=300.0, dist_hi=1500.0,
                              ang_tol_deg=12.0, min_partner_len=4000.0,
                              len_ratio=2.0, min_overlap_frac=0.5, retail=False):
@@ -608,7 +612,15 @@ def remove_shelf_front_walls(walls, dist_lo=300.0, dist_hi=1500.0,
                 continue  # ei rinnakkainen
             # kohtisuora etäisyys w:n keskeltä kumppanin linjaan
             perp = abs(float(np.dot(c - a2, n)))
-            if not (dist_lo <= perp <= dist_hi):
+            # Seinää VASTEN liimattu hyllyskini: mitattu synteettisellä
+            # myymälällä 32–33 mm perimetristä, eli ohuempi kuin ohuinkin
+            # seinä (66 mm). `dist_lo` on 300 mm siksi, ettei saman seinän
+            # kahta pintaa luettaisi hyllyksi — se raja jättää skinin
+            # kokonaan sääntöjen ulkopuolelle (kirjattu AGENTS.md:hen auki
+            # olevaksi puutteeksi). Vain liiketilassa: asunnossa aito seinä
+            # voi olla lähellä ulkoseinää.
+            is_skin = retail and _SKIN_MIN <= perp <= _SKIN_MAX
+            if not (is_skin or dist_lo <= perp <= dist_hi):
                 continue
             # w:n on peityttävä kumppanin pituudelle (kulkee sen vieressä)
             ta = float(np.dot(a - a2, u2)); tb = float(np.dot(b - a2, u2))
