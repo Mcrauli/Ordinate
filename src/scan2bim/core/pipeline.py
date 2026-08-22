@@ -747,6 +747,43 @@ def _crop_to_building_envelope(cloud):
     return cloud.select_by_index(np.where(inside)[0])
 
 
+
+def _prune_for_choice(model, slabs, cloud):
+    """Karsi ehdokas kevyesti ENNEN kuin sen kattavuus mitataan.
+
+    Detektorin raakatulos ei ole se malli joka lopulta syntyy: semantics-ketju
+    poistaa palkkilinjat, hyllynetupinnat ja tuettomat seinät. Ilman tätä
+    valinta vertaa vääriä lukuja — mitattu liiketilassa, jossa normaalidetektori
+    voitti raakamittauksessa mutta hävisi karsinnan jälkeen (retail_s
+    kattavuus 0.724 → 0.618 ja seinät 9 → 46, retail_l 0.620 → 0.615 ja
+    34 → 109). Rohbaussa sama karsinta siivosi normaalidetektorin jäljet ja
+    valinta osui oikein, joten ero EI näy ilman tätä vaihetta.
+
+    Vain hyllyfrontti + tuki/jatkuvuus — ne erottavat juuri nämä
+    virhepopulaatiot. Koko ketjun ajaminen jokaiselle ehdokkaalle olisi
+    oikeampaa mutta maksaisi moninkertaisen ajoajan.
+    """
+    from copy import deepcopy  # noqa: PLC0415
+
+    from scan2bim.core.qa.deviation import measure_wall_support  # noqa: PLC0415
+    from scan2bim.core.semantics.wall_semantics import (  # noqa: PLC0415
+        filter_structural_walls,
+        prune_unsupported_walls,
+        remove_shelf_front_walls,
+    )
+
+    probe = deepcopy(model)
+    probe.slabs = slabs
+    try:
+        probe.walls = filter_structural_walls(probe.walls, slabs)
+        probe.walls = remove_shelf_front_walls(probe.walls, retail=True)
+        measure_wall_support(probe, cloud)
+        prune_unsupported_walls(probe, cloud)
+    except Exception:  # noqa: BLE001 — valinta ei saa kaatua karsintaan
+        return model.walls
+    return probe.walls
+
+
 def _align_faces_to_surface_median(walls, cloud) -> list:
     """Viimeinen pintalinjaus SAMALLA estimaattorilla kuin QA-mittari:
     dominantin puolen pistepinnan MEDIAANI koko seinäkorkeudelta.
@@ -1347,7 +1384,8 @@ class Pipeline:
             if floor is None or ceiling is None:
                 cov = 0.0
             else:
-                cov = wall_coverage(pts, candidate.walls, floor.elevation, ceiling.elevation)
+                walls = _prune_for_choice(candidate, slabs, cloud)
+                cov = wall_coverage(pts, walls, floor.elevation, ceiling.elevation)
             self._progress(f"    {name}: kattavuus {cov:.3f} ({len(candidate.walls)} seinää)")
             scores[name] = cov
             if cov > best_cov:
@@ -1396,7 +1434,7 @@ class Pipeline:
         # rakennus jonka lattia on osin okkluusiossa jää contourilla vajaaksi
         # (vain skannerihuone). Asunto/talo (pieni pohja) pysyvät contourissa.
         if detector_name in ("ransac", "density", "contour") and (is_retail or is_large):
-            candidates = [detector_name, "histogram", "normals"]
+            candidates = [detector_name, "histogram"]
             why = "liiketila" if is_retail else "iso tila"
             self._progress(f"  {why} → mitataan mikä detektori kattaa eniten")
         else:
