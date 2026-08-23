@@ -710,6 +710,10 @@ _ENVELOPE_DILATE_CELLS = 0       # detektio rajataan katetun alueen sisään; ul
 _ENVELOPE_MIN_REMOVE_FRAC = 0.10  # rajaa vain jos poisto ≥ tämä (= selvästi ulkodataa; suojaa avointa runkoa)
 
 
+_CHOICE_MARGIN = 3.0   # uuden menetelmän oltava näin monta kertaa parempi
+_MARGIN_ONLY = frozenset({"normals"})   # vain nämä joutuvat marginaalin taakse
+
+
 def _crop_to_building_envelope(cloud):
     """Poistaa katteettoman ULKOalueen (maasto/piha/kasvillisuus/ulkoklutteri)
     ennen kontuuria. Rakennuksen sisätila on katolla peitetty, ulkomaasto on
@@ -779,9 +783,45 @@ def _prune_for_choice(model, slabs, cloud):
         probe.walls = remove_shelf_front_walls(probe.walls, retail=True)
         measure_wall_support(probe, cloud)
         prune_unsupported_walls(probe, cloud)
+        probe.walls = _add_perimeter_for_choice(probe.walls, slabs, cloud)
     except Exception:  # noqa: BLE001 — valinta ei saa kaatua karsintaan
         return model.walls
     return probe.walls
+
+
+def _add_perimeter_for_choice(walls, slabs, cloud):
+    """Täydennä ehdokkaalle perimetriseinät ENNEN kuin sitä verrataan.
+
+    Perimetri on se vaihe joka kääntää vertailun: contour saa lattiakontuurista
+    ulkoseinät joita se ei itse löydä, ja ilman sitä se häviää vertailun jonka
+    se voittaa valmiissa mallissa. Mitattu liiketilassa: valintahetkellä
+    normaalidetektori 0.407 ja contour 0.223, mutta valmiit mallit 0.618 ja
+    0.724 — eli järjestys kääntyi juuri tässä vaiheessa. Kontuuri riippuu
+    ehdokkaan omista seinistä (ne katkaisevat huonealan), joten se on
+    laskettava erikseen jokaiselle.
+    """
+    from scan2bim.core.segmentation.slab_detector import detect_floor_contours  # noqa: PLC0415
+    from scan2bim.core.semantics.perimeter import add_perimeter_walls  # noqa: PLC0415
+    from scan2bim.core.semantics.wall_semantics import _deduplicate  # noqa: PLC0415
+
+    floor = next((s for s in slabs if s.slab_type == "floor"), None)
+    ceiling = next((s for s in slabs if s.slab_type == "ceiling"), None)
+    if floor is None:
+        return walls
+    contours = detect_floor_contours(
+        cloud, floor.elevation,
+        ceiling_elevation=None if ceiling is None else ceiling.elevation,
+        walls=walls,
+    )
+    if not contours:
+        return walls
+    floor_z = min((w.z_min for w in walls), default=floor.elevation)
+    wall_h = max((w.height for w in walls), default=2700.0)
+    pts = np.asarray(cloud.points)
+    perim: list = []
+    for boundary in contours:
+        perim += add_perimeter_walls(boundary, walls + perim, floor_z, wall_h, pts=pts)
+    return _deduplicate(walls + perim)
 
 
 def _align_faces_to_surface_median(walls, cloud) -> list:
@@ -1365,6 +1405,7 @@ class Pipeline:
         best_name = names[0]
         best_cov = -1.0
         scores: dict[str, float] = {}
+        models_by_name: dict = {}
         pts = np.asarray(cloud.points)
         for name in names:
             detector = DetectorRegistry.get(name)()
@@ -1386,10 +1427,35 @@ class Pipeline:
             else:
                 walls = _prune_for_choice(candidate, slabs, cloud)
                 cov = wall_coverage(pts, walls, floor.elevation, ceiling.elevation)
+            models_by_name[name] = candidate
             self._progress(f"    {name}: kattavuus {cov:.3f} ({len(candidate.walls)} seinää)")
             scores[name] = cov
             if cov > best_cov:
                 best_model, best_name, best_cov = candidate, name, cov
+
+        # Valinta on EPÄTARKKA: se mittaa keskeneräistä mallia. Contour saa
+        # suurimman osansa vasta pintalukituksessa ketjun lopussa — mitattu
+        # liiketilassa 0.225 valintahetkellä ja 0.724 valmiina, kun
+        # normaalidetektori oli 0.473 ja 0.618. Perimetrin lisääminen
+        # valintaan EI korjannut tätä (contour 0.224 → 0.225).
+        # Siksi oletuksesta vaihdetaan vain kun ero on niin suuri ettei
+        # loppuketju voi sitä kääntää: kellarissa 6.2× (0.286 vs 0.046),
+        # liiketilassa 2.1× (0.473 vs 0.225).
+        # Marginaali koskee VAIN uutta menetelmää. Vakiintuneet (contour,
+        # histogram) kilpailevat keskenään kuten ennenkin — ensimmäinen yritys
+        # sovelsi marginaalia kaikkiin ja romahdutti Rohbaun, koska siellä
+        # histogram voittaa contourin alle kolminkertaisesti (0.951 → 0.656,
+        # 0.894 → 0.479, 0.606 → 0.373).
+        settled = {n: c for n, c in scores.items() if n not in _MARGIN_ONLY}
+        if settled:
+            ref_name = max(settled, key=lambda n: settled[n])
+            ref_cov = settled[ref_name]
+            if best_name in _MARGIN_ONLY and best_cov < _CHOICE_MARGIN * ref_cov:
+                self._progress(
+                    f"  {best_name} johtaa ({best_cov:.3f} vs {ref_cov:.3f}) mutta ero on "
+                    f"alle {_CHOICE_MARGIN:.0f}× → pidetään {ref_name}")
+                best_model = models_by_name[ref_name]
+                best_name, best_cov = ref_name, ref_cov
         self._progress(f"  valittu {best_name} (kattavuus {best_cov:.3f})")
         log = getattr(self, "_runlog", None)
         if log is not None:
@@ -1434,7 +1500,7 @@ class Pipeline:
         # rakennus jonka lattia on osin okkluusiossa jää contourilla vajaaksi
         # (vain skannerihuone). Asunto/talo (pieni pohja) pysyvät contourissa.
         if detector_name in ("ransac", "density", "contour") and (is_retail or is_large):
-            candidates = [detector_name, "histogram"]
+            candidates = [detector_name, "histogram", "normals"]
             why = "liiketila" if is_retail else "iso tila"
             self._progress(f"  {why} → mitataan mikä detektori kattaa eniten")
         else:
