@@ -20,7 +20,11 @@ Write-Host "Rakennetaan .exe..." -ForegroundColor Yellow
 & "$venv\pyinstaller" build\scan2bim.spec --noconfirm --clean --distpath dist --workpath build
 
 if ($LASTEXITCODE -eq 0) {
-    $exe = Join-Path $PSScriptRoot "dist\scan2bim.exe"
+    # build/scan2bim.spec on ONE-DIR (LGPL vaatii erilliset kirjastot), joten
+    # exe on dist\scan2bim\scan2bim.exe eika dist\scan2bim.exe. Vanha polku
+    # sai skriptin ilmoittamaan epaonnistumisesta vaikka build meni lapi.
+    $exe = Join-Path $PSScriptRoot "dist\scan2bim\scan2bim.exe"
+    if (-not (Test-Path $exe)) { $exe = Join-Path $PSScriptRoot "dist\scan2bim.exe" }
     $size = [math]::Round((Get-Item $exe).Length / 1MB, 1)
     Write-Host "✓ Build valmis: $exe ($size MB)" -ForegroundColor Green
 } else {
