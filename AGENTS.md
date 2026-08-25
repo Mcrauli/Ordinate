@@ -201,6 +201,32 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
 
 ## Kovalla työllä opitut asiat — ÄLÄ keksi uudelleen
 
+- **VINO SEINÄ EI OLE TODISTE VIRHEESTÄ — `drop_skew` oli päällekkäinen suoja.**
+  `regularize_orthogonal(drop_skew=True)` pudotti jokaisen seinän joka jäi yli
+  22° päähän perhesuunnasta, perusteena "asunto on Manhattan-world". Evidenssin
+  mittaa kuitenkin `prune_unsupported_walls`, joka ajetaan joka tapauksessa —
+  tämä tuomitsi geometrian perusteella. Mitattu koulun kellarilla (normaali-
+  detektorin löytämät suunnat 1°, 21°, 41°, 91°, 111°, 131° eli kuusi suuntaa
+  20° välein):
+  | asetus | seiniä | kattavuus |
+  |---|---|---|
+  | tol 22, drop=True (vanha) | 314 | 0.253 |
+  | tol 22, drop=False | 374 | **0.361** |
+  Koko putken läpi kellari nousi **0.108 → 0.310**, muut yksitoista aineistoa
+  ennallaan. HUOM: 22° toleranssi on niin löysä että se nielaisee 20° välein
+  olevat suunnat — pilvestä mitattu "Manhattan-osuus" oli kellarissakin 0.871,
+  eli se EI paljasta tätä. Vika oli pudotuksessa, ei kääntämisessä.
+- **DETEKTORIVALINTA MITTAA RAAKAA TULOSTA — älä lisää siihen käsittelyä.**
+  Lisäsin valintaan karsinnan ja perimetrin, jotta ehdokkaita verrattaisiin
+  "valmiimpina". Se muutti contourin ja histogrammin keskinäistä järjestystä ja
+  vei Rohbau scene_07003:n GT-kattavuuden **0.807 → 0.691**, vaikka GT-vapaa
+  luku NOUSI 0.507 → 0.643. Kaksi opetusta: vertailu on luotettavampi ennen
+  kuin ehdokkaita on käsitelty eri tavoin, ja 07003 on se scene jossa GT-vapaa
+  mittari erehtyy — älä luota siihen siellä ilman GT-tarkistusta.
+  `core/qa/runlog.py` tallentaa valinnan pisteet, ja juuri se paljasti ettei
+  `normals` tullut valituksi missään aineistossa: kellarin parannus tuli
+  `drop_skew`-korjauksesta, ei uudesta detektorista.
+
 - **DETEKTORI ILMAN KARSINTAA EI OLE DETEKTORI — mittaa se putken läpi.**
   Normaalipohjainen seinähaku (`wall_normals.py`) toimi erillisenä skriptinä
   kellarissa loistavasti mutta Rohbaussa surkeasti, ja päättelin siitä että

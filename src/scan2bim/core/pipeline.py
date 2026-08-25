@@ -1425,8 +1425,14 @@ class Pipeline:
             if floor is None or ceiling is None:
                 cov = 0.0
             else:
-                walls = _prune_for_choice(candidate, slabs, cloud)
-                cov = wall_coverage(pts, walls, floor.elevation, ceiling.elevation)
+                # Mitataan detektorin RAAKA tulos. Karsinnan ja perimetrin
+                # lisääminen tähän muutti contourin ja histogrammin
+                # keskinäistä järjestystä ja vei Rohbau scene_07003:n
+                # GT-kattavuuden 0.807 → 0.691, vaikka GT-vapaa luku nousi.
+                # Vertailu on luotettavampi ennen kuin ehdokkaita on
+                # käsitelty eri tavoin.
+                cov = wall_coverage(pts, candidate.walls, floor.elevation,
+                                    ceiling.elevation)
             models_by_name[name] = candidate
             self._progress(f"    {name}: kattavuus {cov:.3f} ({len(candidate.walls)} seinää)")
             scores[name] = cov
@@ -1576,7 +1582,13 @@ class Pipeline:
         # Suorista seinät kahteen kohtisuoraan suuntaan ennen kulmien yhdistämistä —
         # vinot seinät eivät muuten kohtaa puhtaasti eivätkä huoneet sulkeudu.
         from scan2bim.core.semantics.orthogonal import regularize_orthogonal, fine_rotate_walls
-        model.walls = regularize_orthogonal(model.walls)
+        # drop_skew=False: vino seinä EI ole todiste virheestä. Sääntö
+        # oletti "vino = roskadetektio", mutta evidenssin mittaa
+        # `prune_unsupported_walls` joka ajetaan joka tapauksessa — tämä oli
+        # päällekkäinen suoja joka tuomitsi geometrian perusteella. Mitattu
+        # koulun kellarilla (kuusi seinäsuuntaa 20° välein): pudotus vei 60
+        # seinää ja kattavuuden 0.361 → 0.253.
+        model.walls = regularize_orthogonal(model.walls, drop_skew=False)
 
         # Per-seinä hienokierto: globaali akseli on usein 1–2° vinossa todelliseen
         # ruudukkoon → pitkän seinän pää ajautuu 100–200 mm. Kierrä riittävän pitkät
