@@ -58,6 +58,26 @@ def _run_pipeline(name: str, cloud: Path, out_dir: Path) -> Path | None:
     return model if model.exists() else None
 
 
+def _render(name: str, model: Path, cloud: Path) -> None:
+    """Piirra malli JOKA ajosta — luku ei kerro onko seina oikeassa paikassa.
+
+    Kellarin kattavuus 0.310 nayttI voitolta kunnes zoom-kuva paljasti etta
+    seinat oli vedetty pilven sirpaleiden YLI: 116 seinaa 30x30 metrissa,
+    ristiin toistensa lapi. Sita ei nakynyt yhdessakaan mittarissa.
+    """
+    out = OUT / name
+    for script, args, tag in (
+        ("_model_view.py", [], "yleis"),
+        ("_zoom_view.py", [], "zoom"),
+    ):
+        try:
+            subprocess.run([PY, str(HERE / script), str(model), str(cloud),
+                            str(out / f"_{tag}.png")] + args,
+                           capture_output=True, text=True, timeout=900)
+        except Exception:  # noqa: BLE001 — kuva ei saa kaataa mittausta
+            pass
+
+
 def _nogt(model: Path, cloud: Path) -> dict:
     r = subprocess.run([PY, str(HERE / "_wall_coverage_nogt.py"), str(model), str(cloud)],
                        capture_output=True, text=True, encoding="utf-8", errors="replace")
@@ -106,6 +126,7 @@ def main() -> None:
         row = _nogt(model, cloud)
         if gt is not None:
             row.update(_gt(model, ROOT / gt))
+        _render(name, model, cloud)
         m = json.loads(model.read_text(encoding="utf-8"))
         row["walls"] = len(m["walls"])
         row["openings"] = len(m["openings"])
