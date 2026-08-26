@@ -280,6 +280,22 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   GT-aukosta istuu seinillä joita mallissa ei ole; yksikään niistä ei löydy
   eikä voi löytyä. Aukkodetektorin oma luku on 19/63 = 0.302, ei 19/113.
   `data/_opening_qa.py` erottelee nämä (`ISANTASEINA MALLISSA` vs `PUUTTUU`).
+  **TARKENNUS 26.8.2026 — 0.302 on YHÄ liian ankara.** `data/_opening_probe.py`
+  ajettuna scene_07000:n 16 löytymättömälle aukolle:
+  | syy | kpl |
+  |---|---|
+  | **ei reikää pilvessä** (täyttö 1.00 aukon kohdalla = umpinainen seinä) | **9** |
+  | seinä itsekin tyhjä (valeseinä) | 2 |
+  | reikä näkyy, detektori ei löydä | **5** |
+  Yhdeksää aukkoa ei voi löytää millään säännöllä (yksin `wall_008`:lla kuusi).
+  **Detektorin oma suoritus on 8/13 = 0.615 siitä mikä on löydettävissä**, ja
+  aitoa varaa on viisi aukkoa — ei kaksitoista. Aja `_opening_probe.py` ennen
+  kuin aukkoihin käyttää aikaa; kolme neljästä "puutteesta" on keilausvarjo.
+  Niistä viidestä yksi on 3527 mm leveä (yli `_MAX_W` 3000), loput 2278–2795 mm
+  eli leveysportti ei niitä estä — syy on muualla (reunaehto/korkeusprofiili).
+  **Läpiviennit eivät kuulu nimittäjään:** Rohbaun `WallCutout`-instanssit ovat
+  mitattuna 544 × 423 mm ja mediaani-alareuna 8998 mm lattiasta, eli putki- ja
+  kanavaläpivientejä katonrajassa. `_MIN_H = 600` hylkää ne oikein.
 
 - **Portti joka mittaa NÄKYVYYTTÄ hylkää sen mitä ei nähdä, ei sitä mikä on
   väärin.** Palkkien kiinnitysportti (`_attached`) vaati, ettei alapinnan ja
