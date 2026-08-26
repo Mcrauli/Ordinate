@@ -1315,6 +1315,19 @@ class Pipeline:
             # rajalla → seinä piirtyy evidenssin yli. Leikataan VASTA tässä:
             # nurkkavaiheet ajavat monta kierrosta, ja vain pilvi kertoo missä
             # pinta loppuu.
+            # Sama todiste kuin overstretchissa mutta seinän KESKELLE: matalassa
+            # sokkeloisessa tilassa pinta puuttuu metrien matkalta keskeltä, ei
+            # vain päistä. Mitattu koulun kellarilla: 198 seinää / 3274 m, joista
+            # 78 % oli katettu alle 30 %:sti → 329 seinää / 2479 m, tarkkuus
+            # 0.059 → 0.069 kattavuuden muuttumatta.
+            from scan2bim.core.semantics.split_gaps import split_walls_at_gaps
+            _before = len(model.walls)
+            model.walls = split_walls_at_gaps(model.walls, np.asarray(cloud.points))
+            if len(model.walls) != _before:
+                self._progress(
+                    f"  Pilkottu {len(model.walls) - _before} seinää kohdista "
+                    f"joissa pintaa ei ole")
+
             from scan2bim.core.semantics.overstretch import trim_overstretched_walls
             cut = trim_overstretched_walls(model, cloud)
             if cut:
