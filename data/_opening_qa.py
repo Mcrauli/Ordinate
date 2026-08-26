@@ -64,6 +64,10 @@ def _host_wall(m, c):
     return best is not None and best <= _HOST
 
 
+_DET_MIN_W = 500.0    # mm — opening_detector._MIN_W
+_DET_MIN_H = 600.0    # mm — opening_detector._MIN_H
+
+
 def _real(width: float, height: float) -> bool:
     """Onko GT-instanssi aukko jonka malli voi loytaa.
 
@@ -139,6 +143,22 @@ def main(mj, coord_npy, class_npy, inst_npy=None):
           f"{fi / max(len(hits_in), 1):.3f}   <== taman aukkodetektori omistaa")
     print(f"  ISANTASEINA PUUTTUU  {fo}/{len(hits_out)} = "
           f"{fo / max(len(hits_out), 1):.3f}   (seinavaje, ei aukkovirhe)")
+
+    # Detektorin OMIEN porttien sisalla. `_real` paastaa nimittajaan 300x300 mm
+    # instanssit, mutta detektori vaatii _DET_MIN_W x _DET_MIN_H — valiin jaavat
+    # Rohbaun WallCutoutit, jotka ovat mitattuna 544 x 423 mm ja NELJA metria
+    # katonrajassa (mediaani-alareuna 8998 mm lattiasta): putki- ja
+    # kanavalapivienteja, ei ovia eika ikkunoita. Ne EIVAT kuulu
+    # inventointimalliin, joten detektorin rankaiseminen niista antaa liian
+    # ankaran kuvan.
+    gated_in = [(g, ok) for g, ok in zip(
+        [g for g in gtc if _real(g[5], g[3] - g[2]) and _host_wall(m, g[1])],
+        hits_in) if g[5] >= _DET_MIN_W and (g[3] - g[2]) >= _DET_MIN_H]
+    if gated_in:
+        fg = sum(ok for _, ok in gated_in)
+        print(f"  PORTTIEN SISALLA    {fg}/{len(gated_in)} = "
+              f"{fg / len(gated_in):.3f}   (>= {_DET_MIN_W:.0f} x {_DET_MIN_H:.0f} mm, "
+              f"eli mita detektori edes yrittaa loytaa)")
 
     hit = 0
     for o, dc, dz0, dz1 in det:
