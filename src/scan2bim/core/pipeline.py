@@ -1050,6 +1050,14 @@ class Pipeline:
 
         try:
             models = self._run_floors_inner(paths, output_dir, diag)
+            diag.count(
+                walls=sum(len(m.walls) for m in models),
+                openings=sum(len(m.openings) for m in models),
+                columns=sum(len(m.columns) for m in models),
+                beams=sum(len(m.beams) for m in models),
+                spaces=sum(len(m.spaces) for m in models),
+                floors=len(models),
+            )
             self._runlog.result(
                 floors=len(models),
                 walls=sum(len(m.walls) for m in models),
@@ -1060,7 +1068,9 @@ class Pipeline:
             )
             return models
         except Exception as e:
+            import traceback as _tb
             diag.error = f"{type(e).__name__}: {e}"
+            diag.traceback = _tb.format_exc()
             raise
         finally:
             self._progress = _user_progress
