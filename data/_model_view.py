@@ -100,9 +100,23 @@ def main(model_path: str, cloud_path: str, out_png: str, title: str = "") -> Non
                      [z / 1000, z / 1000], color="#d81e2c", linewidth=1.2)
         ax3.plot([a[0] / 1000, a[0] / 1000], [a[1] / 1000, a[1] / 1000],
                  [zf / 1000, zc / 1000], color="#d81e2c", linewidth=0.8)
-    ax3.set_title("3D — seinät pilven päällä")
+    # Lattialaatan ääriviiva 3D:hen: käyttäjä näki katselimessa heti, että
+    # seinät ja lattia eivät ole samassa paikassa — 2D-pohjakuvasta sitä ei
+    # näe, koska molemmat projisoituvat samaan tasoon.
+    for sl in model.get("slabs", []):
+        b = sl.get("boundary") or []
+        if len(b) < 3:
+            continue
+        q = np.asarray(b, dtype=float) / 1000.0
+        q = np.vstack([q, q[:1]])
+        z = sl["elevation"] / 1000.0
+        ax3.plot(q[:, 0], q[:, 1], np.full(len(q), z),
+                 color="#2b6cb0", linewidth=1.6,
+                 label=sl["slab_type"] if sl is model["slabs"][0] else None)
+    ax3.set_title("3D — seinät (punainen) ja laatat (sininen)")
     ax3.set_box_aspect((1, 1, 0.35))
     ax3.view_init(elev=38, azim=-58)
+    ax3.legend(loc="upper left", fontsize=8)
 
     ax2 = fig.add_subplot(1, 3, 3)
     mid = 0.5 * (vert[:, 1].min() + vert[:, 1].max())
