@@ -20,7 +20,15 @@ from __future__ import annotations
 
 import numpy as np
 
-_MIN_GAP_MM = 2500.0     # mm — tätä pidempi kattamaton jakso katkaisee seinän
+_MIN_GAP_MM = 1200.0     # mm — tätä pidempi kattamaton jakso katkaisee seinän.
+                         # Standardi oviaukko on 900–1000 mm, joten kapeampaa
+                         # ei pilkota. Mitattu sweepillä: Rohbau scene_07000 on
+                         # BITILLEEN sama 2500, 1500 ja 1000 mm:llä (11 seinää,
+                         # 189 m, kattavuus 0.946) eli oviaukot eivät pilkkoudu,
+                         # kun taas kellari 333 → 489 seinää, 2464 → 2116 m ja
+                         # tarkkuus 0.069 → 0.076. 700 mm veisi tarkkuutta vielä
+                         # ylös mutta menisi oviaukon alle ja pudottaisi
+                         # kattavuuden 0.299 → 0.286.
 _COL_MM = 500.0          # mm — sarakkeen leveys katteen mittaukseen
 _BAND_MM = 150.0         # mm — kaista seinäpinnan ympärillä
 _MIN_PTS = 4             # pistettä sarakkeessa: alle tämän on tyhjä
@@ -77,7 +85,10 @@ def _split_one(w, pts: np.ndarray) -> list:
     # kattamattomat jaksot: pilko vain riittävän pitkistä
     pieces: list = []
     start = None
-    gap_cols = max(int(_MIN_GAP_MM / _COL_MM), 1)
+    # Jakson on oltava AIDOSTI kynnystä pidempi: pelkkä jakolasku pyöristää
+    # 1200 mm:n kahdeksi 500 mm sarakkeeksi eli tuhanneksi millimetriksi, ja
+    # silloin standardi oviaukko pilkkoutuisi.
+    gap_cols = max(int(_MIN_GAP_MM / _COL_MM) + 1, 2)
     run = 0
     for i in range(n_col + 1):
         f = bool(filled[i]) if i < n_col else False
