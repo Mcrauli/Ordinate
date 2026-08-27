@@ -344,14 +344,22 @@ def _e57_scan_chunks(e57, index: int, chunk: int):
 _E57_BIG = 40_000_000   # sama raja kuin PLY:llä: tätä pienempi luetaan kerralla
 
 
-def _e57_is_chunkable(path: Path) -> bool:
+def _e57_is_chunkable(path: Path, n_paths: int = 1) -> bool:
     """Onko tämä e57 sekä LOHKOTTAVISSA että niin iso että se pitää lohkoa.
 
     Lohkoluku EI ole tulokseltaan neutraali: voxelointi tapahtuu lohkorajoilla
     ja kerroshistogrammi luetaan desimoituna, joten kerrosraja voi siirtyä
     senttejä (mitattu gargage.e57: kaista 2.60 → 2.57 m, malli 11 → 9 seinää).
     Siksi sitä käytetään VAIN kun koko tiedosto ei muuten mahtuisi muistiin —
-    täsmälleen sama sääntö kuin `_big_ply`:llä."""
+    täsmälleen sama sääntö kuin `_big_ply`:llä.
+
+    ``n_paths``: raja on mitoitettu YHDELLE tiedostolle, mutta keilausprojekti
+    on monta keskikokoista. Koulun kellari on 36 asemaa á 27 M pistettä eli
+    alle 40 M rajan jokainen, mutta yhteensä miljardi — ja `load_floor_slice`
+    kasaa ne samaan pilveen, joten ajo kaatui `bad allocation`-virheeseen
+    paksuusmittauksen kohdalla. Kun tiedostoja on monta, raja jaetaan niiden
+    määrällä: silloin lohkoluku kytkeytyy päälle juuri silloin kun summa ei
+    mahtuisi muistiin."""
     try:
         import pye57
         e57 = pye57.E57(str(path))
@@ -361,8 +369,9 @@ def _e57_is_chunkable(path: Path) -> bool:
             for i in range(e57.scan_count)
         ):
             return False
+        limit = _E57_BIG if n_paths <= 1 else max(_E57_BIG // n_paths, 2_000_000)
         return sum(e57.get_header(i).point_count
-                   for i in range(e57.scan_count)) >= _E57_BIG
+                   for i in range(e57.scan_count)) >= limit
     except Exception:  # noqa: BLE001 — ei lohkottavissa = käytä koko skannin lukua
         return False
 

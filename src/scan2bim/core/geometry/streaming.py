@@ -170,7 +170,7 @@ def load_floor_slice(
         # skanni (mitattu 0.56 GB → 27.8 M pistettä, 2.79 GB RSS ≈ 5 GB per
         # tiedosto-GB) → 32 GB tiedosto ei latautuisi lainkaan. Sama libE57-
         # lukija palvelee lohkoittain.
-        _big_e57 = _suffix == ".e57" and _e57_is_chunkable(path)
+        _big_e57 = _suffix == ".e57" and _e57_is_chunkable(path, len(paths))
         if _big_ply or _big_e57:
             try:
                 if _big_ply:
