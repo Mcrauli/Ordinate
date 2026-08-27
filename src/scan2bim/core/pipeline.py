@@ -711,6 +711,8 @@ _ENVELOPE_MIN_REMOVE_FRAC = 0.10  # rajaa vain jos poisto ≥ tämä (= selväst
 
 
 _CHOICE_MARGIN = 3.0   # uuden menetelmän oltava näin monta kertaa parempi
+_CHOICE_VOXEL = 80.0        # mm — valinnan harvennus (järjestys säilyy, ks. _best_detector)
+_CHOICE_MAX_POINTS = 2_000_000   # tätä pienempi pilvi ajetaan sellaisenaan
 _MARGIN_ONLY = frozenset({"normals"})   # vain nämä joutuvat marginaalin taakse
 
 
@@ -1430,19 +1432,34 @@ class Pipeline:
         scores: dict[str, float] = {}
         models_by_name: dict = {}
         pts = np.asarray(cloud.points)
+
+        # Valinta tarvitsee vain JÄRJESTYKSEN, ei lopullista mallia, joten
+        # ehdokkaat ajetaan harvennetulla pilvellä ja voittaja uudelleen
+        # täydellä. Mitattu liiketilalla (8.2 M pistettä): täysi pilvi 215 s,
+        # 80 mm voxeli 56 s, ja voittaja on sama molemmilla — kolmen
+        # detektorin ajaminen täydellä pilvellä oli 27 % koko ajoajasta,
+        # josta valtaosa hukkaa koska vain yhden tulos päätyy malliin.
+        probe = cloud
+        if len(names) > 1 and len(pts) > _CHOICE_MAX_POINTS:
+            probe = cloud.voxel_down_sample(_CHOICE_VOXEL)
+            self._progress(
+                f"    (valinta {len(probe.points):,} pisteellä, "
+                f"{_CHOICE_VOXEL:.0f} mm)")
+        probe_pts = np.asarray(probe.points)
+
         for name in names:
             detector = DetectorRegistry.get(name)()
             # Semanttiset labelit detektorille jos suodatin tuotti ne. Muut
             # detektorit eivät tunne kenttää → ei vaikutusta niihin.
             if self._sem_labels is not None and hasattr(detector, "semantic_labels"):
                 detector.semantic_labels = self._sem_labels
-            candidate = detector.detect(cloud)
+            candidate = detector.detect(probe)
             if len(names) == 1:
                 log = getattr(self, "_runlog", None)
                 if log is not None:
                     log.choice("detector", name)
                 return candidate, name
-            slabs = detect_slabs(cloud)
+            slabs = detect_slabs(probe)
             floor = next((s for s in slabs if s.slab_type == "floor"), None)
             ceiling = next((s for s in slabs if s.slab_type == "ceiling"), None)
             if floor is None or ceiling is None:
@@ -1454,7 +1471,7 @@ class Pipeline:
                 # GT-kattavuuden 0.807 → 0.691, vaikka GT-vapaa luku nousi.
                 # Vertailu on luotettavampi ennen kuin ehdokkaita on
                 # käsitelty eri tavoin.
-                cov = wall_coverage(pts, candidate.walls, floor.elevation,
+                cov = wall_coverage(probe_pts, candidate.walls, floor.elevation,
                                     ceiling.elevation)
             models_by_name[name] = candidate
             self._progress(f"    {name}: kattavuus {cov:.3f} ({len(candidate.walls)} seinää)")
@@ -1486,6 +1503,13 @@ class Pipeline:
                 best_model = models_by_name[ref_name]
                 best_name, best_cov = ref_name, ref_cov
         self._progress(f"  valittu {best_name} (kattavuus {best_cov:.3f})")
+        if probe is not cloud:
+            # Voittaja ajetaan uudelleen TÄYDELLÄ pilvellä: harvennettu tulos
+            # kelpaa järjestykseen muttei malliksi.
+            detector = DetectorRegistry.get(best_name)()
+            if self._sem_labels is not None and hasattr(detector, "semantic_labels"):
+                detector.semantic_labels = self._sem_labels
+            best_model = detector.detect(cloud)
         log = getattr(self, "_runlog", None)
         if log is not None:
             log.choice("detector", best_name, scores)
