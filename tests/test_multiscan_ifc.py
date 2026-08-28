@@ -214,7 +214,13 @@ def test_multiscan_pipeline_produces_ifc():
     crs = f.by_type("IfcProjectedCRS")
     mc = f.by_type("IfcMapConversion")
     assert crs and crs[0].Name == "EPSG:3067", "georef-leima (EPSG:3067) puuttuu"
-    assert mc and abs(mc[0].Scale - 0.001) < 1e-9, "MapConversion mm->m skaala vaarin"
+    # Muunnos on IDENTITEETTI: geometria on jo karttakoordinaateissa ja IFC:n
+    # yksikko on mm, joten 0.001 skaalasi mallin tuhannesosaan suhteessa
+    # pistepilveen (kayttaja nakei sen katselimessa: malli eri paikassa kuin
+    # keilaus, vaikka tiedoston geometria oli oikein).
+    assert mc and abs(mc[0].Scale - 1.0) < 1e-9, "MapConversion ei saa skaalata"
+    assert abs(mc[0].Eastings) < 1e-9 and abs(mc[0].Northings) < 1e-9, \
+        "MapConversion ei saa siirtaa: geometria kantaa jo koordinaatin"
     assert mc[0].Eastings == 0.0 and mc[0].Northings == 0.0, "offset ei 0 (geometria siirtyi)"
 
     print(f"\nAvaa Solibrissa:")

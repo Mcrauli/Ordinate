@@ -5,9 +5,19 @@ northing + korkeus) → overlay pistepilveä vasten (Cintoo tms.) osuu täsmäll
 Georef-leima kertoo lisäksi MISSÄ järjestelmässä ne koordinaatit ovat, jotta
 Revit/Navisworks osaa sijoittaa mallin shared/survey-koordinaateilla.
 
-HUOM yksikkö: malligeometria on millimetreissä, projisoidut CRS:t metreissä →
-IfcMapConversion.Scale = 0.001 (mm→m). Offset (Eastings/Northings/Height) = 0,
-koska geometria kantaa jo täyden koordinaatin.
+HUOM yksikkö: IFC:n oma pituusyksikkö on jo `.MILLI.` (IfcSIUnit), joten
+katselin osaa muuntaa geometrian metreiksi itse. `IfcMapConversion.Scale` EI
+siksi saa olla 0.001 — silloin muunnos tulee kahdesti ja malli kutistuu
+tuhannesosaan suhteessa pistepilveen, joka ei kulje muunnoksen läpi lainkaan.
+
+Käyttäjä näki tämän katselimessa: 36 aseman kellarimalli piirtyi kokonaan eri
+paikkaan kuin keilaus. Geometria tiedostossa oli oikein (seinät z=7132 mm =
+laatan taso, mediaanietaisyys pilveen 130 mm), mutta muunnoksen jälkeen sama
+seinä on kohdassa (145.7, 532.3, 7.1) eli origon vieressä.
+
+Kun geometria on jo karttakoordinaateissa, muunnos on IDENTITEETTI: ei
+siirtoa, ei kiertoa, ei skaalausta. Se on silti tarpeen leimana — se kertoo
+MISSÄ järjestelmässä koordinaatit ovat, mikä on `IfcProjectedCRS`:n tehtävä.
 """
 from __future__ import annotations
 
@@ -34,8 +44,12 @@ CRS_PRESETS: dict[int, tuple[str, str, str, str, str, str]] = {
 
 DEFAULT_EPSG = 3067
 
-# Geometria mm, projisoidut CRS metreissä → skaalaus mm→m.
-MM_TO_M_SCALE = 0.001
+# Geometria on jo karttakoordinaateissa ja IFC:n yksikkö on mm → muunnos on
+# identiteetti. Ks. moduulin docstring: 0.001 kutisti mallin tuhannesosaan.
+MAP_SCALE = 1.0
+
+# Taaksepäin yhteensopivuus: vanha nimi jäi dokumentteihin ja testeihin.
+MM_TO_M_SCALE = MAP_SCALE
 
 
 def add_georef(ifc, context, epsg: int) -> None:
@@ -68,5 +82,5 @@ def add_georef(ifc, context, epsg: int) -> None:
         OrthogonalHeight=0.0,
         XAxisAbscissa=1.0,
         XAxisOrdinate=0.0,
-        Scale=MM_TO_M_SCALE,
+        Scale=MAP_SCALE,
     )
