@@ -20,7 +20,19 @@ _SIMPLIFY_MM    = 150.0          # approxPolyDP epsilon ABSOLUUTTISENA — suhte
                                  # (0.008×arcLength) räjähtää lahdekkaalla kontuurilla:
                                  # varjolahdet paisuttavat arcLengthin → epsilon ~800 mm →
                                  # lahdet romahtavat ITSENSÄ LEIKKAAVAKSI siksakiksi
-_Z_BAND_MM      = 8.0            # ±mm lasertason ympärillä
+_Z_BAND_MM      = 40.0           # ±mm lasertason ympärillä.
+                                 # 8 mm on keilaimen MITTATARKKUUS, ei lattian
+                                 # tasaisuus: betonilattiassa on kaatoja, saumoja
+                                 # ja valun epätasaisuutta. Mitattu laatan alana
+                                 # (kontuurien summa):
+                                 #   aineisto      8mm    25mm    40mm
+                                 #   kellari      950    1565    1961 m²
+                                 #   rohbau_07000  37     114     175 m²
+                                 #   apt           38      45      45 m²
+                                 #   retail_s    3520    3520    3520 m²
+                                 # Vain synteettinen retail_s on niin tasainen
+                                 # ettei kaista sido; oikeilla skanneilla 8 mm
+                                 # antoi laatan joka on murto-osa rakennuksesta.
 _FOOT_BAND_MM   = 40.0           # ±mm huonealan maskin z-kaista (8 mm on liian ohut → reikäinen)
 _FOOT_CLOSE_MM  = 400.0          # sulkee kalusteiden keilausvarjot huonealasta
 _FOOT_DILATE_MM = 50.0           # mitattu: reuna osuu aitoon sisäpintaan (75 mm = +25 mm bias)
