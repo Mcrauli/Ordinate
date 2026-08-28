@@ -211,24 +211,46 @@ class _Loader(QtCore.QObject):
     done = QtCore.Signal(object, object, object)  # Ps_raw, rgb, offset
     failed = QtCore.Signal(str)
 
-    def __init__(self, cloud_path: str, max_pts: int):
+    def __init__(self, cloud_path, max_pts: int):
         super().__init__()
-        self._path = cloud_path; self._max = max_pts
+        # Lista TAI yksi polku: malli tehdaan kaikista asemista, joten
+        # tarkastuksen on nahtava sama joukko. Yhden aseman pilvi keskittyy
+        # eri kohtaan (mitattu kellarilla: 43.3 m ero keskipisteissa) ja malli
+        # piirtyy sen verran sivuun.
+        self._paths = [cloud_path] if isinstance(cloud_path, (str, Path)) else list(cloud_path)
+        self._max = max_pts
 
     def run(self) -> None:
         try:
             from scan2bim.core.geometry.loader import load_point_cloud
-            cloud = load_point_cloud(Path(self._path), e57_colors=True)
-            P = np.asarray(cloud.points, dtype=np.float32)
+            import open3d as o3d  # noqa: PLC0415
+            per = max(1, self._max // max(len(self._paths), 1))
+            chunks, cols = [], []
+            for pth in self._paths:
+                c = load_point_cloud(Path(pth), e57_colors=True)
+                q = np.asarray(c.points, dtype=np.float32)
+                if not len(q):
+                    continue
+                st = max(1, -(-len(q) // per))
+                chunks.append(q[::st])
+                cols.append(np.asarray(c.colors, dtype=np.float32)[::st]
+                            if c.has_colors() else
+                            np.full((len(q[::st]), 3), 0.6, np.float32))
+                del c, q
+            if not chunks:
+                self.failed.emit("pilvi on tyhja")
+                return
+            cloud = o3d.geometry.PointCloud()
+            P = np.vstack(chunks)
+            _rgb_all = np.vstack(cols)
+            cloud.points = o3d.utility.Vector3dVector(P.astype(np.float64))
+            cloud.colors = o3d.utility.Vector3dVector(_rgb_all.astype(np.float64))
             # CEIL-harvennus: len//max antaa step=1 kun len<2*max → 9M pistettä
             # jäi harventamatta. Ceil takaa että työjoukko todella cappaantuu.
             step = max(1, -(-len(P) // self._max))
             Ps = np.ascontiguousarray(P[::step])
             offset = Ps.mean(axis=0)
-            if cloud.has_colors():
-                rgb = np.asarray(cloud.colors, dtype=np.float32)[::step]
-            else:
-                rgb = np.full((len(Ps), 3), 0.6, np.float32)
+            rgb = _rgb_all[::step]
             self.done.emit(Ps, np.ascontiguousarray(rgb), offset)
         except Exception as e:  # noqa: BLE001
             self.failed.emit(str(e))
@@ -289,9 +311,11 @@ class InspectView(QtWidgets.QWidget):
         lay.addWidget(self._view, stretch=1)
 
     # -- julkinen API --
-    def set_source(self, model: dict, cloud_path: str) -> None:
-        """Aseta tarkastettava malli + pilvipolku."""
+    def set_source(self, model: dict, cloud_path) -> None:
+        """Aseta tarkastettava malli + pilvipolku (yksi tai lista)."""
         self._model = model
+        cloud_path = (list(cloud_path) if isinstance(cloud_path, (list, tuple))
+                      else cloud_path)
         if cloud_path == self._cloud_path and self._Ps is not None:
             self._apply_model()          # sama pilvi ladattu → päivitä vain malli
             return
@@ -307,7 +331,9 @@ class InspectView(QtWidgets.QWidget):
     def _start_load(self) -> None:
         if not self._model or not self._cloud_path or self._thread is not None:
             return
-        if not Path(self._cloud_path).exists():
+        _first = (self._cloud_path[0] if isinstance(self._cloud_path, list)
+                  else self._cloud_path)
+        if not Path(_first).exists():
             self._info.setText("Pilvitiedostoa ei löydy — tarkastus vaatii alkuperäisen skannin.")
             return
         self._load_btn.setEnabled(False)

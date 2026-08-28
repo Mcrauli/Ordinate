@@ -381,30 +381,8 @@ class MainWindow(QtWidgets.QMainWindow):
         # sen: 36 aseman kellarimalli leijui erillaan yhden aseman pilvesta,
         # ja juuri se asema (Kellari 001) on rakennuksen laidalla — loki
         # varoitti ettei se jaa pintoja muiden kanssa.
-        cloud = self._inspect_cloud()
-        if cloud is None:
-            self._log_panel.warn(
-                "3D-tarkastus: pistepilvea ei loytynyt")
-            return
-        self._inspect_view.set_source(model_dict, cloud)
+        self._inspect_view.set_source(model_dict, [str(p) for p in self._last_inputs])
         self._tabs.setCurrentWidget(self._inspect_view)
-
-    def _inspect_cloud(self) -> str | None:
-        """Pilvi 3D-tarkastukseen: ajon debug-pilvi jos on, muuten syotteet.
-
-        `debug.ply` on kirjoitettu SAMASTA pilvesta kuin malli, joten
-        keskipiste tasmaa. Yksi syotetiedosto kelpaa vain kun niita on yksi.
-        """
-        out = self._last_out
-        if out is not None:
-            for cand in (out / "debug.ply", out / "floor_00" / "debug.ply"):
-                if cand.exists():
-                    return str(cand)
-        if not self._last_inputs:
-            return None
-        if len(self._last_inputs) == 1:
-            return str(self._last_inputs[0])
-        return None
 
     def _open_ifc(self) -> None:
         p = self._find_ifc()
