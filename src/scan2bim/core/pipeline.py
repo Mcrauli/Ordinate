@@ -1323,6 +1323,19 @@ class Pipeline:
                 self._progress(
                     f"  Poistettu {len(dropped)} seinää joilla ei ole yhtenäistä "
                     f"pintaa pilvessä (palkki-/pilarilinja)")
+
+            # Geometria ei erota 200 mm putkea 200 mm seinästä — molemmat ovat
+            # pystytasoja samassa paikassa. Suodatin erottaa, ja sen luokat
+            # ovat jo laskettuna; ilman tätä ne heitetään pois.
+            from scan2bim.core.semantics.semantic_prune import (  # noqa: PLC0415
+                prune_non_wall_surfaces,
+            )
+            sem_dropped = prune_non_wall_surfaces(model, cloud, self._sem_labels)
+            if sem_dropped:
+                measure_wall_support(model, cloud)
+                self._progress(
+                    f"  Poistettu {len(sem_dropped)} seinää joiden pinta ei ole "
+                    f"suodattimen mukaan seinää (putki/kanava/kaluste)")
             # snap/close_open_corners venyttävät päitä pelkällä geometrisella
             # rajalla → seinä piirtyy evidenssin yli. Leikataan VASTA tässä:
             # nurkkavaiheet ajavat monta kierrosta, ja vain pilvi kertoo missä
