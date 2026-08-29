@@ -6,6 +6,26 @@ sovellus päivittää itsensä sieltä.
 
 ## Julkaisematon
 
+- **Uusi portti: erottuuko seinä ympäristöstään** (`semantics/contrast_prune.py`).
+  Kaikki aiemmat portit mittaavat TASOA — tukea, jatkuvuutta, katetta — ja taso
+  riippuu skannista: matalassa talotekniikkakellarissa jokaisen linjan varrella
+  on putki, joten `prune_unsupported_walls`:n kysymys "onko kaistassa pisteitä"
+  on aina tosi (mitattu 396 seinästä: sarakekate p10 1.00, mediaani 1.00).
+  Uusi portti kysyy suhteen: onko seinän kohdalla ENEMMÄN pystypintaa kuin
+  0.75–1.25 m sen vierellä. Suhde on dimensioton eikä riipu keilaustiheydestä
+  eikä huonekorkeudesta. Mitattu kontrasti: asunto min 1.87, liiketila 1.95,
+  Rohbau 1.00, **kellari min 0.01 ja mediaani 1.00**.
+  **Sokeusehto tekee siitä turvallisen:** 10 m hallissa aidon seinän molemmilla
+  puolilla voi olla nolla seinämäistä pistettä, jolloin kontrasti on 1.00
+  pelkästä nollasta. Portti tuomitsee vain siellä missä seinän ±3 m ympäristössä
+  on pintaa vähintään 10 % mallin omasta mediaanista.
+  Mitattu (sääntö ajettuna valmiille malleille): Rohbau viisi sceneä
+  GT-kattavuus muuttumatta ja **07001:n GT-tarkkuus 0.864 → 0.957**; kellari
+  125 → 61 seinää, tarkkuus 0.163 → **0.239**, kattavuus 0.233 → 0.228.
+  KESKEN: koko putken matriisiajo ehti Rohbaun läpi muuttumattomana
+  (kattavuudet 0.959 / 0.852 / 0.894 / 0.534 / 0.598 = baseline) mutta kellari,
+  asunto, liiketilat, 3DSES, test_room ja synth ovat vielä ajamatta.
+
 - **Semanttinen karsinta on nyt ENEMMISTÖÄÄNI (0.30 → 0.50).** Seinä poistetaan
   kun sen pinnan luokitelluista pisteistä alle puolet on seinätasoa. Vanha 0.30
   päästi läpi kaiken minkä pinnalla oli edes kolmannes seinää, ja koulun

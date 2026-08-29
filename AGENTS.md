@@ -208,6 +208,38 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
 
 ## Kovalla työllä opitut asiat — ÄLÄ keksi uudelleen
 
+- **TASO RIIPPUU SKANNISTA, SUHDE EI — mittaa seinää sen omaa ympäristöä
+  vasten.** Jokainen kaatunut erottelija (tuki, jatkuvuus, kate, komponenttikoko,
+  liittyvyys, seinämäinen kate) mittaa TASOA, ja sama luku tarkoittaa eri asiaa
+  1.8 m kellarissa ja 10 m hallissa. Toimiva mitta on **kontrasti**: pystypintaa
+  seinän omalla pinnalla vs. sama mitta 0.75–1.25 m sivussa, samalta pituudelta.
+  | aineisto | min | mediaani |
+  |---|---|---|
+  | asunto | 1.87 | 2.40 |
+  | liiketila | 1.95 | 43.5 |
+  | Rohbau (5 sceneä) | 1.00 | 1.9–2.1 |
+  | kellari | **0.01** | **1.00** |
+  Kellarin tyypillisen mallinnetun seinän kohdalla on siis täsmälleen yhtä paljon
+  pystypintaa kuin metrin sivussa — se ei ole seinä, se on kohta putkimetsässä.
+  **KAKSI ANSAA, molemmat mitattuja:**
+  1. *Kontrolli on mitattava PINNASTA ULOSPÄIN.* `half - c` osuu seinän sisään,
+     jossa ei ole koskaan pintaa, ja painaa mediaanin nollaan → kontrasti
+     kaksinkertaistuu keinotekoisesti. Oma testini meni ensin läpi väärästä
+     syystä juuri tällä.
+  2. *0/0 EI ole todiste.* Rohbaun 10 m hallissa seinämäisyys vaatii pystypintaa
+     yli puolet kaistan korkeudesta ja lattialta keilatusta seinästä näkyy
+     kolmannes, joten aidon seinän molemmilla puolilla on nolla pistettä ja
+     kontrasti on 1.00 pelkästä nollasta. Ilman sokeusehtoa portti poistaisi
+     scene_07004:n aidon `wall_001`:n (GT-kattavuus −0.017). Ehto: tuomitse vain
+     jos seinän ±3 m ympäristössä on pintaa ≥10 % mallin OMASTA mediaanista —
+     Rohbaun tyhjien ympäristö on 0 pistettä/m, kellarin 31–64 kun mediaani 143.
+  **Kontrasti EI toimi detektorin sisällä.** Tasokohtaisena (koko rakennuksen
+  läpi kulkeva taso) se laimenee: 302 → 298 seinää. Segmenttikohtaisena mutta
+  suuntasuodatetuista pisteistä laskettuna se on aina korkea, koska metrin
+  sivussa ei ole samaan suuntaan osoittavia normaaleja: 302 → 302. Vasta
+  KAIKISTA seinämäisistä pisteistä laskettuna se puree (302 → 268), ja
+  lopullinen erottelu syntyy vasta ketjun jälkeen — kellarin alle 1.0 jäävistä
+  seinistä valtaosa syntyy ketjussa, ei detektiossa.
 - **PUTKIKELLARISSA "ONKO KAISTASSA PISTEITÄ" ON AINA TOSI — SE MITTAA
   RAKENNUSTA, EI SEINÄÄ.** `split_walls_at_gaps` katkoo seinän sarakkeesta
   jossa on alle 4 pistettä 150 mm kaistassa. Mitattu koulun kellarilla
