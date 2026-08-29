@@ -87,6 +87,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self._tabs.addTab(self._plan_view, "Pohja")
         self._review_tab_idx = self._tabs.addTab(self._review, "Tarkistus")
         self._inspect_tab_idx = self._tabs.addTab(self._inspect_view, "3D-tarkastus")
+        # Välilehteä voi klikata suoraan, jolloin `_inspect_3d` ei ajaisi
+        # lainkaan ja näkymä jäisi tyhjäksi — se oli kytketty vain alapalkin
+        # nappiin. Käyttäjä avasi välilehden ja näki tyhjän ruudun.
+        self._tabs.currentChanged.connect(self._on_tab_changed)
         self._tabs.addTab(self._log_panel, "Loki")
         splitter.addWidget(self._tabs)
         splitter.setStretchFactor(1, 1)
@@ -383,6 +387,11 @@ class MainWindow(QtWidgets.QMainWindow):
         # varoitti ettei se jaa pintoja muiden kanssa.
         self._inspect_view.set_source(model_dict, [str(p) for p in self._last_inputs])
         self._tabs.setCurrentWidget(self._inspect_view)
+
+    def _on_tab_changed(self, idx: int) -> None:
+        """Täytä 3D-välilehti kun siihen siirrytään."""
+        if idx == self._inspect_tab_idx and self._result_models:
+            self._inspect_3d()
 
     def _open_ifc(self) -> None:
         p = self._find_ifc()
