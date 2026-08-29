@@ -172,6 +172,13 @@ Tarkkuus mitataan erillisillä QA-skripteillä — **aja tuotantomallia (`model.
 | `data/_lobby_cov.py` | Sama A/B kahdesta suunnasta **ilman GT:tä**: tuki (tarkkuuden suunta) ja kaistan lunastettu osuus (kattavuuden suunta), nimittäjä sama molemmille |
 | `data/_wall_view.py` | **Liputettu seinä kuvina**: XY vyötäröltä, poikkileikkaus, mallin pinnalla olevat pisteet. Erottaa HAAMUN (ei mitään) VÄÄRÄSSÄ PAIKASSA olevasta (pinta on, mutta sivussa) — pelkkä `support`-luku ei kerro kumpi |
 | `data/_img_openings_qa.py` | Kuvaohjattu aukkodetektio oikealla kuvallisella E57:llä; vertaa vanhaan moduuliin samoilla seinillä+pilvellä |
+| `data/_split_evidence_probe.py` | **Mikä todiste pitää seinän kasassa**: sama sarake mitattuna nykyisellä (mikä tahansa piste) ja seinämäisellä (pystynormaali + jatkuvuus) todisteella, aukko- ja todistejaksojen pituudet rinnakkain |
+| `data/_sem_cache.py` | Ajaa PointNetin kerran ja tallentaa luokat levylle — semanttinen koe maksaa sen jälkeen sekunteja eikä 8 min |
+| `data/_prune_sweep.py` | Semanttisen karsinnan kynnyssweep valmiille mallille ILMAN putkiajoa (kattavuus + tarkkuus samalla määritelmällä kuin `_wall_coverage_nogt`) |
+| `data/_chain_probe.py` | **Mikä ketjun vaihe kasvattaa seinät**: seinämäärän ja pituuden muutos vaiheittain koko putkiajosta |
+| `data/_snap_ablation.py` | Nurkkajatko pois → paljonko mallia jää ja mitä se maksaa kattavuudessa |
+| `data/_normals_seg_ab.py` | normals-detektorin segmentointisääntöjen A/B (pisteiden välimatka vs sarakekohtainen peitto) |
+| `data/_gt_export.py`, `data/_gt_import.py` | **Ground truth ilman valmista GT:tä**: vie asema CloudCompareen labeloitavaksi ja lue luokkatiedostot takaisin Rohbau-muotoon (`coord.npy` + `class.npy`), jolloin kaikki GT-mittarit toimivat asiakaskohteella |
 | `data/_cov_check.py`, `data/_support_verify.py` | Pintatuki mille tahansa mallille (väärät hälytykset) / tuotantototeutus vs. koetin samoilla luvuilla |
 
 **Käytä visionia aina tarkkuusvertailuissa.** Kuvat: `data/_*.png`.
@@ -201,6 +208,47 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
 
 ## Kovalla työllä opitut asiat — ÄLÄ keksi uudelleen
 
+- **PUTKIKELLARISSA "ONKO KAISTASSA PISTEITÄ" ON AINA TOSI — SE MITTAA
+  RAKENNUSTA, EI SEINÄÄ.** `split_walls_at_gaps` katkoo seinän sarakkeesta
+  jossa on alle 4 pistettä 150 mm kaistassa. Mitattu koulun kellarilla
+  (`data/_split_evidence_probe.py`, 396 seinää): sarakekate on **p10 1.00,
+  mediaani 1.00** — sääntö ei laukea kertaakaan, koska matalassa
+  talotekniikkakellarissa jokaisen linjan varrella on putki, kanava tai
+  kaapeli. Sama seinäjoukko seinämäisellä todisteella (pystynormaali +
+  pystyjatkuvuus) mitattuna: mediaani **0.00**, ja 284 seinää 396:sta on
+  "täynnä" vanhalla ja alle 0.30 uudella.
+  **KUMOTTU KORJAUS — seinämäistä todistetta EI voi vaihtaa tilalle.** Rohbaun
+  aidot seinät (GT-tarkkuus 0.91–0.96) käyttäytyvät samalla mittarilla
+  täsmälleen kuten kellarin ristikko:
+  | | kellari | 07000 | 07003 | asunto |
+  |---|---|---|---|---|
+  | seinämäinen kate, med | 0.00 | 0.25 | 0.14 | 1.00 |
+  | pisin tyhjä jakso, med | 3.0 m | 2.8 m | 2.5 m | 0.0 m |
+  | osuus ≥2 m aukoissa | 0.84 | 0.75 | 0.73 | 0.00 |
+  Syy: seinämäisyys vaatii pystypintaa yli puolet KAISTAN korkeudesta, ja 10 m
+  hallissa lattialta keilatusta seinästä näkyy kolmannes. Sama koskee
+  komponenttikokoa: Rohbau 07000:n seinämäisistä pisteistä **93 % on alle 4 m
+  komponenteissa**, eli "lyhyt pala = pilari" -sääntökään ei erota. Mittarin
+  ABSOLUUTTINEN taso ei siirry kohteesta toiseen (`qa/coverage.py`:n docstring
+  sanoo tämän) — älä rakenne sen varaan karsintasääntöä.
+- **`snap_corners` KASVATTAA MALLIA ENEMMÄN KUIN KOKO MUU KETJU KARSII — mutta
+  kokonaisbudjetti ei ole korjaus (mitattu ja KUMOTTU).** Ketju ajaa
+  `snap_corners`:n kahdeksan kertaa ja jokainen kutsu saa jatkaa pään 1300 mm
+  risteykseen, joten raja on per KUTSU eikä per seinä. Mitattu kellarilla
+  (`data/_chain_probe.py`): **snap_corners +2009 m**, kaikki muut vaiheet
+  yhteensä −270 m; detektorin 302 pätkästä (keskipituus 3.5 m, neljä yli 8 m)
+  tuli 333 seinää joista **58 yli 8 m**. Ablaatio (`data/_snap_ablation.py`,
+  jatko 1300 → 0 mm): malli 742 → **363 m**, kattavuus 0.281 → 0.269,
+  tarkkuus 0.125 → **0.174** — jatko ei siis osta kattavuutta.
+  **Silti per-seinä-budjetti hylättiin:** (1) se regressoi muut aineistot
+  (synteettinen kattavuus 0.692 → **0.600**, Rohbau 07002 GT-tarkkuus
+  0.964 → **0.860**, 07003 GT-kattavuus 0.824 → 0.804), koska ketjun myöhemmät
+  vaiheet siirtävät seiniä ja nurkka on suljettava uudelleen — mitattu aito
+  kasvu on asunnossa **max 4.7 m** ja synteettisessä 1.7 m, eli aidon ja
+  patologisen välillä ei ole rakoa; ja (2) se ei tuonut kellarille mitään
+  karsintakynnyksen päälle (160 vs 176 seinää, tarkkuus 0.150 vs 0.149).
+  Trimmauksen hyvittäminen budjettiin (netto) ei muuttanut tulosta bitilläkään.
+  Kasvu on siis oikea havainto mutta väärä korjauskohta.
 - **VINO SEINÄ EI OLE TODISTE VIRHEESTÄ — `drop_skew` oli päällekkäinen suoja.**
   `regularize_orthogonal(drop_skew=True)` pudotti jokaisen seinän joka jäi yli
   22° päähän perhesuunnasta, perusteena "asunto on Manhattan-world". Evidenssin

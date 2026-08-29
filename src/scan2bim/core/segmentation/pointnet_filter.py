@@ -245,6 +245,50 @@ class PointNetFilter:
 
         pred_vox on int8, -1 = ei yhtään ääntä. Sekä maski, per-piste-luokat
         että SemanticLabels johdetaan tästä yhdestä läpikäynnistä."""
+        cached = self._cache_read(pts_full)
+        if cached is not None:
+            return cached
+        out = self._classify_voxels_uncached(pts_full)
+        self._cache_write(pts_full, out)
+        return out
+
+    @staticmethod
+    def _cache_path(pts_full: np.ndarray):
+        """Kehitysajan välimuisti, pois päältä kun ympäristömuuttujaa ei ole.
+
+        Inferenssi on kellarilla 8 min ja jokainen semanttinen koe tarvitsee
+        samat luokat samasta pilvestä. Avain on pistejoukon oma tunniste, joten
+        eri pilvi ei voi osua samaan tiedostoon.
+        """
+        import hashlib
+        import os
+        d = os.environ.get("SCAN2BIM_SEM_CACHE_DIR")
+        if not d:
+            return None
+        h = hashlib.sha1()
+        h.update(np.asarray(pts_full.shape, dtype=np.int64).tobytes())
+        h.update(np.asarray(pts_full[:: max(1, len(pts_full) // 4096)],
+                            dtype=np.float64).tobytes())
+        p = Path(d)
+        p.mkdir(parents=True, exist_ok=True)
+        return p / f"vox_{h.hexdigest()[:16]}.npz"
+
+    def _cache_read(self, pts_full: np.ndarray):
+        path = self._cache_path(pts_full)
+        if path is None or not path.exists():
+            return None
+        z = np.load(path)
+        log.info("semanttiset luokat välimuistista: %s", path.name)
+        return z["pred"], z["origin"], z["uniq"], z["inv"]
+
+    def _cache_write(self, pts_full: np.ndarray, out) -> None:
+        path = self._cache_path(pts_full)
+        if path is None or out is None:
+            return
+        pred, origin, uniq, inv = out
+        np.savez(path, pred=pred, origin=origin, uniq=uniq, inv=inv)
+
+    def _classify_voxels_uncached(self, pts_full: np.ndarray):
         # Deterministinen näytteistys: sama syöte → sama malli joka ajolla.
         # Globaali np.random heilutti seinien pintalukitusta ±6mm ajojen välillä.
         rng = np.random.RandomState(0)

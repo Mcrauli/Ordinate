@@ -6,6 +6,21 @@ sovellus päivittää itsensä sieltä.
 
 ## Julkaisematon
 
+- **Semanttinen karsinta on nyt ENEMMISTÖÄÄNI (0.30 → 0.50).** Seinä poistetaan
+  kun sen pinnan luokitelluista pisteistä alle puolet on seinätasoa. Vanha 0.30
+  päästi läpi kaiken minkä pinnalla oli edes kolmannes seinää, ja koulun
+  kellarissa se on putkien ja kanavien normaalitila: mallin seinien seinäosuus
+  on mediaanina 0.33. **Kellari 427 → 160 seinää, tarkkuus 0.089 → 0.150,
+  kattavuus 0.334 → 0.209** — poistuva pituus on ristikkoa joka kulki pisteiden
+  yli, ja sen mukana lähtee myös kattavuutta jota se lunasti sattumalta.
+  Kynnys ei ole viritetty käyrältä: Rohbaun viisi sceneä antavat 0.50, 0.60 ja
+  0.70 kynnyksillä **täsmälleen samat GT-luvut**, joten betonirungossa sääntö
+  ei kosketa aitoja seiniä lainkaan.
+- **Kehitysajan välimuisti semanttisille luokille** (`SCAN2BIM_SEM_CACHE_DIR`).
+  PointNet on kellarilla 8 min ja jokainen semanttinen koe tarvitsee samat
+  luokat samasta pilvestä. Pois päältä ilman ympäristömuuttujaa, joten
+  tuotantopolku ei muutu.
+
 - **Kerrosjako vaatii pintojen VÄLIIN betonin, ei pelkkää väliä.** Jako oli
   kiinni pisteiden tiheydessä: sama scene antoi 1 kerroksen pistevälillä 4, 10
   ja 70 mm mutta 2 kerrosta pistevälillä 17 ja 35 mm. Jakautuessaan palkit

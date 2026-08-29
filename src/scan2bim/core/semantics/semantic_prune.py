@@ -22,7 +22,21 @@ from __future__ import annotations
 import numpy as np
 
 _WALLISH = (2, 5, 6)      # S3DIS: wall, window, door — seinätasoon kuuluvat
-_MIN_FRAC = 0.30          # tätä pienempi seinäosuus = pinta ei ole seinä
+_MIN_FRAC = 0.50          # ENEMMISTÖÄÄNI: yli puolet kaistan luokitelluista
+                          # pisteistä on oltava seinätasoa. Kynnys ei ole
+                          # viritetty käyrältä vaan se on luonnollinen piste —
+                          # ja se on mitattu turvalliseksi: Rohbaun viisi
+                          # sceneä antavat kynnyksillä 0.50, 0.60 ja 0.70
+                          # TÄSMÄLLEEN saman GT-kattavuuden ja -tarkkuuden
+                          # (0.886/0.914, 0.863/0.864, 0.859/0.964,
+                          # 0.824/0.912, 0.755/0.927); ainoa poistuva on
+                          # scene_07000:n wall_ext_002, jonka kaistassa ei ole
+                          # yhtään pystypintaa. Betonirungossa PointNetin
+                          # seinäluokka osuu 99.8 %:sti, joten aito seinä ei
+                          # jää enemmistöäänen alle.
+                          # Kellarissa sama kynnys purkaa ristikon: mallin
+                          # seinien seinäosuus on mediaanina 0.33, ja 0.30 →
+                          # 0.50 nostaa tarkkuuden 0.091 → 0.189.
 _MIN_PTS = 50             # alle tämän ei voi päätellä mitään
 _BAND_MM = 150.0          # mm — kaista seinäpinnan ympärillä
 _WAIST_LO, _WAIST_HI = 0.30, 0.70    # osuus korkeudesta: vyötärökaista

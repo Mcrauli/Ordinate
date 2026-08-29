@@ -87,3 +87,33 @@ def test_a_short_wall_is_not_judged():
     pts = _surface(length=1200.0)
     assert prune_non_wall_surfaces(m, _cloud(pts), _Labels(_CLUTTER)) == []
     assert len(m.walls) == 1
+
+
+class _Frac:
+    """Seinäluokka osuudelle seinän pituudesta, loput clutteria."""
+
+    def __init__(self, frac):
+        self._frac = frac
+
+    def lookup(self, pts):
+        out = np.full(len(pts), _CLUTTER, dtype=np.int8)
+        out[np.asarray(pts)[:, 0] < self._frac * 6000.0] = _WALL
+        return out
+
+
+def test_a_wall_that_is_mostly_clutter_is_removed():
+    """Enemmistöääni: 40 % seinää ei riitä.
+
+    Kellarin valeseinät seisovat putkilla ja kanavilla, joiden seassa on
+    seinäpistettä sen verran että vanha 0.30 päästi ne läpi.
+    """
+    m = _model(_wall())
+    assert prune_non_wall_surfaces(m, _cloud(_surface()), _Frac(0.40)) == ["w0"]
+    assert m.walls == []
+
+
+def test_a_wall_that_is_mostly_wall_is_kept():
+    """Sama kaista toisin päin: 60 % seinää jää."""
+    m = _model(_wall())
+    assert prune_non_wall_surfaces(m, _cloud(_surface()), _Frac(0.60)) == []
+    assert len(m.walls) == 1
