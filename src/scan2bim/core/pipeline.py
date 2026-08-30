@@ -1850,7 +1850,29 @@ class Pipeline:
             self._progress(
                 f"  Hyllyn etupinta-valeseiniä poistettu: {len(self._shelf_fronts)}")
 
-        # JÄÄNNÖSSEINÄHAKU ON KYTKETTY POIS — mitattu, ei kannata vielä.
+        # JÄÄNNÖSSEINÄHAKU — kytketty takaisin 30.8.2026, ks. alla.
+        # Se kytkettiin pois 18.8. koska ehdokkaista vain 8/15 oli GT-seiniä ja
+        # tarkkuus romahti 0.924 → 0.515: ehdokas ei pystynyt todistamaan
+        # itseään eikä yksikään silloin kokeiltu erottelija pystynyt siihen.
+        # Sen jälkeen ketjuun on tullut kolme mitattua porttia (semanttinen
+        # enemmistöääni, kontrasti ympäristöön, kaistan tasomaisuus), ja
+        # kellarin jäännöksestä mitattuna KAIKKI 19 ehdokasta (75 m) ovat
+        # tasomaisia 0.75–1.00 — eli portit osaavat nyt tuomita nämä.
+        try:
+            from scan2bim.core.semantics.residual_walls import find_residual_walls
+            _zf = min((w.z_min for w in model.walls), default=None)
+            _zh = max((w.height for w in model.walls), default=0.0)
+            _res = ([] if _zf is None or _zh < 1500.0
+                    else find_residual_walls(model.walls, cloud, _zf, _zf + _zh))
+            if _res:
+                _res = _recenter_wall_axes(_res, lock_cloud, band=300.0,
+                                           keep_thickness=True)
+                model.walls = model.walls + _res
+                self._progress(f"  Jäännösseiniä lisätty: {len(_res)}")
+        except Exception as _e:  # noqa: BLE001
+            self._progress(f"  Jäännösseinähaku ohitettu: {_e}")
+
+        # VANHA PERUSTELU (jätetty näkyviin, koska mittaus on yhä voimassa):
         # `semantics/residual_walls.py` löytää ne seinät jotka detektori jättää
         # (Rohbau scene_07000: 1–2 m seinät 0/3 → 3/3), mutta hinta on liian
         # kova: tarkkuus 0.924 → 0.515 ja 13 ongelmaseinää. Syy on mitattu:

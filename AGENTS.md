@@ -242,6 +242,31 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   Maksaa 5 s (jakaa seinämäisten pisteiden laskennan kontrastiportin kanssa).
   **Se ei korjaa mitään — se kertoo mitä ei kannata uskoa**, jottei seuraava
   tuntematon skanni jää kiinni siitä katsooko joku kuvia.
+- **JÄÄNNÖSSEINÄHAKU KYTKETTY TAKAISIN (30.8.2026) — sama moduuli, eri ketju.**
+  Se kytkettiin pois 18.8. koska ehdokkaista vain 8/15 oli GT-seiniä ja
+  scene_07000:n tarkkuus romahti 0.924 → 0.515: ehdokas ei pystynyt
+  todistamaan itseään eikä yksikään silloin kokeiltu erottelija pystynyt
+  siihen. Sen jälkeen ketjuun on tullut kolme MITATTUA porttia — semanttinen
+  enemmistöääni, kontrasti ympäristöön ja kaistan tasomaisuus — ja kellarin
+  jäännöksestä mitattuna kaikki 19 ehdokasta (75 m) ovat tasomaisia 0.75–1.00,
+  eli portit osaavat nyt tuomita juuri nämä. Sama moduuli samoilla kynnyksillä:
+  | aineisto | GT-kattavuus | GT-tarkkuus | GT-vapaa kattavuus |
+  |---|---|---|---|
+  | scene_07000 | 0.886 → **0.915** | 0.914 → 0.898 | 0.959 |
+  | scene_07001 | 0.863 → **0.903** | 0.957 → 0.945 | 0.852 → 0.854 |
+  | scene_07002 | 0.859 → **0.863** | 0.964 → 0.956 | 0.894 → 0.896 |
+  | scene_07003 | 0.824 → **0.849** | 0.923 → 0.921 | 0.533 → **0.600** |
+  | scene_07004 | 0.755 → **0.759** | 0.927 → 0.925 | 0.598 → **0.640** |
+  | synteettinen | – | – | 0.688 → **0.785** |
+  | liiketila-L | – | – | 0.620 → **0.695** |
+  | kellari | – | – | 0.177 → **0.191** (tarkkuus 0.202 → 0.207) |
+  Kattavuus nousee KAIKILLA viidellä Rohbau-scenellä ja hinta on 0.002–0.016
+  GT-tarkkuutta — sama vaihtokurssi jonka palkkien kiinnitysportti sai
+  (23 aitoa palkkia 0.016 tarkkuudesta). Asunto, liiketila-S, test_room ja
+  3DSES eivät menetä kattavuutta.
+  **YLEISTYS: kumottu sääntö kannattaa mitata uudelleen kun ketjuun on tullut
+  uusi todiste.** Se ei ollut väärä idea vaan liian aikainen — vika oli siinä
+  ettei mikään myöhempi vaihe osannut hylätä huonoa ehdokasta.
 - **ONKO KAISTASSA TASO? Tämä on ainoa erottelija joka kesti kaikki yhdeksän
   aineistoa.** Muut portit kysyvät onko seinän kohdalla PINTAA; putkikellarissa
   on aina. Aito seinäpinta on TASO — kaistan kohtisuora hajonta on millejä —

@@ -6,6 +6,15 @@ sovellus päivittää itsensä sieltä.
 
 ## Julkaisematon
 
+- **Jäännösseinähaku kytketty takaisin** — sama moduuli joka kytkettiin pois
+  18.8., mutta nyt ketjussa on kolme mitattua porttia jotka osaavat tuomita
+  ehdokkaat. **GT-kattavuus nousee kaikilla viidellä Rohbau-scenellä**
+  (0.886 → 0.915, 0.863 → 0.903, 0.859 → 0.863, 0.824 → 0.849, 0.755 → 0.759)
+  hintana 0.002–0.016 GT-tarkkuutta. Synteettinen 0.688 → **0.785**,
+  liiketila-L 0.620 → **0.695**, kellari 0.177 → 0.191 ja sen tarkkuus
+  0.202 → 0.207. Asunto, liiketila-S, test_room ja 3DSES eivät menetä
+  kattavuutta.
+
 - **Uusi portti: onko seinän kaistassa TASO** (`semantics/flatness_prune.py`).
   Aito seinäpinta on taso (hajonta millejä); putki ja kanava täyttävät kaistan
   tasaisesti (kymmeniä millejä). Mitattu mediaanihajonta: liiketila 2.1 mm,
