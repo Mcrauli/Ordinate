@@ -22,9 +22,11 @@ sovellus päivittää itsensä sieltä.
   Mitattu (sääntö ajettuna valmiille malleille): Rohbau viisi sceneä
   GT-kattavuus muuttumatta ja **07001:n GT-tarkkuus 0.864 → 0.957**; kellari
   125 → 61 seinää, tarkkuus 0.163 → **0.239**, kattavuus 0.233 → 0.228.
-  KESKEN: koko putken matriisiajo ehti Rohbaun läpi muuttumattomana
-  (kattavuudet 0.959 / 0.852 / 0.894 / 0.534 / 0.598 = baseline) mutta kellari,
-  asunto, liiketilat, 3DSES, test_room ja synth ovat vielä ajamatta.
+  Koko putken matriisi ajettu: **Rohbaun viisi sceneä GT-kattavuudeltaan
+  muuttumattomia ja 07001:n GT-tarkkuus 0.864 → 0.957**, 3DSES-tarkkuus
+  0.542 → 0.579, asunto / liiketilat / test_room bitilleen ennallaan,
+  synteettinen 0.692 → 0.688. Kellari 160 → 101 seinää, tarkkuus
+  0.150 → **0.194**, kattavuus 0.209 → 0.188.
 
 - **Semanttinen karsinta on nyt ENEMMISTÖÄÄNI (0.30 → 0.50).** Seinä poistetaan
   kun sen pinnan luokitelluista pisteistä alle puolet on seinätasoa. Vanha 0.30
