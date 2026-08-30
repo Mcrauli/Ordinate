@@ -81,19 +81,31 @@ def _measure(wall, W: np.ndarray):
     return (on + 1.0) / (float(np.median(ctrl)) + 1.0), near / (length / 1000.0)
 
 
-def prune_uncontrasted_walls(model, cloud, floor_z: float,
-                             ceiling_z: float) -> list[str]:
-    """Poista seinät jotka eivät erotu ympäristöstään. Palauttaa poistettujen id:t."""
+def wallish_of(cloud, floor_z: float, ceiling_z: float):
+    """(maski, harvennettu pilvi) seinämäisyydelle, tai None.
+
+    Sama joukko kelpaa sekä tälle portille että luotettavuusraportille, joten
+    se lasketaan kerran: normaalien estimointi on ison pilven kallein
+    yksittäinen QA-vaihe.
+    """
     from scan2bim.core.qa.coverage import wallish_points  # noqa: PLC0415
 
-    if not model.walls:
-        return []
     pts = np.asarray(cloud.points)
     if len(pts) < 1000 or ceiling_z - floor_z < 700.0:
-        return []
+        return None
     mask, q = wallish_points(pts, floor_z + 400.0, ceiling_z - 300.0)
-    if not mask.any():
+    return (mask, q) if mask.any() else None
+
+
+def prune_uncontrasted_walls(model, cloud, floor_z: float, ceiling_z: float,
+                             wallish=None) -> list[str]:
+    """Poista seinät jotka eivät erotu ympäristöstään. Palauttaa poistettujen id:t."""
+    if not model.walls:
         return []
+    got = wallish_of(cloud, floor_z, ceiling_z) if wallish is None else wallish
+    if got is None:
+        return []
+    mask, q = got
     W = q[mask][:, :2]
 
     measured = {}

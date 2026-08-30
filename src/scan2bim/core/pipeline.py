@@ -1376,19 +1376,27 @@ class Pipeline:
             # aiemmat portit mittaavat TASOA (tuki, jatkuvuus, kate) ja taso
             # riippuu skannista; tämä mittaa SUHDETTA saman pilven sisällä.
             from scan2bim.core.semantics.contrast_prune import (  # noqa: PLC0415
-                prune_uncontrasted_walls,
+                prune_uncontrasted_walls, wallish_of,
             )
             _fz = min((s.elevation for s in model.slabs
                        if s.slab_type == "floor"), default=None)
             _cz = max((s.elevation for s in model.slabs
                        if s.slab_type == "ceiling"), default=None)
             if _fz is not None and _cz is not None:
-                flat = prune_uncontrasted_walls(model, cloud, _fz, _cz)
+                _wl = wallish_of(cloud, _fz, _cz)
+                flat = prune_uncontrasted_walls(model, cloud, _fz, _cz, wallish=_wl)
                 if flat:
                     measure_wall_support(model, cloud)
                     self._progress(
                         f"  Poistettu {len(flat)} seinää joiden kohdalla ei ole "
                         f"enempää pintaa kuin niiden vierellä")
+                # Kertooko malli itse olevansa epäluotettava? Kellari tuotti 427
+                # valeseinää eikä yksikään putken luku varoittanut — vika löytyi
+                # vasta kuvista. Nämä kolme suhdelukua olisivat kertoneet sen.
+                from scan2bim.core.qa import reliability  # noqa: PLC0415
+                for line in reliability.measure(
+                        model, cloud, _fz, _cz, wallish=_wl).lines():
+                    self._progress("  " + line)
 
             left = [f for f in flag_low_confidence(model) if f["type"] == "wall"]
             if left:

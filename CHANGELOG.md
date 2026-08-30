@@ -6,6 +6,17 @@ sovellus päivittää itsensä sieltä.
 
 ## Julkaisematon
 
+- **Joka ajo kertoo nyt itse onko sen malli luotettava**
+  (`core/qa/reliability.py`, diagnostiikkaan). Kolme suhdelukua joita skannin
+  koko tai tiheys ei liikuta: seinän kontrasti ympäristöönsä, osuus seinistä
+  oman pintansa päällä, ja mallin paksuus vs. pinnoista mitattu. Asunto ei saa
+  yhtään varoitusta (14.15 / 100 % / −14 mm); kellari saa sen yhden joka on
+  todella auki (paksuus −84 mm). Lisäkustannus 5 s.
+- **Kellarin paksuus on mitatusti väärin (66 mm kun pinnat ovat 225 mm päässä),
+  mutta korjaus "suosi vastakkaisen puolen pintaa" KUMOUTUI** — se paransi
+  asuntoa (0.681 → 0.725) ja kellaria mutta vei Rohbau scene_07000:lta
+  GT-kattavuutta 0.886 → 0.843 ja synteettiseltä 0.688 → 0.635. Ks. AGENTS.md.
+
 - **Uusi portti: erottuuko seinä ympäristöstään** (`semantics/contrast_prune.py`).
   Kaikki aiemmat portit mittaavat TASOA — tukea, jatkuvuutta, katetta — ja taso
   riippuu skannista: matalassa talotekniikkakellarissa jokaisen linjan varrella

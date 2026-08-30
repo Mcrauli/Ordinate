@@ -208,6 +208,40 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
 
 ## Kovalla työllä opitut asiat — ÄLÄ keksi uudelleen
 
+- **PAKSUUS ON KELLARISSA MITATUSTI VÄÄRIN — mutta "vastakkainen pinta" ei ole
+  korjaus (mitattu ja KUMOTTU).** `_thickness_lock_wall` valitsee seinän toiseksi
+  pinnaksi toiseksi vahvimman piikin 50–400 mm etäisyydeltä riippumatta siitä
+  kummalla puolella akselia se on. Piikkiparikoetin (vahvin piikki + vahvin
+  piikki TOISELTA puolelta) antaa asunnolle 150 mm kun malli sanoo 154 ja
+  Rohbaulle 112 kun malli sanoo 120 — eli koetin ei valehtele siellä missä malli
+  on oikeassa — mutta **kellarissa malli sanoo 66 mm ja pinnat ovat 225 mm
+  päässä**, mediaanivirhe +109 mm ja 30/57 seinää yli 100 mm alakanttiin.
+  Se ei ole kosmeettista: 66 mm paksuudella mittauskaista on ±33 mm akselista
+  eli SEINÄN SISÄLLÄ, joten tuki, kate ja kontrasti mittaavat tyhjää.
+  **Korjausyritys "suosi vastakkaisen puolen piikkiä" kumoutui:** kellari
+  paranee (kattavuus 0.188 → 0.205) ja asunto paranee selvästi
+  (0.681 → **0.725**), mutta Rohbau scene_07000 menettää GT-kattavuutta
+  0.886 → **0.843** ja synteettinen 0.688 → **0.635**. Syy on mitattu per seinä:
+  Rohbaun `wall_009` paksuuntuu 150 → **272 mm** ja nielaisee `wall_008`:n
+  (ne ovat saman rakenteen kaksi pintaa), synteettisen `wall_010` 50 → 66 mm.
+  **Kellarissa vahvin ehdokas on väärä (putki) ja vastakkainen oikea; Rohbaussa
+  täsmälleen päinvastoin** — erottelua ei ole. Myös jatkuvuus kumoutui: kellarin
+  ehdokaspiikeillä on kate 1.00 joka ikisellä. Paksuus on siis yhä auki, ja
+  `qa/reliability.py` RAPORTOI sen (kellari −84 mm) sen sijaan että arvaisi.
+- **PUTKI EI TIENNYT OLEVANSA EKSYKSISSÄ — nyt se kertoo sen.**
+  Kellari tuotti 427 seinää joista valtaosa oli valeseiniä, eikä yksikään putken
+  oma luku varoittanut: `confidence` on kokoproxy, `support` ja `continuity`
+  mittaavat tasoa joka riippuu skannista, ja TARKISTA-lista jäi lyhyeksi. Vika
+  löytyi vasta kuvista. `core/qa/reliability.py` laskee joka ajosta kolme
+  SUHDELUKUA ja kirjoittaa ne diagnostiikkaan:
+  | signaali | asunto | kellari (ennen korjauksia) |
+  |---|---|---|
+  | kontrasti ympäristöön, mediaani | 14.15 | 1.00 |
+  | seiniä oman pintansa päällä | 100 % | 27 % |
+  | paksuusero pinnoista mitattuun | −14 mm | −109 mm |
+  Maksaa 5 s (jakaa seinämäisten pisteiden laskennan kontrastiportin kanssa).
+  **Se ei korjaa mitään — se kertoo mitä ei kannata uskoa**, jottei seuraava
+  tuntematon skanni jää kiinni siitä katsooko joku kuvia.
 - **TASO RIIPPUU SKANNISTA, SUHDE EI — mittaa seinää sen omaa ympäristöä
   vasten.** Jokainen kaatunut erottelija (tuki, jatkuvuus, kate, komponenttikoko,
   liittyvyys, seinämäinen kate) mittaa TASOA, ja sama luku tarkoittaa eri asiaa
