@@ -40,9 +40,9 @@ def _cols(pts, a, u, n, half, length, n_col):
 def main(model_json: str, cloud_path: str, cache: str | None = None) -> None:
     m = json.loads(Path(model_json).read_text(encoding="utf-8"))
     walls = m["walls"]
-    floor_z = min((s["elevation"] for s in m.get("slabs", []) if s.get("type") == "floor"),
+    floor_z = min((s["elevation"] for s in m.get("slabs", []) if s.get("slab_type") == "floor"),
                   default=None)
-    ceil_z = max((s["elevation"] for s in m.get("slabs", []) if s.get("type") == "ceiling"),
+    ceil_z = max((s["elevation"] for s in m.get("slabs", []) if s.get("slab_type") == "ceiling"),
                  default=None)
 
     cp = Path(cache) if cache else None

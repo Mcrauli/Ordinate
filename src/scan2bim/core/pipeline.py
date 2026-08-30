@@ -1390,6 +1390,20 @@ class Pipeline:
                     self._progress(
                         f"  Poistettu {len(flat)} seinää joiden kohdalla ei ole "
                         f"enempää pintaa kuin niiden vierellä")
+                # Onko kaistassa TASO vai pelkkää massaa? Kaikki muut portit
+                # kysyvät onko pintaa; putkikellarissa on aina. Mitattu
+                # kaistan mediaanihajonta: liiketila 2.1 mm, asunto 4.2 mm,
+                # Rohbau 2.8–6.1 mm, kellari 28.7 mm.
+                from scan2bim.core.semantics.flatness_prune import (  # noqa: PLC0415
+                    prune_flatless_walls,
+                )
+                rough = prune_flatless_walls(model, cloud, _fz, _cz)
+                if rough:
+                    measure_wall_support(model, cloud)
+                    self._progress(
+                        f"  Poistettu {len(rough)} seinää joiden kaistassa ei ole "
+                        f"tasoa (putki-/kanavamassaa)")
+
                 # Kertooko malli itse olevansa epäluotettava? Kellari tuotti 427
                 # valeseinää eikä yksikään putken luku varoittanut — vika löytyi
                 # vasta kuvista. Nämä kolme suhdelukua olisivat kertoneet sen.

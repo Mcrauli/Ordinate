@@ -6,6 +6,14 @@ sovellus päivittää itsensä sieltä.
 
 ## Julkaisematon
 
+- **Uusi portti: onko seinän kaistassa TASO** (`semantics/flatness_prune.py`).
+  Aito seinäpinta on taso (hajonta millejä); putki ja kanava täyttävät kaistan
+  tasaisesti (kymmeniä millejä). Mitattu mediaanihajonta: liiketila 2.1 mm,
+  asunto 4.2 mm, Rohbau 2.8–6.1 mm, synteettinen 14.6 mm, **koulun kellari
+  28.7 mm**. Matriisi: Rohbau scene_07003 GT-tarkkuus **0.912 → 0.923**,
+  3DSES **0.582 → 0.664**, asunto / liiketilat / test_room / synteettinen
+  bitilleen ennallaan, kellari 101 → 93 seinää ja tarkkuus 0.194 → **0.202**.
+
 - **Joka ajo kertoo nyt itse onko sen malli luotettava**
   (`core/qa/reliability.py`, diagnostiikkaan). Kolme suhdelukua joita skannin
   koko tai tiheys ei liikuta: seinän kontrasti ympäristöönsä, osuus seinistä

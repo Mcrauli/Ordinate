@@ -242,6 +242,34 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   Maksaa 5 s (jakaa seinämäisten pisteiden laskennan kontrastiportin kanssa).
   **Se ei korjaa mitään — se kertoo mitä ei kannata uskoa**, jottei seuraava
   tuntematon skanni jää kiinni siitä katsooko joku kuvia.
+- **ONKO KAISTASSA TASO? Tämä on ainoa erottelija joka kesti kaikki yhdeksän
+  aineistoa.** Muut portit kysyvät onko seinän kohdalla PINTAA; putkikellarissa
+  on aina. Aito seinäpinta on TASO — kaistan kohtisuora hajonta on millejä —
+  kun putki ja kanava täyttävät kaistan tasaisesti. Hajonta on mitta pinnasta
+  itsestään: se ei riipu keilaustiheydestä, huonekorkeudesta eikä siitä
+  näkyykö seinästä kolmannes vai kaikki, ja juuri siihen kaatuivat seinämäinen
+  kate, komponenttikoko ja jatkuvuus. Mitattu kaistan mediaanihajonta:
+  | aineisto | MAD | tasomaisia sarakkeita |
+  |---|---|---|
+  | liiketila | 2.1 mm | 1.00 |
+  | asunto | 4.2 mm | 0.94 |
+  | Rohbau (5 sceneä) | 2.8–6.1 mm | 0.88–0.94 |
+  | synteettinen | 14.6 mm | 0.57 |
+  | **koulun kellari** | **28.7 mm** | **0.25** |
+  `semantics/flatness_prune.py`, kynnys 0.20. Matriisi: Rohbau 07003:n
+  GT-tarkkuus **0.912 → 0.923**, 3DSES **0.582 → 0.664**, kaikki muut
+  bitilleen ennallaan, kellari 101 → 93 seinää ja tarkkuus 0.194 → 0.202.
+  **KAKSI ANSAA, molemmat mitattuja:**
+  1. *Kaista ei saa ylettyä seinän keskilinjan yli.* 66 mm seinällä ±120 mm
+     nielaisee vastapinnan ja hajonta on aina iso riippumatta siitä onko pinta
+     taso — synteettisen aito `wall_001` sai 0.14 ja putosi (kattavuus
+     0.688 → 0.627). Kaista on `min(120, paksuus/2)`; korjauksen jälkeen sama
+     seinä saa 0.86 ja kaikki 13 säilyvät.
+  2. *Kynnystä EI saa tehdä suhteelliseksi.* Kokeiltu "alle 3 × mallin oman
+     p10-hajonnan": p10 on 1–2.5 mm joka aineistossa (yksi hyvin keilattu
+     sarake löytyy aina), joten raja 6 mm romahduttaa asunnon mediaanin
+     0.94 → 0.59 ja synteettisen 0.57 → 0.14. 20 mm on fysikaalinen raja:
+     sitä paksumpi hajonta ei ole rakennettu taso.
 - **TASO RIIPPUU SKANNISTA, SUHDE EI — mittaa seinää sen omaa ympäristöä
   vasten.** Jokainen kaatunut erottelija (tuki, jatkuvuus, kate, komponenttikoko,
   liittyvyys, seinämäinen kate) mittaa TASOA, ja sama luku tarkoittaa eri asiaa
