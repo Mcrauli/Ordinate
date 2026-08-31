@@ -242,6 +242,42 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   Maksaa 5 s (jakaa seinämäisten pisteiden laskennan kontrastiportin kanssa).
   **Se ei korjaa mitään — se kertoo mitä ei kannata uskoa**, jottei seuraava
   tuntematon skanni jää kiinni siitä katsooko joku kuvia.
+- **ONKO SEINÄ PIIRRETTY SUUNTAAN JOSSA ON PINTAA?** Mitattu koulun kellarilla:
+  **58 % mallin seinäpituudesta (238 m / 411 m) kulkee suuntaan jota detektori
+  ei löytänyt lainkaan**, ja kaksi parhaiten tuettua suuntaa (21° ja 111°,
+  17 % ja 15 % normaalimassasta) oli mallinnettu 2.9 m ja 0.0 m. Ne 238 m ovat
+  juuri niitä pitkiä vinoja linjoja jotka läpäisevät kaikki muut portit — ne
+  ovat tasomaisia jossain ja koskettavat pintaa siellä täällä. Suunnat eivät
+  ole detektorin keksimiä vaan KETJUN: suoristus, nurkkasnäppäys, perimetri ja
+  kollineaarinen sulautus siirtävät akseleita.
+  Mittari on pilven oma normaalihistogrammi, seinän suunta siitä luettuna
+  suhteessa maksimiin (`semantics/direction_prune.py`):
+  | aineisto | min | mediaani | alle 0.30 |
+  |---|---|---|---|
+  | liiketila | 0.86 | 0.86 | 0 m |
+  | asunto | 0.54 | 1.00 | 0 m |
+  | Rohbau 07000 | 0.00 | 0.78 | 3 m / 226 |
+  | **kellari** | 0.03 | **0.14** | **208 m / 358** |
+  Kynnys **0.20** on mitattu yläraja: 0.30 romahduttaa scene_07002:n
+  GT-kattavuuden 0.863 → **0.524**. 0.20:llä matriisi on bitilleen ennallaan
+  kaikilla yhdellätoista muulla aineistolla ja kellari menee 101 → 66 seinää,
+  tarkkuus 0.207 → **0.249** — ja kuvassa jokainen jäljelle jäänyt seinä on
+  harmaan pinnan päällä.
+  **TÄMÄ EI OLE `drop_skew` UUDELLEEN.** Se pudotti seinän joka poikkesi yli
+  22° PERHESUUNNASTA eli geometrisesta Manhattan-priorista, ja kaatui siihen
+  että kellarissa on kuusi aitoa suuntaa 20° välein. Tämä lukee saman pilven
+  mitatun jakauman eikä oleta suuntien määrää: jos rakennuksessa on kuusi
+  suuntaa, kaikki kuusi näkyvät histogrammissa ja kaikki kuusi kelpaavat
+  (testattu `tests/test_direction_prune.py`).
+- **KUMOTTU: seinän pilkkominen tasomaisuuden mukaan.** Ajatus oli että portit
+  osaavat vain poistaa kokonaisia seiniä, joten pitkä vino valeseinä pitäisi
+  pilkkoa niistä kohdista joissa kaista ei ole taso. Mitattu (pilkkominen
+  valmiiseen malliin, katkaisu kolmesta peräkkäisestä ei-tasoisesta
+  sarakkeesta): GT-kattavuus laskee **jokaisella** Rohbau-scenellä
+  (0.915→0.909, 0.903→0.890, 0.863→0.854, 0.849→0.843, 0.759→0.736) ja ostaa
+  vain 0.000–0.003 tarkkuutta. Kellarikin menettää enemmän kuin voittaa
+  (0.199/0.192 → 0.175/0.221). Oikea vastaus samaan ongelmaan oli SUUNTA, ei
+  pilkkominen.
 - **JÄÄNNÖSSEINÄHAKU KYTKETTY TAKAISIN (30.8.2026) — sama moduuli, eri ketju.**
   Se kytkettiin pois 18.8. koska ehdokkaista vain 8/15 oli GT-seiniä ja
   scene_07000:n tarkkuus romahti 0.924 → 0.515: ehdokas ei pystynyt

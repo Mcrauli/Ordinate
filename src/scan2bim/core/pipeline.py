@@ -1404,6 +1404,21 @@ class Pipeline:
                         f"  Poistettu {len(rough)} seinää joiden kaistassa ei ole "
                         f"tasoa (putki-/kanavamassaa)")
 
+                # Onko seinä piirretty suuntaan jossa pilvessä on pintaa?
+                # Mitattu kellarilla: 58 % mallin seinäpituudesta kulki
+                # suuntaan jota detektori ei löytänyt lainkaan. Suunnat eivät
+                # ole detektorin keksimiä vaan ketjun (suoristus, nurkat,
+                # perimetri, sulautus siirtävät akseleita).
+                from scan2bim.core.semantics.direction_prune import (  # noqa: PLC0415
+                    prune_offdirection_walls,
+                )
+                askew = prune_offdirection_walls(model, cloud, _fz, _cz, wallish=_wl)
+                if askew:
+                    measure_wall_support(model, cloud)
+                    self._progress(
+                        f"  Poistettu {len(askew)} seinää joiden suunnassa ei ole "
+                        f"pintaa pilvessä")
+
                 # Kertooko malli itse olevansa epäluotettava? Kellari tuotti 427
                 # valeseinää eikä yksikään putken luku varoittanut — vika löytyi
                 # vasta kuvista. Nämä kolme suhdelukua olisivat kertoneet sen.

@@ -6,6 +6,13 @@ sovellus päivittää itsensä sieltä.
 
 ## Julkaisematon
 
+- **Uusi portti: onko seinän suunnassa pintaa** (`semantics/direction_prune.py`).
+  Kellarissa 58 % mallin seinäpituudesta kulki suuntaan jota pilvi ei tue, ja
+  ne olivat juuri ne pitkät vinot valeseinät jotka läpäisivät kaikki muut
+  portit. Mittari on pilven oma normaalihistogrammi. Matriisi: **kaikki
+  yksitoista muuta aineistoa bitilleen ennallaan**, kellari 101 → 66 seinää ja
+  tarkkuus 0.207 → **0.249**.
+
 - **Jäännösseinähaku kytketty takaisin** — sama moduuli joka kytkettiin pois
   18.8., mutta nyt ketjussa on kolme mitattua porttia jotka osaavat tuomita
   ehdokkaat. **GT-kattavuus nousee kaikilla viidellä Rohbau-scenellä**
