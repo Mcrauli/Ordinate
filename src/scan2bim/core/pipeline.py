@@ -156,6 +156,8 @@ def _looks_like_retail(cloud) -> bool:
     return _occupancy_area_m2(cloud) >= _RETAIL_MIN_AREA_M2
 
 
+_FILTER_MIN_AREA_M2 = 600.0  # m² — tätä suurempi pohja → semanttinen suodatin
+                             # päälle myös matalassa tilassa (auto-tila)
 _LARGE_SPACE_M2 = 400.0   # m² — tätä suurempi POHJA-ala (miehitetyt ruudut, ei
                           # tiheyspainotettu percentiili) → histogrammi-detektori.
                           # Isossa tilassa contour rakentaa seinät vain tiheän
@@ -1495,9 +1497,20 @@ class Pipeline:
         # auto: PointNet vain liiketilassa (iso+korkea = lattia-katto-hyllyt).
         # Muualla off → ei regressiota (talo/asunto) eikä hidastumista.
         if mode == "auto":
-            if _looks_like_retail(cloud):
+            # ISO TILA riittää — korkeus oli liiketilan ehto, ei suodattimen.
+            # `_looks_like_retail` vaatii sekä 600 m² että 4.5 m, ja koulun
+            # kellari (7137 m², vapaa korkeus 1.78 m, p1–p99 2.84 m) jäi siihen
+            # kiinni: sovellus EI ajanut suodatinta lainkaan, joten semanttinen
+            # karsinta — joka poistaa siitä mallista 119 seinää — ei koskaan
+            # laukennut tuotannossa. Matriisi ei paljastanut tätä, koska se
+            # pakottaa `pointnet`-tilan.
+            # Krääsä skaalaa PINTA-ALAN mukaan, ei korkeuden: 7000 m²
+            # talotekniikkakellarissa on enemmän putkea kuin 600 m² myymälässä.
+            # Asunto (82 m²) ja talo (54 m²) jäävät alarajan alle eivätkä
+            # muutu — juuri ne kaksi joita suodatin regressoi.
+            if _looks_like_retail(cloud) or _occupancy_area_m2(cloud) >= _FILTER_MIN_AREA_M2:
                 mode = "pointnet"
-                self._progress("  Liiketila tunnistettu → semanttinen suodatin päälle")
+                self._progress("  Iso tila → semanttinen suodatin päälle")
             else:
                 mode = "off"
         if mode == "off":

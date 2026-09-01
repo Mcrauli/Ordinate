@@ -242,6 +242,22 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   Maksaa 5 s (jakaa seinämäisten pisteiden laskennan kontrastiportin kanssa).
   **Se ei korjaa mitään — se kertoo mitä ei kannata uskoa**, jottei seuraava
   tuntematon skanni jää kiinni siitä katsooko joku kuvia.
+- **MATRIISI EI TESTANNUT SITÄ MITÄ SOVELLUS TEKEE — ja se piilotti ison bugin.**
+  `data/_run_one.py` pakottaa `semantic_filter_mode="pointnet"`, mutta tuotannon
+  oletus on `auto`, joka kytki suodattimen päälle vain `_looks_like_retail`illa
+  (600 m² **JA** 4.5 m). Koulun kellari on 7137 m² mutta p1–p99-korkeudeltaan
+  2.84 m, joten **sovellus ei ajanut suodatinta lainkaan** — eikä siis myöskään
+  semanttista karsintaa, joka poistaa siitä mallista 119 seinää. Kaikki mitatut
+  kellariparannukset olivat siis olemassa vain matriisissa.
+  Korjaus: `auto` kytkee suodattimen myös pelkän ALAN perusteella
+  (`_FILTER_MIN_AREA_M2` 600 m²). Krääsä skaalaa pinta-alan mukaan eikä
+  korkeuden: 7000 m² talotekniikkakellarissa on enemmän putkea kuin 600 m²
+  myymälässä. Asunto (82 m²) ja talo (54 m²) — juuri ne kaksi joita suodatin
+  regressoi — jäävät alarajan alle. Todennettu: kellarin malli `auto`-tilassa on
+  BITILLEEN sama kuin pakotetulla `pointnet`illa (110 seinää, sama hash).
+  **Yleistys: kun QA-ajo käyttää eri asetuksia kuin tuotanto, se mittaa eri
+  ohjelmaa.** Tarkista jokaisesta `data/_run_*.py`:stä että konfiguraatio
+  vastaa sitä mitä käyttäjä ajaa — tai mittaa molemmat.
 - **ONKO SEINÄ PIIRRETTY SUUNTAAN JOSSA ON PINTAA?** Mitattu koulun kellarilla:
   **58 % mallin seinäpituudesta (238 m / 411 m) kulkee suuntaan jota detektori
   ei löytänyt lainkaan**, ja kaksi parhaiten tuettua suuntaa (21° ja 111°,

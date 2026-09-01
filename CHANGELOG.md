@@ -6,6 +6,17 @@ sovellus päivittää itsensä sieltä.
 
 ## Julkaisematon
 
+- **KORJATTU: sovellus ei ajanut semanttista suodatinta koulun kellarilla
+  lainkaan.** `auto`-tila vaati sekä 600 m² että 4.5 m korkeutta; kellari on
+  7137 m² mutta matala, joten suodatin — ja sen mukana semanttinen karsinta,
+  joka poistaa 119 seinää — ei koskaan lauennut tuotannossa. Matriisi ei
+  paljastanut tätä, koska `_run_one.py` pakottaa `pointnet`-tilan. Nyt `auto`
+  kytkee suodattimen myös pelkän alan perusteella. Todennettu: kellarin malli
+  `auto`-tilassa on bitilleen sama kuin pakotetulla `pointnet`illa.
+- **Nopeus: siirtyneiden seinien napsautus indeksoitu.** Se skannasi koko
+  24.5 M pilven jokaista ehdokasta kohti — kellarilla 239 s (18 % ajosta) siihen
+  että yksi seinä siirtyi. Malli bitilleen sama kolmella aineistolla.
+
 - **Jäännösseinähaku ajetaan kahdesti — ja se on missä puuttuvat seinät olivat.**
   Ennen karsintaa mallissa on vielä kaikki valeseinät, ja ne LUNASTAVAT juuri
   sen pinnan josta puuttuvat seinät löytyisivät: samasta pilvestä haku antaa
