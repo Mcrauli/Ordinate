@@ -1412,12 +1412,58 @@ class Pipeline:
                 from scan2bim.core.semantics.direction_prune import (  # noqa: PLC0415
                     prune_offdirection_walls,
                 )
+                def _gates(tag: str) -> None:
+                    """Kolme mitattua todisteporttia samassa järjestyksessä."""
+                    flat_ = prune_uncontrasted_walls(model, cloud, _fz, _cz,
+                                                     wallish=_wl)
+                    rough_ = prune_flatless_walls(model, cloud, _fz, _cz)
+                    askew_ = prune_offdirection_walls(model, cloud, _fz, _cz,
+                                                      wallish=_wl)
+                    n = len(flat_) + len(rough_) + len(askew_)
+                    if n:
+                        measure_wall_support(model, cloud)
+                        self._progress(
+                            f"  Poistettu {tag}: {len(flat_)} erottumatonta, "
+                            f"{len(rough_)} tasotonta, {len(askew_)} väärään "
+                            f"suuntaan")
+
                 askew = prune_offdirection_walls(model, cloud, _fz, _cz, wallish=_wl)
                 if askew:
                     measure_wall_support(model, cloud)
                     self._progress(
                         f"  Poistettu {len(askew)} seinää joiden suunnassa ei ole "
                         f"pintaa pilvessä")
+
+                # Jäännösseinät VASTA nyt: valeseinät lunastavat sen pinnan
+                # josta puuttuvat seinät löytyisivät, joten haku on tehtävä
+                # puhdistetusta mallista. Mitattu kellarilla 9 → 49 seinää
+                # (128 m). Uudet ehdokkaat käyvät samat portit uudelleen.
+                try:
+                    from scan2bim.core.semantics.residual_walls import (  # noqa: PLC0415
+                        find_residual_walls,
+                    )
+                    res = find_residual_walls(model.walls, cloud, _fz, _cz)
+                    if res:
+                        # Portit tuomitsevat vain UUDET seinät. Aiemmat ovat jo
+                        # läpäisseet samat portit, ja kontrastiportin voimaehto
+                        # on suhteessa mallin OMAAN mediaanitiheyteen — 49 uutta
+                        # seinää siirtää sitä ja tuomitsisi vanhoja uudelleen.
+                        # Mitattu: ilman suojaa Rohbau scene_07003 menettää
+                        # GT-kattavuutta 0.849 → 0.829.
+                        keep_ids = {w.id for w in model.walls}
+                        before = list(model.walls)
+                        res = _recenter_wall_axes(res, cloud, band=300.0,
+                                                  keep_thickness=True)
+                        model.walls = model.walls + res
+                        measure_wall_support(model, cloud)
+                        self._progress(f"  Jäännösseiniä lisätty: {len(res)}")
+                        _gates("jäännöksestä")
+                        survived = {w.id for w in model.walls}
+                        rescued = [w for w in before if w.id not in survived]
+                        if rescued:
+                            model.walls = model.walls + rescued
+                except Exception as e:  # noqa: BLE001
+                    self._progress(f"  Jäännösseinähaku ohitettu: {e}")
 
                 # Kertooko malli itse olevansa epäluotettava? Kellari tuotti 427
                 # valeseinää eikä yksikään putken luku varoittanut — vika löytyi
@@ -1873,6 +1919,14 @@ class Pipeline:
         # enemmistöääni, kontrasti ympäristöön, kaistan tasomaisuus), ja
         # kellarin jäännöksestä mitattuna KAIKKI 19 ehdokasta (75 m) ovat
         # tasomaisia 0.75–1.00 — eli portit osaavat nyt tuomita nämä.
+        # Jäännösseinät ajetaan KAHDESTI: tässä ja uudelleen karsinnan jälkeen
+        # (`_measure_support`). Syy on mitattu. Tästä kohdasta ajettuna malli on
+        # vielä täynnä valeseiniä jotka LUNASTAVAT juuri sen pinnan josta
+        # puuttuvat seinät löytyisivät — kellari saa 9 seinää, puhdistetusta
+        # mallista 49. Mutta pelkkä myöhäinen ajo maksaa siellä missä malli on
+        # jo hyvä: liiketila-L kattavuus 0.695 → 0.622 ja Rohbau scene_07003
+        # GT 0.849 → 0.831, koska osa ehdokkaista syntyy vain kun ne pääsevät
+        # mukaan geometriaketjun nurkkiin ja sulautuksiin.
         try:
             from scan2bim.core.semantics.residual_walls import find_residual_walls
             _zf = min((w.z_min for w in model.walls), default=None)

@@ -6,6 +6,20 @@ sovellus päivittää itsensä sieltä.
 
 ## Julkaisematon
 
+- **Jäännösseinähaku ajetaan kahdesti — ja se on missä puuttuvat seinät olivat.**
+  Ennen karsintaa mallissa on vielä kaikki valeseinät, ja ne LUNASTAVAT juuri
+  sen pinnan josta puuttuvat seinät löytyisivät: samasta pilvestä haku antaa
+  siinä kohdassa 9 seinää, puhdistetusta mallista **49**. Pelkkä siirto
+  myöhemmäksi ei kelvannut (liiketila-L 0.695 → 0.622, Rohbau 07003 GT
+  0.849 → 0.831), joten haku ajetaan molemmissa kohdissa ja uudet ehdokkaat
+  käyvät kolme todisteporttia uudelleen. Portit tuomitsevat vain UUDET seinät:
+  kontrastiportin voimaehto on suhteessa mallin omaan mediaanitiheyteen, ja
+  49 uutta seinää siirtäisi sitä niin että vanhoja tuomittaisiin uudelleen
+  (mitattu: ilman suojaa scene_07003 GT 0.849 → 0.829).
+  **Kellari 66 → 110 seinää, kattavuus 0.141 → 0.194, tarkkuus 0.249 → 0.265;
+  synteettinen 0.785 → 0.802; Rohbau 07000 GT 0.915 → 0.920 ja 07001
+  0.903 → 0.905. Ei yhtään regressiota.**
+
 - **Uusi portti: onko seinän suunnassa pintaa** (`semantics/direction_prune.py`).
   Kellarissa 58 % mallin seinäpituudesta kulki suuntaan jota pilvi ei tue, ja
   ne olivat juuri ne pitkät vinot valeseinät jotka läpäisivät kaikki muut

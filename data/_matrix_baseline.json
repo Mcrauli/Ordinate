@@ -1,23 +1,23 @@
 {
  "rohbau_07000": {
   "cov": 0.959,
-  "pre": 0.305,
+  "pre": 0.301,
   "wallish": 445646,
-  "gt_cov": 0.915,
-  "gt_pre": 0.898,
-  "walls": 20,
+  "gt_cov": 0.92,
+  "gt_pre": 0.897,
+  "walls": 25,
   "openings": 10,
-  "secs": 405
+  "secs": 352
  },
  "rohbau_07001": {
-  "cov": 0.854,
-  "pre": 0.317,
+  "cov": 0.855,
+  "pre": 0.314,
   "wallish": 264800,
-  "gt_cov": 0.903,
-  "gt_pre": 0.945,
-  "walls": 11,
+  "gt_cov": 0.905,
+  "gt_pre": 0.941,
+  "walls": 13,
   "openings": 4,
-  "secs": 295
+  "secs": 248
  },
  "rohbau_07002": {
   "cov": 0.896,
@@ -27,7 +27,7 @@
   "gt_pre": 0.956,
   "walls": 14,
   "openings": 10,
-  "secs": 308
+  "secs": 265
  },
  "rohbau_07003": {
   "cov": 0.597,
@@ -37,7 +37,7 @@
   "gt_pre": 0.923,
   "walls": 10,
   "openings": 4,
-  "secs": 365
+  "secs": 336
  },
  "rohbau_07004": {
   "cov": 0.64,
@@ -47,15 +47,15 @@
   "gt_pre": 0.925,
   "walls": 8,
   "openings": 0,
-  "secs": 246
+  "secs": 215
  },
  "kellari": {
-  "cov": 0.141,
-  "pre": 0.249,
+  "cov": 0.194,
+  "pre": 0.265,
   "wallish": 669814,
-  "walls": 66,
+  "walls": 110,
   "openings": 1,
-  "secs": 66963
+  "secs": 1421
  },
  "apt": {
   "cov": 0.681,
@@ -63,7 +63,7 @@
   "wallish": 172826,
   "walls": 10,
   "openings": 2,
-  "secs": 59
+  "secs": 49
  },
  "retail_s": {
   "cov": 0.724,
@@ -71,7 +71,7 @@
   "wallish": 2336233,
   "walls": 9,
   "openings": 7,
-  "secs": 279
+  "secs": 247
  },
  "retail_l": {
   "cov": 0.695,
@@ -79,7 +79,7 @@
   "wallish": 6256621,
   "walls": 37,
   "openings": 6,
-  "secs": 2271
+  "secs": 2572
  },
  "3dses": {
   "cov": 0.994,
@@ -87,7 +87,7 @@
   "wallish": 118834,
   "walls": 11,
   "openings": 2,
-  "secs": 150
+  "secs": 202
  },
  "test_room": {
   "cov": 0.998,
@@ -95,14 +95,14 @@
   "wallish": 68138,
   "walls": 4,
   "openings": 0,
-  "secs": 19
+  "secs": 26
  },
  "synth": {
-  "cov": 0.785,
+  "cov": 0.802,
   "pre": 0.67,
   "wallish": 255344,
-  "walls": 16,
+  "walls": 17,
   "openings": 3,
-  "secs": 27
+  "secs": 39
  }
 }
