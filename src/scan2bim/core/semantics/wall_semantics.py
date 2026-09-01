@@ -747,6 +747,10 @@ _SNAP_PAIR_TOL = 80.0      # mm — kuinka tarkasti vastapinnan on oltava paksuu
 _SNAP_MAX_SUP = 0.50       # yli puoliksi keilattu pinta on jo oikeassa paikassa
 
 
+_SNAP_INDEX_MIN = 20     # ehdokasta: tätä vähemmällä indeksin rakentaminen
+                        # maksaa enemmän kuin se säästää
+
+
 def snap_displaced_walls(model, cloud) -> list[tuple[str, float]]:
     """Siirrä pinnattomat seinät mitatulle pinnalle. Palauttaa (id, siirto mm).
 
@@ -778,10 +782,24 @@ def snap_displaced_walls(model, cloud) -> list[tuple[str, float]]:
     pts = np.asarray(cloud.points)
     if len(pts) == 0:
         return []
+    # Ilman indeksiä tämä skannaa KOKO pilven jokaista ehdokasseinää kohti:
+    # mitattu koulun kellarilla 239 s siihen että yksi seinä siirtyi (18 %
+    # koko ajosta), koska 24.5 M pistettä käydään läpi 200 kertaa. Indeksi
+    # palauttaa YLIJOUKON kaistan pisteistä ja sama ehto sovelletaan alla, joten
+    # valikoituva joukko ja sen järjestys ovat identtiset (todennettu: asunnon
+    # ja Rohbau scene_07003:n mallit bitilleen samat molemmilla poluilla).
+    #
+    # Indeksi rakennetaan VASTA kun ehdokkaita on tarpeeksi: sen rakentaminen
+    # maksaa saman kuin kymmenkunta koko pilven skannausta, ja Rohbaussa
+    # ehdokkaita on muutama — mitattu scene_07003 35 s → 70 s kun indeksi
+    # rakennettiin aina.
+    from scan2bim.core.geometry.xy_index import XYIndex, subset  # noqa: PLC0415
+    cands = [w for w in model.walls
+             if getattr(w, "support", None) is not None
+             and w.support < _SNAP_MAX_SUP and len(w.axis) >= 2]
+    index = XYIndex(pts) if len(cands) >= _SNAP_INDEX_MIN else None
     moved: list[tuple[str, float]] = []
-    for w in model.walls:
-        if getattr(w, "support", None) is None or w.support >= _SNAP_MAX_SUP or len(w.axis) < 2:
-            continue
+    for w in cands:
         p0 = np.array(w.axis[0], float)
         p1 = np.array(w.axis[1], float)
         L = float(np.linalg.norm(p1 - p0))
@@ -789,10 +807,13 @@ def snap_displaced_walls(model, cloud) -> list[tuple[str, float]]:
             continue
         u = (p1 - p0) / L
         n = np.array([-u[1], u[0]])
-        rel = pts[:, :2] - p0
+        near, _ = subset(pts, index, p0, u, n, _SNAP_SEEK, 0.0, L)
+        if len(near) < 200:
+            continue
+        rel = near[:, :2] - p0
         t = rel @ u
         perp = rel @ n
-        z = pts[:, 2]
+        z = near[:, 2]
         sel = ((t > 0.0) & (t < L) & (np.abs(perp) < _SNAP_SEEK)
                & (z > w.z_min + 0.30 * w.height) & (z < w.z_min + 0.70 * w.height))
         if sel.sum() < 200:
@@ -838,7 +859,7 @@ def snap_displaced_walls(model, cloud) -> list[tuple[str, float]]:
         from scan2bim.core.qa.deviation import _wall_support  # noqa: PLC0415
         probe = w.model_copy(deep=True)
         probe.axis = new_axis
-        after = _wall_support(probe, pts, None)
+        after = _wall_support(probe, pts, index)
         if after is None or after[0] < w.support + _SNAP_MIN_GAIN:
             continue
         w.axis = new_axis
