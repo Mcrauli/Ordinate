@@ -208,6 +208,23 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
 
 ## Kovalla työllä opitut asiat — ÄLÄ keksi uudelleen
 
+- **KUMOTTU: kollineaarinen sulautus ei auta kellaria — seinät eivät ole
+  saman seinän palasia.** Nurkkakoneisto kytkettiin pois neljänä nippuna, mutta
+  kolme niistä SIIRTÄÄ geometriaa ja `merge_collinear_walls` ei. Kellarin
+  seinien mediaanipituus on 1.8 m ja 142/240 alle 2 m, joten sulautus näytti
+  ilmeiseltä voitolta. Mitattu (`data/_merge_ab.py`, reititys päällä mutta
+  kolme siirtävää funktiota identiteetteinä):
+  | | nykyinen | vain sulautus |
+  |---|---|---|
+  | seiniä | 240 | 229 |
+  | kattavuus | 0.366 | 0.362 |
+  | tarkkuus | 0.204 | 0.210 |
+  | mediaanipituus | 1.8 m | **1.8 m** |
+  Ratkaiseva luku on viimeinen: mediaanipituus EI liikahda. Lyhyet seinät eivät
+  ole pirstoutunut pitkä seinä vaan aidosti erillisiä (varastokoppien seinämiä).
+  Malli ei ole pirstoutunut — tila on sellainen. Älä yritä "korjata"
+  fragmentaatiota jota ei ole.
+
 - **KUMOTTU: "pintaparin heikompi kasvo" ei erota kellarin ohuita seiniä
   valeseinistä — se rankaisisi hyviä aineistoja enemmän.** Kellarin mallista
   148/240 seinaa (65 % pituudesta) on 60–95 mm paksuja, ja se luku on
