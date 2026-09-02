@@ -208,6 +208,33 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
 
 ## Kovalla työllä opitut asiat — ÄLÄ keksi uudelleen
 
+- **LYHYIDEN SEINIEN VAJE: KUUSI SELITYSTÄ MITATTU JA KUMOTTU.** Vaje on iso
+  ja todellinen (2–4 m: 46 %, 1–2 m: 24 %), mutta se EI johdu mistään näistä.
+  Älä käytä aikaa uudelleen:
+  1. **Karsinta.** Kaikki kahdeksan karsintaa identiteetteinä
+     (`data/_prune_gt_probe.py`, scene_07002): 2–4 m luokka 7/21 → **7/21**,
+     jalanjäljen sisällä 0.467 → 0.467, ja samat kuusi pisintä puuttuvaa
+     puuttuvat yhä. Porttien löysäys ei voi auttaa — detektori ei tuota niitä.
+  2. **Korkeus / tynkyys.** Löytyneet ja puuttuvat ovat molemmat ~3.1 m,
+     korkeusosuus 0.30 kaikissa viidessä scenessä (`_missing_wall_probe.py`).
+  3. **Pistemäärä.** Eri suuntaan eri scenessä: 07002 puuttuvat 25k vs
+     löytyneet 46k, mutta 07004 puuttuvat **148k** vs löytyneet 29k.
+  4. **Korkeusvyöhyke.** Lattiatason seinät 54/102 = 0.529, korkealla olevat
+     (Facade Element / Drywall, z_min ≈ +2.2 m) 40/74 = 0.541. Sama.
+  5. **Rajaus.** Puuttuvat ovat jalanjäljen SISÄLLÄ (jalanj. 1.00).
+  6. **Detektorin valintamittari.** Epäilin että pistekattavuudella valinta
+     suosii perimetriä ja hylkää väliseinät. Mitattu (`_detector_gt_ab.py`,
+     scene_07002): contour 0.227, histogram **0.409**, normals 0.227
+     instansseina — histogram voittaa MOLEMMILLA mittareilla. Valinta on oikein.
+  Jäljelle jää: yksikään kolmesta detektorista ei erottele 2–4 m väliseinää
+  tässä tilassa. Se on kyvykkyysaukko, ei viritysasia.
+
+- **VAROITUS: Rohbau-scene EI ole kaksi kerrosta.** Seinäinstanssien alareunat
+  ovat kahdessa nipussa (−2.3 m ja +2.2 m) ja se näyttää kerrosjaolta. GT sanoo
+  toisin: yksi Floor (9.1 M pistettä, z −2.25) ja yksi Ceiling (2.8 M, z 8.0).
+  Tila on yksi 10 m halli, ja ylempi nippu on Facade Element / Drywall
+  korkealla. Ehdin päätellä väärin ja tarkistin vasta GT:stä.
+
 - **LYHYET SEINÄT OVAT SE VAJE — MITATTU GT-INSTANSSEINA, EI PISTEINÄ.**
   Pistekattavuus näyttää Rohbaussa 0.759–0.920, mutta instanssikattavuus
   (`data/_wall_inst_qa.py`) on 0.409–0.673. Ero on kokonaan pituudessa, ja
