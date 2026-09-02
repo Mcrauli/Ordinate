@@ -208,6 +208,25 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
 
 ## Kovalla työllä opitut asiat — ÄLÄ keksi uudelleen
 
+- **NOPEUS: ketjun kuvio on "projektio koko pilvelle, sitten kapea kaista" — ja
+  se on aina indeksoitavissa ILMAN että tulos muuttuu.** Profiloi ensin
+  (`data/_prof_run.py`), älä arvaa: kellarin 1140 s jakautui niin että
+  `_fine_rotate_wall` + `_skew_rotate_wall` veivät 337 s (544 kutsua × koko 45 M
+  pilvi) ja `XYIndex.__init__` 188 s siitä että **sama pilvi indeksoitiin 22
+  kertaa**. Kumpaakaan ei olisi arvannut; oma arvaukseni oli pintalukitus.
+  Kaksi sääntöä joilla muutos on TULOSNEUTRAALI:
+  1. Hakusäteen on katettava LEVEIN kaista jota funktio voi kysyä. Kiertopoluilla
+     se ei ole `_FINE_BAND` vaan `_FINE_BAND + L·sin(_SKEW_MAX_DEG)`, koska
+     `_try_skew_rotate` levittää kaistan vinouden mukaan.
+  2. **Jos jokin päätös lasketaan koko pilvestä, sitä ei saa rajata.**
+     `_wall_openings` valitsee mitattavan pinnan vertaamalla pos/neg-pisteitä
+     KOKO tasokaistalta → siinä saa rajata vain kohtisuoraan, ei akselin
+     suunnassa. `split_gaps`:n varasääntö ("alle 50 pistettä z-kaistalla → käytä
+     koko pilveä") lasketaan lajitellusta z:stä haulla, ei osajoukosta.
+  Todistus on matriisi: kaikki 12 aineistoa **+0.000** ja yhteisaika
+  5981 → 4142 s. Mutaatiotesti kuuluu asiaan — kavensin hakusäteen
+  `_FINE_BAND`:iin ja `tests/test_xy_index_cache.py` kaatui, kuten pitääkin.
+
 - **NURKKAKONEISTO ON HUONEEN TYÖKALU — isossa matalassa tilassa se on suurin
   yksittäinen virhelähde.** `regularize_orthogonal`, `snap_corners`,
   `close_open_corners` ja `merge_collinear_walls` olettavat että seinät kohtaavat

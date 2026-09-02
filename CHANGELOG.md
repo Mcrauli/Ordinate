@@ -6,6 +6,15 @@ sovellus päivittää itsensä sieltä.
 
 ## Julkaisematon
 
+- **Nopeus: koko putki 31 % nopeampi, malli bitilleen sama.** Profiloitu
+  (`data/_prof_run.py`) koulun kellarilla — kaksi kuviota söi puolet ajosta:
+  `fine_rotate_walls` + `refine_skew_walls` skannasivat KOKO 45 M pilven
+  jokaista seinää kohti (544 kutsua, 337 s), ja sama pilvi indeksoitiin
+  ketjussa **22 kertaa** (188 s pelkkää argsortia). Nyt kiertopassit hakevat
+  pisteet kaistaindeksistä ja indeksi on pilvikohtaisessa välimuistissa.
+  Matriisi: kaikki 12 aineistoa **+0.000** (kattavuus, tarkkuus, seinät, aukot,
+  GT), yhteisaika 5981 s → 4142 s; kellari 1455 → 854 s, retail_l 2248 → 1676 s.
+
 - **Nurkkakoneisto ohitetaan isossa matalassa tilassa** — mitattu koulun
   kellarilla: `regularize_orthogonal` + `snap_corners` + `close_open_corners` +
   `merge_collinear_walls` identiteetteinä antaa **kattavuuden 0.194 → 0.366**,

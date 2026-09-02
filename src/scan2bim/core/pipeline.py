@@ -103,12 +103,12 @@ def _auto_voxel(cloud, target: int = _AUTO_TARGET_POINTS) -> float:
     return round(min(max(v, _AUTO_VOXEL_MIN), _AUTO_VOXEL_MAX), 1)
 
 
-def _xy_index(pts: np.ndarray, walls) -> "XYIndex | None":
+def _xy_index(pts: np.ndarray, walls, cloud=None) -> "XYIndex | None":
     """Indeksi kannattaa vain kun työtä on: pieni pilvi tai yksi seinä ei hyödy."""
     if len(pts) < 300_000 or len(walls) < 3:
         return None
-    from scan2bim.core.geometry.xy_index import XYIndex  # noqa: PLC0415
-    return XYIndex(pts)
+    from scan2bim.core.geometry.xy_index import XYIndex, index_for  # noqa: PLC0415
+    return XYIndex(pts) if cloud is None else index_for(cloud, pts)
 
 
 def _xy_subset(pts, index, p0, along, normal, radius, s_lo=-np.inf, s_hi=np.inf):
@@ -121,7 +121,7 @@ def _xy_subset(pts, index, p0, along, normal, radius, s_lo=-np.inf, s_hi=np.inf)
 def _recenter_wall_axes(walls, cloud, band: float | None = None, keep_thickness: bool = False) -> list:
     """Pintalukittu tarkennus: mallin lähin pinta osuu skannattuun pistepintaan (bias→0)."""
     pts = np.asarray(cloud.points)
-    idx = _xy_index(pts, walls)
+    idx = _xy_index(pts, walls, cloud)
     return [_surface_lock_wall(w, pts, band=band, keep_thickness=keep_thickness, index=idx)
             for w in walls]
 
@@ -183,7 +183,7 @@ def _occupancy_area_m2(cloud, cell: float = 1000.0, min_pts: int = 3) -> float:
 def _trim_wall_endpoints(walls, cloud) -> list:
     """Trimmaa seinien päätepisteet vastaamaan todellista pistepilvidataa."""
     pts = np.asarray(cloud.points)
-    idx = _xy_index(pts, walls)
+    idx = _xy_index(pts, walls, cloud)
     return [_trim_endpoints(w, pts, index=idx) for w in walls]
 
 
@@ -467,7 +467,7 @@ def _thickness_lock_walls(walls, cloud, iters: int = 3, ceiling_xy=None) -> list
         return walls
     ceil_xy = None if ceiling_xy is None or len(ceiling_xy) == 0 else np.asarray(ceiling_xy)
     inside = pts[:, :2].mean(axis=0)
-    idx = _xy_index(pts, walls)
+    idx = _xy_index(pts, walls, cloud)
     for _ in range(iters):
         walls = [_thickness_lock_wall(w, pts, ceil_xy, inside, index=idx) for w in walls]
     return walls
@@ -843,7 +843,7 @@ def _align_faces_to_surface_median(walls, cloud) -> list:
     pts_all = np.asarray(cloud.points)
     if len(pts_all) == 0:
         return walls
-    index = _xy_index(pts_all, walls)
+    index = _xy_index(pts_all, walls, cloud)
     out = []
     for w in walls:
         if len(w.axis) < 2:
@@ -1281,6 +1281,9 @@ class Pipeline:
 
             self._progress(f"  {model.summary()}")
             models.append(model)
+            # Indeksit pitävät kerroksen pilviä hengissä → vapauta ennen seuraavaa.
+            from scan2bim.core.geometry.xy_index import clear_index_cache
+            clear_index_cache()
 
         if models:
             if self.config.export_ifc and len(models) >= 1:
@@ -1819,7 +1822,8 @@ class Pipeline:
             lh = max((w.height for w in model.walls), default=2700.0)
             fr_pts = np.asarray(lock_cloud.points)
             model.walls = fine_rotate_walls(
-                model.walls, fr_pts, z_min=lz + 200.0, z_max=lz + lh - 200.0
+                model.walls, fr_pts, z_min=lz + 200.0, z_max=lz + lh - 200.0,
+                index=_xy_index(fr_pts, model.walls, lock_cloud),
             )
             # Hienokierto voi tehdä lähes päällekkäisistä seinistä (perimetri +
             # detektoitu samalla linjalla) hieman ei-yhdensuuntaisia → ne eivät
@@ -1870,9 +1874,11 @@ class Pipeline:
             lz2 = min((w.z_min for w in model.walls), default=0.0)
             lh2 = max((w.height for w in model.walls), default=2700.0)
             _pre = [tuple(map(tuple, w.axis)) for w in model.walls]
+            _sk_pts = np.asarray(lock_cloud.points)
             model.walls = refine_skew_walls(
-                model.walls, np.asarray(lock_cloud.points),
+                model.walls, _sk_pts,
                 z_min=lz2 + 200.0, z_max=lz2 + lh2 - 200.0,
+                index=_xy_index(_sk_pts, model.walls, lock_cloud),
             )
             if _pre != [tuple(map(tuple, w.axis)) for w in model.walls]:
                 model.walls = snap_corners(model.walls)

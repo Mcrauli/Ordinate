@@ -109,8 +109,8 @@ def wall_surface_accuracy(model: StructuralModel, cloud) -> list[dict]:
         return []
     index = None
     if len(pts_all) >= 300_000 and len(model.walls) >= 3:
-        from scan2bim.core.geometry.xy_index import XYIndex  # noqa: PLC0415
-        index = XYIndex(pts_all)
+        from scan2bim.core.geometry.xy_index import index_for  # noqa: PLC0415
+        index = index_for(cloud, pts_all)
     out: list[dict] = []
     for w in model.walls:
         if len(w.axis) < 2:
@@ -303,8 +303,8 @@ def measure_wall_support(model: StructuralModel, cloud) -> None:
         return
     index = None
     if len(pts_all) >= 300_000 and len(model.walls) >= 3:
-        from scan2bim.core.geometry.xy_index import XYIndex  # noqa: PLC0415
-        index = XYIndex(pts_all)
+        from scan2bim.core.geometry.xy_index import index_for  # noqa: PLC0415
+        index = index_for(cloud, pts_all)
     for w in model.walls:
         res = _wall_support(w, pts_all, index)
         if res is None:

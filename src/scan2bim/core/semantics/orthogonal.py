@@ -122,12 +122,30 @@ _SKEW_RESID_MAX = 25.0     # mm — pinnan max RMS-hajonta kierron jälkeen
 _SKEW_COVER_MIN = 0.55     # osuus kaistan pisteistä joiden on osuttava pinnoille
 
 
+def _band_radius(length: float) -> float:
+    """Laajin kohtisuora kaista jota kiertopolku voi kysyä (= `_try_skew_rotate`
+    oletus `band_w`). Indeksihaun säde on tämä → osajoukko on YLIJOUKKO ja
+    kutsuja soveltaa saman ehdon → valikoituva pistejoukko ja sen järjestys ovat
+    täsmälleen samat kuin koko taulukkoa skannattaessa."""
+    return _FINE_BAND + length * float(np.sin(np.radians(_SKEW_MAX_DEG)))
+
+
+def _wall_band(xy, z, index, p0, along, normal, length):
+    """(xy, z) vain seinän kaistalta. Ilman indeksiä koko taulukko."""
+    if index is None:
+        return xy, z
+    sel = index.near_segment(p0, along, normal, _band_radius(length),
+                             _FINE_END_MARGIN, length - _FINE_END_MARGIN)
+    return xy[sel], (None if z is None else z[sel])
+
+
 def fine_rotate_walls(
     walls: list[Wall],
     pts: np.ndarray,
     z_min: float | None = None,
     z_max: float | None = None,
     max_dev_deg: float = _FINE_MAX_DEG,
+    index=None,
 ) -> list[Wall]:
     """Kierrä jokaista seinää keskipisteensä ympäri parhaiten omiin pisteisiinsä.
 
@@ -144,7 +162,7 @@ def fine_rotate_walls(
 
     out: list[Wall] = []
     for w in walls:
-        rotated = _fine_rotate_wall(w, xy, z, z_min, z_max, max_dev)
+        rotated = _fine_rotate_wall(w, xy, z, z_min, z_max, max_dev, index)
         out.append(rotated)
     return out
 
@@ -154,6 +172,7 @@ def refine_skew_walls(
     pts: np.ndarray,
     z_min: float | None = None,
     z_max: float | None = None,
+    index=None,
 ) -> list[Wall]:
     """Toinen kiertopassi täysipitkillä akseleilla: palauta aidosti vinot seinät.
 
@@ -170,7 +189,7 @@ def refine_skew_walls(
     z = np.asarray(pts)[:, 2] if pts.shape[1] > 2 else None
     out: list[Wall] = []
     for w in walls:
-        skewed = _skew_rotate_wall(w, xy, z, z_min, z_max)
+        skewed = _skew_rotate_wall(w, xy, z, z_min, z_max, index=index)
         if skewed is w:
             out.append(w)
             continue
@@ -182,6 +201,7 @@ def refine_skew_walls(
         for _ in range(3):
             polished = _skew_rotate_wall(
                 skewed, xy, z, z_min, z_max, min_deg=0.3, band_w=1.5 * _FINE_BAND,
+                index=index,
             )
             if polished.axis == skewed.axis:
                 break
@@ -193,7 +213,7 @@ def refine_skew_walls(
 def _skew_rotate_wall(
     w: Wall, xy, z, z_min, z_max,
     min_deg: float | None = None, band_w: float | None = None,
-    max_deg: float | None = None,
+    max_deg: float | None = None, index=None,
 ) -> Wall:
     p0 = np.array(w.axis[0], dtype=float)
     p1 = np.array(w.axis[1], dtype=float)
@@ -203,6 +223,7 @@ def _skew_rotate_wall(
     along = (p1 - p0) / length
     normal = np.array([-along[1], along[0]])
     mid = 0.5 * (p0 + p1)
+    xy, z = _wall_band(xy, z, index, p0, along, normal, length)
     rel = xy - p0
     along_proj = rel @ along
     perp = rel @ normal
@@ -216,7 +237,7 @@ def _skew_rotate_wall(
     )
 
 
-def _fine_rotate_wall(w: Wall, xy, z, z_min, z_max, max_dev: float) -> Wall:
+def _fine_rotate_wall(w: Wall, xy, z, z_min, z_max, max_dev: float, index=None) -> Wall:
     p0 = np.array(w.axis[0], dtype=float)
     p1 = np.array(w.axis[1], dtype=float)
     length = float(np.linalg.norm(p1 - p0))
@@ -231,6 +252,7 @@ def _fine_rotate_wall(w: Wall, xy, z, z_min, z_max, max_dev: float) -> Wall:
     normal = np.array([-along[1], along[0]])
     mid = 0.5 * (p0 + p1)
 
+    xy, z = _wall_band(xy, z, index, p0, along, normal, length)
     rel = xy - p0
     along_proj = rel @ along
     perp = rel @ normal

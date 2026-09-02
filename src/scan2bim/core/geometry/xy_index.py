@@ -81,3 +81,35 @@ def subset(pts: np.ndarray, index: "XYIndex | None", p0, along, normal,
         return pts, None
     idx = index.near_segment(p0, along, normal, radius, s_lo, s_hi)
     return pts[idx], idx
+
+
+# --- Indeksin välimuisti -----------------------------------------------------
+# Sama pilvi indeksoidaan ketjussa yhä uudelleen: `_recenter_wall_axes` (4×),
+# `_trim_wall_endpoints` (2×), `_thickness_lock_walls`, `_align_faces...`,
+# `refine_thicknesses`, `measure_wall_support` (9×), `snap_displaced_walls`.
+# Profiloitu koulun kellarilla: 22 rakennusta, 187.8 s = 16 % koko ajosta,
+# ja siitä lähes kaikki on argsort 45 M pisteen taulukolle.
+#
+# Välimuisti on TULOSNEUTRAALI: sama pilvi antaa saman indeksin, joten
+# osajoukot ja niiden JÄRJESTYS ovat täsmälleen samat kuin ennen.
+#
+# Avain on pilviolion identiteetti, ja pilvi pidetään hengissä arvossa jottei
+# id() voi kierrättyä toiselle oliolle. Pistemäärä tarkistetaan varmuuden
+# vuoksi: jos pilveä on muokattu paikallaan, indeksi rakennetaan uudelleen.
+_CACHE: dict[int, tuple[object, int, "XYIndex"]] = {}
+
+
+def index_for(cloud, pts: np.ndarray) -> "XYIndex":
+    """Pilven XY-indeksi välimuistista; rakennetaan kerran per pilvi."""
+    key = id(cloud)
+    hit = _CACHE.get(key)
+    if hit is not None and hit[0] is cloud and hit[1] == len(pts):
+        return hit[2]
+    index = XYIndex(pts)
+    _CACHE[key] = (cloud, len(pts), index)
+    return index
+
+
+def clear_index_cache() -> None:
+    """Vapauta indeksit ja niiden pitämät pilviviitteet (kerroksen lopussa)."""
+    _CACHE.clear()

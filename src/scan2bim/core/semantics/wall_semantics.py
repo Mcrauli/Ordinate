@@ -447,8 +447,8 @@ def refine_thicknesses(walls: list[Wall], cloud) -> list[Wall]:
     pts = np.asarray(cloud.points)
     index = None
     if len(pts) >= 300_000 and len(walls) >= 3:
-        from scan2bim.core.geometry.xy_index import XYIndex  # noqa: PLC0415
-        index = XYIndex(pts)
+        from scan2bim.core.geometry.xy_index import index_for  # noqa: PLC0415
+        index = index_for(cloud, pts)
     return [_refine(wall, pts, index) for wall in walls]
 
 
@@ -793,11 +793,11 @@ def snap_displaced_walls(model, cloud) -> list[tuple[str, float]]:
     # maksaa saman kuin kymmenkunta koko pilven skannausta, ja Rohbaussa
     # ehdokkaita on muutama — mitattu scene_07003 35 s → 70 s kun indeksi
     # rakennettiin aina.
-    from scan2bim.core.geometry.xy_index import XYIndex, subset  # noqa: PLC0415
+    from scan2bim.core.geometry.xy_index import index_for, subset  # noqa: PLC0415
     cands = [w for w in model.walls
              if getattr(w, "support", None) is not None
              and w.support < _SNAP_MAX_SUP and len(w.axis) >= 2]
-    index = XYIndex(pts) if len(cands) >= _SNAP_INDEX_MIN else None
+    index = index_for(cloud, pts) if len(cands) >= _SNAP_INDEX_MIN else None
     moved: list[tuple[str, float]] = []
     for w in cands:
         p0 = np.array(w.axis[0], float)
