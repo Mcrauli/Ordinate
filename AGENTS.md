@@ -208,6 +208,31 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
 
 ## Kovalla työllä opitut asiat — ÄLÄ keksi uudelleen
 
+- **LYHYIDEN SEINIEN JUURISYY ON LÖYDETTY JA MITATTU — MUTTA NAIIVI KORJAUS
+  KAATUU VALINTAAN. (Kokeiltu ja PERUTTU.)**
+  Juurisyy on aito: `wall_histogram._peaks_1d` käytti kynnystä
+  `hist.mean() + 3*hist.std()` koko rakennuksen akselille. Binin pistemäärä on
+  verrannollinen seinän PITUUTEEN, joten perimetripiikit nostavat sekä
+  keskiarvon että hajonnan lyhyiden ulottumattomiin. Mitattu scene_07002
+  akseli 0 (`data/_hist_threshold_probe.py`): keskiarvo 1427, hajonta 5042
+  (3.5×), kynnys 16553, ja **1642 binistä 10 ylitti sen**. GT-instansseista
+  kynnyksen ylitti yli 4 m 0.86, 2–4 m 0.62, **1–2 m 0.00**.
+  Korjaus (mediaani + 3·MAD miehitetyistä bineistä) toimii DETEKTORIN tasolla:
+  raaka GT-instanssikattavuus 0.756 → 0.836, 2–4 m luokka 0.83 → 0.96
+  (`data/_hist_rule_sweep.py`, viisi sceneä, kahdeksan sääntöä).
+  **Mutta koko putkessa se regressoi kolmea aineistoa**: kellari 0.366 → 0.203
+  (240 → 123 seinää), retail_l 0.695 → 0.643 (37 → 10), rohbau_07000
+  GT-kattavuus 0.920 → 0.862, ja 07004 0.759 → 0.678.
+  **SYY EI OLE DETEKTORISSA VAAN VALINNASSA.** Kellari käytti `normals`ia;
+  löysätty histogrammi voitti valintakisan kattavuudella 0.103 ja hävisi
+  lopputuloksessa. `_best_detector` valitsee PISTEkattavuudella, ja lisää
+  piikkejä = lisää pistekattavuutta riippumatta siitä ovatko ne oikein.
+  Löysätty detektori siis KAAPPAA valinnan aineistoissa joissa se on väärä
+  työkalu. Kumpi tahansa korjataan ensin, se on korjattava ENNEN toista.
+  **OPETUS MENETELMÄSTÄ: raakadetektorin pyyhkäisy EI ennusta putken
+  lopputulosta.** Se mittasi oikein sitä mitä mittasi, ja johtopäätös oli silti
+  väärä, koska muutos vaikutti vaiheeseen jota pyyhkäisy ei kata.
+
 - **LYHYIDEN SEINIEN VAJE: KUUSI SELITYSTÄ MITATTU JA KUMOTTU.** Vaje on iso
   ja todellinen (2–4 m: 46 %, 1–2 m: 24 %), mutta se EI johdu mistään näistä.
   Älä käytä aikaa uudelleen:
