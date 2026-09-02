@@ -208,6 +208,33 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
 
 ## Kovalla työllä opitut asiat — ÄLÄ keksi uudelleen
 
+- **NURKKAKONEISTO ON HUONEEN TYÖKALU — isossa matalassa tilassa se on suurin
+  yksittäinen virhelähde.** `regularize_orthogonal`, `snap_corners`,
+  `close_open_corners` ja `merge_collinear_walls` olettavat että seinät kohtaavat
+  nurkissa ja huoneet sulkeutuvat. Iso matala talotekniikkatila ei ole huoneiden
+  sarja vaan metsä tynkiä. Mitattu koulun kellarilla (7137 m², vapaa korkeus
+  1.78 m), sama ajo neljä funktiota identiteetteinä (`data/_chain_ablation.py`):
+  | | ketjun kanssa | ilman |
+  |---|---|---|
+  | kattavuus | 0.194 | **0.366** |
+  | kontrasti ympäristöön | 27.4 | **69.0** |
+  | seiniä oman pintansa päällä | – | **88 %** |
+  | paksuusvirhe | −84 mm | **−14 mm** |
+  Paksuusvirhe on sama juurisyy: nurkkasnäppäys siirtää akselin pois pinnalta ja
+  paksuuslukitus mittaa sen jälkeen väärän piikkiparin. Se oli auki koko ajan ja
+  ratkesi tästä.
+  Reititys: ala ≥ 600 m² JA vapaa korkeus < 3.5 m → koneisto ohitetaan. Matriisi:
+  **kaikki yksitoista muuta aineistoa bitilleen ennallaan**, kellari 110 → 240
+  seinää ja kattavuus 0.194 → 0.366 (tarkkuus 0.265 → 0.204).
+  **VALINTAA EI VOI TEHDÄ KOETTIMELLA — kaksi yritystä mitattu ja kumottu:**
+  (1) aja funktiot kopiolle ja vertaa kattavuutta: 0.447 → 0.436, eli se ei näe
+  vahinkoa lainkaan. Syy: `snap_corners` NOSTAA kattavuutta venyttämällä seiniä,
+  ja vahinko syntyy vasta sen ja PINTALUKITUSTEN yhteisvaikutuksesta. (2) Sama
+  koetin ketjun mittaisena (8 snap-kutsua + sulautus): 0.447 → 0.436, sama.
+  **HUOM: reititys on validoitu YHDELLÄ aineistolla** — kellari on ainoa iso ja
+  matala kohde matriisissa (liiketilat ja Rohbau ovat isoja mutta korkeita,
+  asunto ja talo pieniä). Uudelle isolle matalalle kohteelle aja
+  `data/_chain_ablation.py` ennen kuin luotat.
 - **PAKSUUS ON KELLARISSA MITATUSTI VÄÄRIN — mutta "vastakkainen pinta" ei ole
   korjaus (mitattu ja KUMOTTU).** `_thickness_lock_wall` valitsee seinän toiseksi
   pinnaksi toiseksi vahvimman piikin 50–400 mm etäisyydeltä riippumatta siitä

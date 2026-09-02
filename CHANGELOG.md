@@ -6,6 +6,14 @@ sovellus päivittää itsensä sieltä.
 
 ## Julkaisematon
 
+- **Nurkkakoneisto ohitetaan isossa matalassa tilassa** — mitattu koulun
+  kellarilla: `regularize_orthogonal` + `snap_corners` + `close_open_corners` +
+  `merge_collinear_walls` identiteetteinä antaa **kattavuuden 0.194 → 0.366**,
+  kontrastin 27 → 69, ja korjaa samalla paksuusvirheen −84 → **−14 mm** (sama
+  juurisyy: snäppäys siirtää akselin pois pinnalta ja paksuuslukitus mittaa
+  väärän piikkiparin). Reititys: ala ≥ 600 m² JA vapaa korkeus < 3.5 m.
+  Matriisi: kaikki yksitoista muuta aineistoa bitilleen ennallaan.
+
 - **KORJATTU: sovellus ei ajanut semanttista suodatinta koulun kellarilla
   lainkaan.** `auto`-tila vaati sekä 600 m² että 4.5 m korkeutta; kellari on
   7137 m² mutta matala, joten suodatin — ja sen mukana semanttinen karsinta,

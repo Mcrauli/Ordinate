@@ -158,6 +158,8 @@ def _looks_like_retail(cloud) -> bool:
 
 _FILTER_MIN_AREA_M2 = 600.0  # m² — tätä suurempi pohja → semanttinen suodatin
                              # päälle myös matalassa tilassa (auto-tila)
+_CORNER_MIN_HEIGHT = 3500.0  # mm — tätä matalampi ISO tila ei ole huoneiden
+                             # sarja vaan tynkämetsä → nurkkakoneisto pois
 _LARGE_SPACE_M2 = 400.0   # m² — tätä suurempi POHJA-ala (miehitetyt ruudut, ei
                           # tiheyspainotettu percentiili) → histogrammi-detektori.
                           # Isossa tilassa contour rakentaa seinät vain tiheän
@@ -1756,6 +1758,50 @@ class Pipeline:
         # Suorista seinät kahteen kohtisuoraan suuntaan ennen kulmien yhdistämistä —
         # vinot seinät eivät muuten kohtaa puhtaasti eivätkä huoneet sulkeudu.
         from scan2bim.core.semantics.orthogonal import regularize_orthogonal, fine_rotate_walls
+
+        # NURKKAKONEISTO ON REITITYSVALINTA, EI OLETUS.
+        # `regularize_orthogonal`, `snap_corners`, `close_open_corners` ja
+        # `merge_collinear_walls` on rakennettu HUONEELLE: seinät kohtaavat
+        # nurkissa ja huoneet sulkeutuvat. Iso matala talotekniikkatila ei ole
+        # huoneiden sarja vaan metsä tynkiä, ja siellä jokainen niistä
+        # oletuksista pettää. Mitattu koulun kellarilla (7137 m², vapaa korkeus
+        # 1.78 m), sama ajo neljä funktiota identiteetteinä:
+        #   kattavuus       0.194 → **0.366**
+        #   kontrasti       27.4  → **69.0**
+        #   oman pintansa päällä  → **88 %**
+        #   paksuusvirhe    −84 mm → **−14 mm**
+        # Paksuusvirhe on sama juuri: nurkkasnäppäys siirtää akselin pois
+        # pinnalta, ja paksuuslukitus mittaa sen jälkeen väärän piikkiparin.
+        #
+        # Valintaa EI voi tehdä koettimella. Kokeiltu: aja funktiot kopiolle ja
+        # vertaa kattavuutta — se antaa 0.447 → 0.436 eli ei näe vahinkoa
+        # lainkaan, koska `snap_corners` NOSTAA kattavuutta venyttämällä
+        # seiniä ja vahinko syntyy vasta sen ja pintalukitusten
+        # yhteisvaikutuksesta.
+        #
+        # HUOM: reititys on validoitu YHDELLÄ aineistolla — kellari on ainoa
+        # iso ja matala kohde matriisissa (liiketilat ja Rohbau ovat isoja
+        # mutta korkeita, asunto ja talo pieniä). Jos tähän tulee uusi
+        # aineisto, mittaa `data/_chain_ablation.py`:llä ennen kuin luotat.
+        # Vapaa korkeus laatoista jos ne on jo löydetty, muuten pilven omasta
+        # z-jakaumasta (laatat lasketaan vasta myöhemmin tässä metodissa).
+        _fz = min((s.elevation for s in model.slabs if s.slab_type == "floor"),
+                  default=None)
+        _cz = max((s.elevation for s in model.slabs if s.slab_type == "ceiling"),
+                  default=None)
+        if _fz is None or _cz is None:
+            _zz = np.asarray(cloud.points)[:, 2]
+            _fz, _cz = float(np.percentile(_zz, 2)), float(np.percentile(_zz, 98))
+        _use_corners = not (area >= _FILTER_MIN_AREA_M2
+                            and (_cz - _fz) < _CORNER_MIN_HEIGHT)
+        if not _use_corners:
+            self._progress(
+                "  Iso matala tila → nurkkakoneisto ohitetaan (mitattu: "
+                "kattavuus 0.194 → 0.366)")
+            _ident = lambda w, *a, **kw: w  # noqa: E731
+            regularize_orthogonal = _ident
+            snap_corners = _ident
+            close_open_corners = _ident
         # drop_skew=False: vino seinä EI ole todiste virheestä. Sääntö
         # oletti "vino = roskadetektio", mutta evidenssin mittaa
         # `prune_unsupported_walls` joka ajetaan joka tapauksessa — tämä oli
@@ -1860,7 +1906,8 @@ class Pipeline:
         # paikoillaan. Aiemmat dedupit eivät napanneet niitä koska sijainnit muuttuivat
         # vielä. Tehdään ennen huone/aukko-detektiota jotta ne käyttävät puhdasta joukkoa.
         from scan2bim.core.semantics.wall_semantics import bridge_lintel_gaps, merge_collinear_walls
-        model.walls = merge_collinear_walls(model.walls)   # yhdistä sama seinä jaettuna (poistaa pöhö-pätkät)
+        if _use_corners:
+            model.walls = merge_collinear_walls(model.walls)   # yhdistä sama seinä jaettuna
         model.walls = _deduplicate(model.walls)
         # Silloita oviaukkojen katkaisemat seinät (railo + ylitysevidenssi) —
         # ovi kollineaaristen pätkien VÄLISSÄ ei muuten löydy koskaan.
