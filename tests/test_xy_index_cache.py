@@ -266,3 +266,78 @@ def test_openings_pick_the_face_from_the_whole_plane_strip():
     a = _wall_openings(w, pts, 0.0, 0, [w])
     b = _wall_openings(w, pts, 0.0, 0, [w], XYIndex(pts, 20.0))
     assert [o.model_dump() for o in a] == [o.model_dump() for o in b]
+
+
+# --- Kierros 3: toimituspaksuus ja pistevälin KD-puu -------------------------
+
+class _Cloud:
+    def __init__(self, pts):
+        self.points = pts
+
+
+def _lopsided_wall_cloud():
+    """Seinä jonka pintojen tiheys on EPÄSYMMETRINEN sekä puolittain että
+    pituussuunnassa: alkupäässä on enemmän pisteitä +puolella, loppupäässä
+    selvästi enemmän −puolella. Koko seinältä luettuna − voittaa, mutta
+    pelkästä alkupuoliskosta + voittaisi.
+
+    Ilman tällaista epäsymmetriaa akselin ankkurointi antaa saman vastauksen
+    väärälläkin kaistalla, eikä testi todista mitään.
+    """
+    return np.vstack([
+        _face((0.0, 200.0), (7000.0, 200.0), step=12.0),
+        _face((0.0, 0.0), (7000.0, 0.0), step=40.0),
+        _face((7000.0, 0.0), (14000.0, 0.0), step=8.0),
+        _face((7000.0, 200.0), (14000.0, 200.0), step=90.0),
+    ])
+
+
+def test_delivery_thickness_snap_is_bit_identical_with_an_index():
+    """Akselin ankkurointi dominanttiin pintaan ei saa muuttua indeksoinnista."""
+    from scan2bim.core.pipeline import _snap_delivery_thickness, _xy_index
+
+    pts = _lopsided_wall_cloud()
+    assert len(pts) > 300_000, len(pts)
+    # Mitattu paksuus 197 mm → snap 200 mm → akseli siirtyy 1.5 mm.
+    walls = [_wall(f"w{i}", (0.0, 100.0), (14000.0, 100.0), thickness=197.0)
+             for i in range(3)]
+    c = _Cloud(pts)
+    assert _xy_index(pts, walls, c) is not None, "indeksin pitää syntyä"
+    got = _snap_delivery_thickness(walls, c)
+    assert [w.thickness for w in got] == [200.0] * 3, "snapin pitää tapahtua"
+    assert _axes(got) != _axes(walls), "akselin pitää siirtyä"
+
+    # Viite: sama algoritmi koko pistetaulukolla, ilman kaistahakua.
+    ref = []
+    for w in walls:
+        p0 = np.array(w.axis[0], float)
+        p1 = np.array(w.axis[1], float)
+        L = float(np.linalg.norm(p1 - p0))
+        u = (p1 - p0) / L
+        n = np.array([-u[1], u[0]])
+        rel = pts[:, :2] - p0
+        t, perp = rel @ u, rel @ n
+        zm = (pts[:, 2] > w.z_min + 200.0) & (pts[:, 2] < w.z_min + w.height - 200.0)
+        band = zm & (t > 0) & (t < L) & (np.abs(perp) < w.thickness / 2.0 + 60.0)
+        side_pos = int((perp[band] > 0).sum())
+        face_sign = 1.0 if side_pos >= int(band.sum()) - side_pos else -1.0
+        sh = -face_sign * ((200.0 - w.thickness) / 2.0) * n
+        ref.append(((round(p0[0] + sh[0], 2), round(p0[1] + sh[1], 2)),
+                    (round(p1[0] + sh[0], 2), round(p1[1] + sh[1], 2))))
+    assert _axes(got) == ref
+
+
+def test_nn_spacing_is_unchanged_by_the_faster_tree():
+    """Nopea puunrakennus ei muuta etäisyyksiä — vain rakennusaikaa."""
+    from scipy.spatial import cKDTree
+
+    from scan2bim.core.geometry.loader import _nn_spacing
+
+    rng = np.random.default_rng(11)
+    xyz = rng.normal(0.0, 5000.0, (200_000, 3))
+    n = min(len(xyz), 20_000)
+    idx = np.linspace(0, len(xyz) - 1, n).astype(np.int64)
+    ref, _ = cKDTree(xyz).query(xyz[idx], k=2)
+    ref = ref[:, 1]
+    ref = ref[ref > 0.0]
+    assert _nn_spacing(xyz) == float(np.median(ref))

@@ -933,6 +933,7 @@ def _snap_delivery_thickness(walls, cloud) -> list:
     suuntaan. Jos dominanttia puolta ei voi päätellä (ei pisteitä), snap on
     symmetrinen kuten ennen."""
     pts = np.asarray(cloud.points)
+    index = _xy_index(pts, walls, cloud)
     out = []
     for w in walls:
         measured = round(w.thickness, 1)
@@ -951,10 +952,12 @@ def _snap_delivery_thickness(walls, cloud) -> list:
             if L >= 1.0:
                 u = (p1 - p0) / L
                 n = np.array([-u[1], u[0]])
-                rel = pts[:, :2] - p0
+                q, _ = _xy_subset(pts, index, p0, u, n,
+                                  w.thickness / 2.0 + 60.0, 0.0, L)
+                rel = q[:, :2] - p0
                 t = rel @ u
                 perp = rel @ n
-                zm = (pts[:, 2] > w.z_min + 200.0) & (pts[:, 2] < w.z_min + w.height - 200.0)
+                zm = (q[:, 2] > w.z_min + 200.0) & (q[:, 2] < w.z_min + w.height - 200.0)
                 band = zm & (t > 0) & (t < L) & (np.abs(perp) < w.thickness / 2.0 + 60.0)
                 if band.sum() >= 100:
                     side_pos = int((perp[band] > 0).sum())

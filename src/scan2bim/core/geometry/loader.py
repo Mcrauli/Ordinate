@@ -42,7 +42,11 @@ def _nn_spacing(xyz: np.ndarray) -> float:
         return float("nan")
     n = min(len(xyz), 20_000)
     idx = np.linspace(0, len(xyz) - 1, n).astype(np.int64)
-    d, _ = cKDTree(xyz).query(xyz[idx], k=2)
+    # balanced_tree/compact_nodes ovat RAKENNUSAJAN optimointeja: kysely on
+    # tarkka kummallakin ja `d[:, 1]` on etäisyys, ei indeksi, joten arvo on
+    # sama. 24 M pisteen puu rakentuu näin murto-osassa ajasta.
+    tree = cKDTree(xyz, balanced_tree=False, compact_nodes=False)
+    d, _ = tree.query(xyz[idx], k=2)
     d = d[:, 1]
     d = d[d > 0.0]
     return float(np.median(d)) if len(d) else float("nan")

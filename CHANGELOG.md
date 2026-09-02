@@ -6,6 +6,15 @@ sovellus päivittää itsensä sieltä.
 
 ## Julkaisematon
 
+- **Nopeus: toimituspaksuuden ankkurointi indeksoitu ja pistevälin KD-puu
+  nopeampi.** `_snap_delivery_thickness` skannasi koko pilven jokaista seinää
+  kohti (32 s). `_nn_spacing` rakensi tasapainotetun KD-puun 24 M pisteelle
+  kysyäkseen 20 000 pisteen naapurit, kuudesti ajossa (31 s);
+  `balanced_tree=False, compact_nodes=False` rakentaa 2× nopeammin ja kysely on
+  yhä tarkka — etäisyydet mitattu **bitilleen identtisiksi**. Matriisi: kaikki
+  12 aineistoa +0.000, kellari 658 → 610 s. Session alusta: kellari
+  1455 → 610 s (−58 %), matriisi 5981 → 3714 s (−38 %).
+
 - **Nopeus, jatkoa: aukkodetektio, katkaisu, kate ja jäännöksen lunastus
   indeksoitu.** Samat neljä kohtaa skannasivat koko pilven jokaista seinää
   kohti. Kaksi kohtaa vaati erikoiskohtelun jotta tulos pysyy samana:
