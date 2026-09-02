@@ -63,21 +63,27 @@ def wallish_points(pts: np.ndarray, z_lo: float, z_hi: float,
     return vert & np.isin(key, np.array(good, dtype=np.int64)), q
 
 
-def wall_coverage(pts: np.ndarray, walls, floor_z: float, ceiling_z: float,
-                  voxel: float = _VOXEL) -> float:
-    """Osuus pilven seinäpinnoista jotka jokin mallin seinä kattaa.
+def wall_scores(pts: np.ndarray, walls, floor_z: float, ceiling_z: float,
+                voxel: float = _VOXEL) -> tuple[float, float]:
+    """(kattavuus, tarkkuus) samasta maskista — sama määritelmä kuin
+    `data/_wall_coverage_nogt.py`:ssä, jotta malli ja mittari ovat samaa mieltä.
 
-    Palauttaa 0.0 kun pilvestä ei löydy seinäpintaa lainkaan — "ei mitattavaa"
-    ei saa näyttää täydeltä kattavuudelta, koska silloin tyhjä malli voittaisi
-    valinnan.
+    kattavuus = osuma / pilven seinäpinnoista  (löytyikö kaikki)
+    tarkkuus  = osuma / mallin kaistasta       (onko mallissa turhaa)
+
+    Molemmat palautetaan koska PELKKÄ kattavuus palkitsee määrää: jokainen
+    lisätty seinä voi vain nostaa sitä, eikä yksikään väärä laske sitä.
+    Mitattu: kun histogrammidetektorin piikkikynnystä löysättiin, se voitti
+    kellarin valintakisan kattavuudella 0.103 ja vei lopputuloksen
+    0.366 → 0.203 (240 → 123 seinää). Ks. `_best_detector`.
     """
     z_lo, z_hi = floor_z + 400.0, ceiling_z - 300.0
     if z_hi <= z_lo:
-        return 0.0
+        return 0.0, 0.0
     is_wall, q = wallish_points(pts, z_lo, z_hi, voxel)
     total = int(is_wall.sum())
     if total == 0:
-        return 0.0
+        return 0.0, 0.0
 
     xy = q[:, :2]
     claimed = np.zeros(len(q), dtype=bool)
@@ -96,4 +102,33 @@ def wall_coverage(pts: np.ndarray, walls, floor_z: float, ceiling_z: float,
         s, t = d @ u, d @ n
         half = float(getattr(w, "thickness", 0.0)) / 2.0
         claimed |= (s > 0) & (s < length) & (np.abs(np.abs(t) - half) < _BAND)
-    return float((claimed & is_wall).sum()) / total
+    hit = int((claimed & is_wall).sum())
+    return hit / total, hit / max(int(claimed.sum()), 1)
+
+
+def detector_score(coverage: float, precision: float) -> float:
+    """Detektorien vertailuluku: kattavuuden ja tarkkuuden harmoninen keskiarvo.
+
+    Pelkkä kattavuus palkitsee MÄÄRÄSTÄ — jokainen lisätty seinä voi vain
+    nostaa sitä. Mitattu: löysätty histogrammidetektori voitti kellarin
+    valintakisan kattavuudella 0.103 ja vei lopputuloksen 0.366 → 0.203.
+
+    HUOM RAJOITUS: tarkkuus ei näe seinää joka on TÄYSIN tyhjässä tilassa —
+    se ei lunasta yhtään pistettä, joten se ei laske kumpaakaan lukua. Mittari
+    rankaisee vain seinistä jotka on vedetty EI-seinämäisen pinnan (roina,
+    putket, kalusteet) päälle. Juuri niitä ylimääräiset piikit ovat.
+    """
+    if coverage + precision <= 0.0:
+        return 0.0
+    return 2.0 * coverage * precision / (coverage + precision)
+
+
+def wall_coverage(pts: np.ndarray, walls, floor_z: float, ceiling_z: float,
+                  voxel: float = _VOXEL) -> float:
+    """Osuus pilven seinäpinnoista jotka jokin mallin seinä kattaa.
+
+    Palauttaa 0.0 kun pilvestä ei löydy seinäpintaa lainkaan — "ei mitattavaa"
+    ei saa näyttää täydeltä kattavuudelta, koska silloin tyhjä malli voittaisi
+    valinnan.
+    """
+    return wall_scores(pts, walls, floor_z, ceiling_z, voxel)[0]

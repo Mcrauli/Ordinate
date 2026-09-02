@@ -1559,7 +1559,9 @@ class Pipeline:
         hyvä kuin mikä tahansa ehdokas erikseen. Tasapelin ratkaisee
         järjestys, jotta ajo pysyy deterministisenä.
         """
-        from scan2bim.core.qa.coverage import wall_coverage  # noqa: PLC0415
+        from scan2bim.core.qa.coverage import (  # noqa: PLC0415
+            detector_score, wall_scores,
+        )
         from scan2bim.core.segmentation.base import DetectorRegistry  # noqa: PLC0415
         from scan2bim.core.segmentation.slab_detector import detect_slabs  # noqa: PLC0415
 
@@ -1600,7 +1602,7 @@ class Pipeline:
             floor = next((s for s in slabs if s.slab_type == "floor"), None)
             ceiling = next((s for s in slabs if s.slab_type == "ceiling"), None)
             if floor is None or ceiling is None:
-                cov = 0.0
+                cov = pre = 0.0
             else:
                 # Mitataan detektorin RAAKA tulos. Karsinnan ja perimetrin
                 # lisääminen tähän muutti contourin ja histogrammin
@@ -1608,11 +1610,22 @@ class Pipeline:
                 # GT-kattavuuden 0.807 → 0.691, vaikka GT-vapaa luku nousi.
                 # Vertailu on luotettavampi ennen kuin ehdokkaita on
                 # käsitelty eri tavoin.
-                cov = wall_coverage(probe_pts, candidate.walls, floor.elevation,
-                                    ceiling.elevation)
+                cov, pre = wall_scores(probe_pts, candidate.walls,
+                                       floor.elevation, ceiling.elevation)
             models_by_name[name] = candidate
-            self._progress(f"    {name}: kattavuus {cov:.3f} ({len(candidate.walls)} seinää)")
-            scores[name] = cov
+            # F1 EIKÄ pelkkä kattavuus: kattavuus on puhdas recall, jota
+            # jokainen lisätty seinä voi vain nostaa. Detektori joka tuottaa
+            # enemmän piikkejä voittaa siis aina, olivatpa ne oikein tai ei.
+            # Mitattu: histogrammin piikkikynnyksen löysääminen (aito korjaus
+            # lyhyille seinille) vei kellarin valinnan `normals`ilta
+            # kattavuudella 0.103 ja lopputuloksen 0.366 → 0.203, retail_l:n
+            # 37 → 10 seinää. Tarkkuus rankaisee piikkitulvasta, joten
+            # valintaa ei voi enää kaapata määrällä.
+            f1 = detector_score(cov, pre)
+            self._progress(f"    {name}: F1 {f1:.3f} "
+                           f"(kattavuus {cov:.3f}, tarkkuus {pre:.3f}, "
+                           f"{len(candidate.walls)} seinää)")
+            scores[name] = f1
             if cov > best_cov:
                 best_model, best_name, best_cov = candidate, name, cov
 
@@ -1639,7 +1652,7 @@ class Pipeline:
                     f"alle {_CHOICE_MARGIN:.0f}× → pidetään {ref_name}")
                 best_model = models_by_name[ref_name]
                 best_name, best_cov = ref_name, ref_cov
-        self._progress(f"  valittu {best_name} (kattavuus {best_cov:.3f})")
+        self._progress(f"  valittu {best_name} (F1 {best_cov:.3f})")
         if probe is not cloud:
             # Voittaja ajetaan uudelleen TÄYDELLÄ pilvellä: harvennettu tulos
             # kelpaa järjestykseen muttei malliksi.

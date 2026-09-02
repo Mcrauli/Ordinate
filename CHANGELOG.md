@@ -6,6 +6,17 @@ sovellus päivittää itsensä sieltä.
 
 ## Julkaisematon
 
+- **Detektorivalinta ei enää palkitse MÄÄRÄSTÄ.** `_best_detector` valitsi
+  detektorin `wall_coverage`lla, joka on puhdas recall: jokainen lisätty seinä
+  voi vain nostaa sitä eikä yksikään väärä laske sitä. Mitattu seuraus: kun
+  histogrammidetektorin piikkikynnystä löysättiin (aito korjaus lyhyille
+  seinille), se voitti kellarin valintakisan kattavuudella 0.103 ja vei
+  lopputuloksen 0.366 → 0.203 (240 → 123 seinää), retail_l:n 37 → 10.
+  Nyt valinta tehdään kattavuuden ja tarkkuuden F1:llä (`wall_scores`,
+  `detector_score`), sama määritelmä kuin matriisin mittarissa.
+  Matriisi: kaikki 12 aineistoa **+0.000** — voittaja ei vaihdu yhdelläkään,
+  mutta kaappausmekanismi on poissa.
+
 - **Nopeus: toimituspaksuuden ankkurointi indeksoitu ja pistevälin KD-puu
   nopeampi.** `_snap_delivery_thickness` skannasi koko pilven jokaista seinää
   kohti (32 s). `_nn_spacing` rakensi tasapainotetun KD-puun 24 M pisteelle
