@@ -208,6 +208,29 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
 
 ## Kovalla työllä opitut asiat — ÄLÄ keksi uudelleen
 
+- **LYHYET SEINÄT OVAT SE VAJE — MITATTU GT-INSTANSSEINA, EI PISTEINÄ.**
+  Pistekattavuus näyttää Rohbaussa 0.759–0.920, mutta instanssikattavuus
+  (`data/_wall_inst_qa.py`) on 0.409–0.673. Ero on kokonaan pituudessa, ja
+  kuvio toistuu KAIKISSA viidessä scenessä:
+  | pituusluokka | löytyi / kaikki | osuus |
+  |---|---|---|
+  | yli 4 m | 34/36 | **0.94** |
+  | 2–4 m | 41/89 | **0.46** |
+  | 1–2 m | 4/17 | **0.24** |
+  Puuttuvat ovat jalanjäljen SISÄLLÄ (jalanj. 1.00), eivät skannin reunalla,
+  joten kyse ei ole rajauksesta. Pitkä seinä löytyy lähes aina. Jos haet
+  kattavuutta, se on täällä — äläkä käytä pistekattavuutta mittarina, koska
+  perimetrillä on valtaosa pisteistä ja se piilottaa tämän kokonaan.
+
+- **KUMOTTU: PointNetille ei kannata antaa enempää säikeitä.**
+  Inferenssi on 405 s / 801 s = 51 % kellarin tuotantoajosta ja
+  `intra_op_num_threads` on rajattu 8:aan vaikka koneessa on 16 loogista
+  ydintä — näyttää ilmeiseltä voitolta. Mitattu (`data/_ort_threads_probe.py`):
+  8 säiettä 4.70 s, 12 säiettä 4.84 s, **16 säiettä 4.92 s**. Kone on 8
+  fyysistä ydintä + hyperthreading, joten katto 8:ssa on oikea ja nosto tekisi
+  ajosta 5 % HITAAMMAN. (Tulos on kaikilla säiemäärillä bitilleen sama, eli
+  este ei ole determinismi vaan se ettei nopeutta ole saatavilla.)
+
 - **KUMOTTU: kollineaarinen sulautus ei auta kellaria — seinät eivät ole
   saman seinän palasia.** Nurkkakoneisto kytkettiin pois neljänä nippuna, mutta
   kolme niistä SIIRTÄÄ geometriaa ja `merge_collinear_walls` ei. Kellarin
