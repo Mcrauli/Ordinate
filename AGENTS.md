@@ -208,6 +208,23 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
 
 ## Kovalla työllä opitut asiat — ÄLÄ keksi uudelleen
 
+- **KEHITYSTYÖKALUN ASENNUS VOI RIKKOA MITTAUKSEN — AJA TESTIT HETI PERÄÄN.**
+  `pip install onnx` (kertaluontoiseen kvantisointikokeeseen) veti mukanaan
+  `ml-dtypes`:n, joka päivitti **numpyn 1.26 → 2.5**, ja `ndarray.ptp()`
+  poistui NumPy 2:ssa → 19 testiä kaatui asioista joilla ei ollut mitään
+  tekemistä muutoksen kanssa. Pinni `numpy>=1.26,<2.0` on `pyproject.toml`:ssa
+  muttei estänyt sitä. Olin käynnistämässä tunnin matriisiajoa; ilman koko
+  testisarjan ajoa mittaus olisi ollut roskaa eikä syy olisi näkynyt mistään.
+  Sama laji kuin `.pyc`-ansa: **mittaus ei ole pätevä jos ympäristö muuttui
+  mittausten välillä.** Palautus: `pip uninstall onnx ml-dtypes` +
+  `pip install "numpy>=1.26,<2.0"`.
+
+- **KUMOTTU: INT8-kvantisointi ei nopeuta PointNetiä — se hidastaa 13×.**
+  Inferenssi on 51 % tuotantoajosta, joten kvantisointi näyttää ilmeiseltä.
+  Mitattu (`data/_quant_probe.py`): float32 5.47 s, **INT8 70.95 s**, ja
+  **7.91 % pisteistä vaihtaa luokkaa**. Kumpi tahansa yksin riittäisi
+  hylkäämään sen. (Malli pienenee 3.5 → 0.9 MB, mutta koko ei ole ongelma.)
+
 - **LYHYIDEN SEINIEN JUURISYY ON LÖYDETTY JA MITATTU — MUTTA NAIIVI KORJAUS
   KAATUU VALINTAAN. (Kokeiltu ja PERUTTU.)**
   Juurisyy on aito: `wall_histogram._peaks_1d` käytti kynnystä
