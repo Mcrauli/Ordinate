@@ -208,6 +208,34 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
 
 ## Kovalla työllä opitut asiat — ÄLÄ keksi uudelleen
 
+- **KUMOTTU: "pintaparin heikompi kasvo" ei erota kellarin ohuita seiniä
+  valeseinistä — se rankaisisi hyviä aineistoja enemmän.** Kellarin mallista
+  148/240 seinaa (65 % pituudesta) on 60–95 mm paksuja, ja se luku on
+  kaksiselitteinen: 66/92/120 mm ovat rankaseinän vakiomitat, mutta
+  `_unsupported_thickness_lock` dokumentoi että kontuurimaskin levinnyt viiva
+  tuottaa TÄSMÄLLEEN saman luvun. Hypoteesi oli että aidolla väliseinällä
+  molemmat pinnat kulkevat koko pituuden ja valeparilla ei
+  (`data/_face_pair_probe.py`, heikomman pinnan jatkuvuus). Mitattu:
+  | aineisto | heikompi pinta | tunnettu laatu |
+  |---|---|---|
+  | **kellari** | **0.91** | tarkkuus 0.204 |
+  | retail_l | 1.00 | 0.872 |
+  | rohbau_07000 | 0.76 | GT-tarkkuus 0.897 |
+  | apt | 0.67 | 0.636 |
+  Kellari pärjää PAREMMIN kuin apt ja rohbau_07000. Sääntö olisi siis poistanut
+  seiniä juuri sieltä missä malli on oikeassa. Kellarin ohuilla seinillä ON
+  kaksi aitoa pintaa; ne ovat oikeita kevyitä väliseiniä. Älä yritä uudelleen.
+
+- **ÄLÄ LUE GT-VAPAAN MITTARIN TASOA LAATUNA — SE ON A/B-MITTATIKKU.**
+  `core/qa/coverage.py` sanoo sen itse: "absoluuttinen taso EI ole
+  vertailukelpoinen kohteiden välillä". Kellarin tarkkuus 0.204 ei tarkoita
+  että 80 % seinistä olisi väärin; se tarkoittaa että samasta pilvestä ajettu
+  toinen versio on vertailukelpoinen tähän. Oikea käyttö on nurkkareitityksen
+  kaltainen saman pilven ennen/jälkeen (+0.172). Kohteen absoluuttiseen
+  laatuun on vain yksi tie: ground truth (`_gt_export.py` → CloudCompare →
+  `_gt_import.py`). Minä ehdin lukea 0.204:n laatuna ja lähteä sen perusteella
+  metsästämään vikaa jota ei ollut.
+
 - **MUTAATIOTESTI VALEHTELEE JOS PALAUTAT TIEDOSTON MTIME:N KANSSA.** Ajoin
   viiden mutaation sarjan `cp -p` / `mv` -parilla ja kolme niistä "läpäisi"
   eli näytti siltä ettei testi pure. Ei pitänyt paikkaansa: mutaatio oli
