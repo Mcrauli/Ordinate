@@ -239,6 +239,10 @@ def _to_walls(pairs: list, h_w: float, th_w: float, z_min_w: float) -> list[Wall
 def _claimed(band: np.ndarray, walls: list[Wall]) -> np.ndarray:
     claimed = np.zeros(len(band), dtype=bool)
     xy = band[:, :2]
+    index = None
+    if len(band) >= 300_000 and len(walls) >= 3:
+        from scan2bim.core.geometry.xy_index import XYIndex  # noqa: PLC0415
+        index = XYIndex(xy)
     for w in walls:
         a = np.asarray(w.axis[0], dtype=float)
         b = np.asarray(w.axis[1], dtype=float)
@@ -247,8 +251,18 @@ def _claimed(band: np.ndarray, walls: list[Wall]) -> np.ndarray:
             continue
         u = (b - a) / L
         n = np.array([-u[1], u[0]])
-        d = xy - a
+        r = w.thickness / 2.0 + _CLAIM_BAND
+        if index is None:
+            d = xy - a
+            s, t = d @ u, d @ n
+            claimed |= ((s > -_CLAIM_END) & (s < L + _CLAIM_END)
+                        & (np.abs(t) < r))
+            continue
+        sel = index.near_segment(a, u, n, r, -_CLAIM_END, L + _CLAIM_END)
+        if not len(sel):
+            continue
+        d = xy[sel] - a
         s, t = d @ u, d @ n
-        claimed |= ((s > -_CLAIM_END) & (s < L + _CLAIM_END)
-                    & (np.abs(t) < w.thickness / 2.0 + _CLAIM_BAND))
+        claimed[sel] |= ((s > -_CLAIM_END) & (s < L + _CLAIM_END)
+                         & (np.abs(t) < r))
     return claimed

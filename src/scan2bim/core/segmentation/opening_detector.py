@@ -56,11 +56,15 @@ def detect_openings(
     scanner_origins: list | None = None,
 ) -> list[Opening]:
     pts = np.asarray(cloud.points)
+    index = None
+    if len(pts) >= 300_000 and len(walls) >= 3:
+        from scan2bim.core.geometry.xy_index import index_for  # noqa: PLC0415
+        index = index_for(cloud, pts)
     origins = [np.asarray(o, dtype=float) for o in (scanner_origins or [])]
     openings: list[Opening] = []
     counter = 0
     for wall in walls:
-        new = _wall_openings(wall, pts, floor_z, counter, walls)
+        new = _wall_openings(wall, pts, floor_z, counter, walls, index)
         if origins:
             new = [op for op in new if not _is_occlusion_shadow(op, wall, pts, origins, floor_z)]
         openings.extend(new)
@@ -158,7 +162,7 @@ def _is_occlusion_shadow(
 
 def _wall_openings(
     wall: Wall, pts: np.ndarray, floor_z: float, start_idx: int,
-    all_walls: list[Wall],
+    all_walls: list[Wall], index=None,
 ) -> list[Opening]:
     if len(wall.axis) < 2:
         return []
@@ -173,6 +177,14 @@ def _wall_openings(
     along = d / length
     normal = np.array([-along[1], along[0]])
     plane_D = float(np.dot(normal, p0))
+
+    if index is not None:
+        # Säde kattaa MOLEMMAT pinnat (±th/2 ± _FACE_TOL) ja keskilinjan.
+        # Akselin suuntaista rajausta EI saa tehdä: pinnanvalinta (pos/neg)
+        # lasketaan koko tasokaistalta, ja rajaus muuttaisi sen laskennan.
+        from scan2bim.core.geometry.xy_index import subset  # noqa: PLC0415
+        pts, _ = subset(pts, index, p0, along, normal,
+                        wall.thickness / 2.0 + _FACE_TOL)
 
     signed_dist = pts[:, :2] @ normal - plane_D   # negatiivinen tai positiivinen
     dist_to_plane = np.abs(signed_dist)

@@ -6,6 +6,15 @@ sovellus päivittää itsensä sieltä.
 
 ## Julkaisematon
 
+- **Nopeus, jatkoa: aukkodetektio, katkaisu, kate ja jäännöksen lunastus
+  indeksoitu.** Samat neljä kohtaa skannasivat koko pilven jokaista seinää
+  kohti. Kaksi kohtaa vaati erikoiskohtelun jotta tulos pysyy samana:
+  `_wall_openings` valitsee mitattavan pinnan KOKO tasokaistalta, joten siinä
+  saa rajata vain kohtisuoraan; `split_gaps`:n ohuen kaistan varasääntö
+  lasketaan lajitellusta z:stä koko pilvestä, ei osajoukosta.
+  Matriisi: kaikki 12 aineistoa **+0.000**, yhteisaika 4142 s → 3811 s;
+  kellari 854 → 658 s. Session alusta: 5981 → 3811 s (−36 %), kellari −55 %.
+
 - **Nopeus: koko putki 31 % nopeampi, malli bitilleen sama.** Profiloitu
   (`data/_prof_run.py`) koulun kellarilla — kaksi kuviota söi puolet ajosta:
   `fine_rotate_walls` + `refine_skew_walls` skannasivat KOKO 45 M pilven

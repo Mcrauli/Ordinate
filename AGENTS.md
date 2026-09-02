@@ -208,6 +208,19 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
 
 ## Kovalla työllä opitut asiat — ÄLÄ keksi uudelleen
 
+- **MUTAATIOTESTI VALEHTELEE JOS PALAUTAT TIEDOSTON MTIME:N KANSSA.** Ajoin
+  viiden mutaation sarjan `cp -p` / `mv` -parilla ja kolme niistä "läpäisi"
+  eli näytti siltä ettei testi pure. Ei pitänyt paikkaansa: mutaatio oli
+  **täsmälleen saman mittainen** kuin alkuperäinen rivi (`+ _TOL` → `- 60.0`),
+  ja `mv` palautti myös alkuperäisen mtime:n, joten CPython piti mutatoidusta
+  lähteestä käännettyä `.pyc`-tiedostoa yhä ajantasaisena. Seuraavat kierrokset
+  ajoivat vanhaa tavukoodia. Jäljitin sen vasta kun vakoilin `subset`-kutsua ja
+  näin säteen olevan 40 mm vaikka lähdekoodissa luki 160 mm.
+  **Sääntö: mutaation palautuksen jälkeen `touch` tiedosto JA poista
+  `__pycache__`.** Sama koskee `git checkout`ia ja `git stash pop`ia.
+  Yleisemmin: kaksi peräkkäistä ajoa samasta lähteestä ei ole todiste jos
+  jompikumpi voi lukea välimuistia jota et tyhjentänyt.
+
 - **NOPEUS: ketjun kuvio on "projektio koko pilvelle, sitten kapea kaista" — ja
   se on aina indeksoitavissa ILMAN että tulos muuttuu.** Profiloi ensin
   (`data/_prof_run.py`), älä arvaa: kellarin 1140 s jakautui niin että

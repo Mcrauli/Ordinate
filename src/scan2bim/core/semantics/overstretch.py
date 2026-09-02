@@ -49,7 +49,7 @@ def _band(model, walls) -> tuple[float, float]:
     return zf + _Z_FLOOR, zc - _Z_CEIL
 
 
-def _coverage(w, xy: np.ndarray) -> tuple[np.ndarray, float, np.ndarray, np.ndarray]:
+def _coverage(w, xy: np.ndarray, index=None) -> tuple[np.ndarray, float, np.ndarray, np.ndarray]:
     a = np.asarray(w.axis[0], float)
     b = np.asarray(w.axis[1], float)
     d = b - a
@@ -58,6 +58,11 @@ def _coverage(w, xy: np.ndarray) -> tuple[np.ndarray, float, np.ndarray, np.ndar
         return np.zeros(0, bool), L, a, b
     u = d / L
     n = np.array([-u[1], u[0]])
+    if index is not None:
+        # Histogrammin range on (0, L), joten sen ulkopuoliset pisteet
+        # putoavat joka tapauksessa -> sama rajaus indeksiin.
+        from scan2bim.core.geometry.xy_index import subset  # noqa: PLC0415
+        xy, _ = subset(xy, index, a, u, n, w.thickness / 2.0 + _TOL, 0.0, L)
     rel = xy - a
     s = rel @ u
     t = rel @ n
@@ -92,7 +97,11 @@ def trim_overstretched_walls(model, cloud) -> list[tuple[str, float]]:
     # Kate luetaan KAIKILTA seiniltä kertaalleen alkuperäisestä geometriasta:
     # nurkan pätevyys on kysymys vastinseinän katteesta, ja jos sitä luettaisiin
     # jo leikatusta akselista, ensimmäinen leikkaus muuttaisi seuraavan tuomion.
-    prof = [_coverage(w, xy) for w in model.walls]
+    index = None
+    if len(xy) >= 300_000 and len(model.walls) >= 3:
+        from scan2bim.core.geometry.xy_index import XYIndex  # noqa: PLC0415
+        index = XYIndex(xy)
+    prof = [_coverage(w, xy, index) for w in model.walls]
     n_w = len(model.walls)
     trimmed: list[tuple[str, float]] = []
 

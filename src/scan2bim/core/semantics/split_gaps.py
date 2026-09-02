@@ -35,18 +35,22 @@ _MIN_PTS = 4             # pistettä sarakkeessa: alle tämän on tyhjä
 _MIN_PIECE_MM = 900.0    # mm — tätä lyhyempi pala ei ole seinä
 
 
-def split_walls_at_gaps(walls: list, pts: np.ndarray) -> list:
+def split_walls_at_gaps(walls: list, pts: np.ndarray, index=None) -> list:
     """Katkaise seinät kohdista joissa pinta puuttuu metrien matkalta."""
     if pts is None or len(pts) == 0:
         return walls
+    # Kaistahaku rajaa pisteet seinän ympäriltä, mutta `band`-varasääntö
+    # (alle 50 pistettä z-kaistalla -> koko pilvi) lasketaan KOKO pilvestä,
+    # muuten ehto muuttuisi. Lajiteltu z antaa saman luvun haulla.
+    z_sorted = np.sort(pts[:, 2]) if index is not None else None
     out: list = []
     for w in walls:
-        pieces = _split_one(w, pts)
+        pieces = _split_one(w, pts, index, z_sorted)
         out.extend(pieces if pieces else [w])
     return out
 
 
-def _split_one(w, pts: np.ndarray) -> list:
+def _split_one(w, pts: np.ndarray, index=None, z_sorted=None) -> list:
     axis = getattr(w, "axis", None)
     if not axis or len(axis) < 2:
         return [w]
@@ -59,14 +63,21 @@ def _split_one(w, pts: np.ndarray) -> list:
     u = (b - a) / length
     n = np.array([-u[1], u[0]])
     half = float(getattr(w, "thickness", 200.0)) / 2.0
-    z_min = float(getattr(w, "z_min", pts[:, 2].min()))
+    _zm = getattr(w, "z_min", None)
+    z_min = float(_zm) if _zm is not None else float(pts[:, 2].min())
     height = float(getattr(w, "height", 0.0))
+    if index is not None:
+        from scan2bim.core.geometry.xy_index import subset  # noqa: PLC0415
+        pts, _ = subset(pts, index, a, u, n, half + _BAND_MM,
+                        -_COL_MM, length + _COL_MM)
     band = pts
     if height > 1.0:
         lo, hi = z_min + 0.25 * height, z_min + 0.75 * height
-        band = pts[(pts[:, 2] > lo) & (pts[:, 2] < hi)]
-        if len(band) < 50:
-            band = pts
+        sub = pts[(pts[:, 2] > lo) & (pts[:, 2] < hi)]
+        n_full = (len(sub) if z_sorted is None else
+                  int(np.searchsorted(z_sorted, hi, "left")
+                      - np.searchsorted(z_sorted, lo, "right")))
+        band = sub if n_full >= 50 else pts
 
     d = band[:, :2] - a
     s = d @ u

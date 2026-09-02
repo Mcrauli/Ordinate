@@ -1354,7 +1354,9 @@ class Pipeline:
             # 0.059 → 0.069 kattavuuden muuttumatta.
             from scan2bim.core.semantics.split_gaps import split_walls_at_gaps
             _before = len(model.walls)
-            model.walls = split_walls_at_gaps(model.walls, np.asarray(cloud.points))
+            _sg_pts = np.asarray(cloud.points)
+            model.walls = split_walls_at_gaps(
+                model.walls, _sg_pts, _xy_index(_sg_pts, model.walls, cloud))
             if len(model.walls) != _before:
                 self._progress(
                     f"  Pilkottu {len(model.walls) - _before} seinää kohdista "
