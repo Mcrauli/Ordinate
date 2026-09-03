@@ -1250,8 +1250,15 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   tämä korjaus kaataa kaksi aineistoa: rohbau_07000 0.959 → 0.896 ja retail_l
   0.695 → 0.643 (37 → 10 seinää). Detektorivalinnan korjaus F1:ksi pelasti
   KELLARIN (0.366 pysyi ennallaan, kun se aiemmin romahti 0.203:een) muttei
-  retail_l:ää — romahdus on siis detektorissa, ei enää valinnassa. Lievempää
-  muotoa (robusti k=6/k=12, kvantiili) ei ole vielä mitattu putken läpi.
+  retail_l:ää — romahdus on siis detektorissa, ei enää valinnassa.
+  **Varmistettu vielä instanssikattavuudella**, koska GT-vapaa mittari
+  rankaisee lyhyiden seinien löytämisestä eikä sen hylkäävään tuomioon voi
+  yksinään luottaa: instansseilla 07000 −0.163, 07003 −0.075, 07004 −0.050,
+  07001 +0.031, 07002 +0.091 — keskimäärin **−0.033**. Korjaus on huonompi
+  molemmilla mittareilla, joten kumoaminen ei ole mittarin harha.
+  Sivuhavainto: 07003 on mittareilla ERI MERKKINEN (cov +0.069, inst −0.075).
+  Lievempää muotoa (robusti k=6/k=12, kvantiili) ei ole vielä mitattu putken
+  läpi — jos sitä kokeillaan, tuomari on `GTinst`, ei `kattav`.
 - **GT-VAPAA MITTARI EI VOI PALKITA LYHYIDEN SEINIEN LÖYTÄMISESTÄ — mitattu.**
   Tämä selittää kerralla miksi kolmetoista hypoteesia on näyttänyt +0.000.
   `coverage.wallish_points` vaatii XY-solulta `0.50 × kaista` pystypintaa, eli
