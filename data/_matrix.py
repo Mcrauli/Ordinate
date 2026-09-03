@@ -90,13 +90,32 @@ def _nogt(model: Path, cloud: Path) -> dict:
 
 
 def _gt(model: Path, gt_dir: Path) -> dict:
+    """GT-luvut kahdella nimittajalla — PISTEILLA ja INSTANSSEILLA.
+
+    Pistekattavuus yksin valehtelee, ja se on mitattu: perimetriseinat omistavat
+    valtaosan pisteista, joten valiseinat voivat puuttua ilman etta luku liikkuu.
+    3.9.2026 pistekattavuus oli 0.76-0.92 samaan aikaan kun instanssikattavuus
+    oli 0.41-0.67 — putki loysi noin puolet seinista ja mittari sanoi 86 %.
+
+    GT-vapaa mittari ei voi nayttaa tata eroa lainkaan (`_metric_blindness.py`:
+    kaikkien lyhyiden seinien lisaaminen taydelliseen malliin nostaa sen
+    kattavuutta 0.02 ja LASKEE sen F1:ta), joten instanssiluku on se sarake joka
+    kertoo auttoiko muutos. GT-vapaa sarake kertoo vain huononiko jokin.
+    """
     r = subprocess.run([PY, str(HERE / "_rohbau_qa.py"), str(model),
                         str(gt_dir / "coord.npy"), str(gt_dir / "class.npy")],
                        capture_output=True, text=True, encoding="utf-8", errors="replace")
     cov = re.search(r"KATTAVUUS.*?([\d.]+)", r.stdout)
     pre = re.search(r"TARKKUUS.*?([\d.]+)", r.stdout)
-    return {"gt_cov": float(cov.group(1)) if cov else None,
-            "gt_pre": float(pre.group(1)) if pre else None}
+    out = {"gt_cov": float(cov.group(1)) if cov else None,
+           "gt_pre": float(pre.group(1)) if pre else None}
+    ri = subprocess.run([PY, str(HERE / "_wall_inst_qa.py"), str(model),
+                         str(gt_dir / "coord.npy"), str(gt_dir / "class.npy"),
+                         str(gt_dir / "instance.npy")],
+                        capture_output=True, text=True, encoding="utf-8", errors="replace")
+    inst = re.search(r"INSTANSSIKATTAVUUS\s+\d+/\d+\s*=\s*([\d.]+)", ri.stdout)
+    out["gt_inst"] = float(inst.group(1)) if inst else None
+    return out
 
 
 def main() -> None:
@@ -136,7 +155,7 @@ def main() -> None:
               f"  {row['secs']} s", flush=True)
 
     print(f"\n{'aineisto':14s} {'kattav':>7s} {'tarkk':>6s} {'seinia':>7s} {'aukot':>6s}"
-          f" {'GTkatt':>7s} {'GTtark':>7s}   muutos")
+          f" {'GTkatt':>7s} {'GTtark':>7s} {'GTinst':>7s}   muutos")
     for name, r in results.items():
         if "error" in r:
             print(f"{name:14s}  {r['error']}")
@@ -148,9 +167,16 @@ def main() -> None:
                 d = r["cov"] - b
                 delta = f"{d:+.3f}" + ("  HUONOMPI" if d < -0.005 else
                                        ("  parempi" if d > 0.005 else ""))
+            bi = baseline[name].get("gt_inst")
+            if bi is not None and r.get("gt_inst") is not None:
+                di = r["gt_inst"] - bi
+                delta += f"   inst {di:+.3f}" + (
+                    "  HUONOMPI" if di < -0.005 else
+                    ("  PAREMPI" if di > 0.005 else ""))
         print(f"{name:14s} {r['cov'] if r['cov'] is not None else '-':>7} "
               f"{r['pre'] if r['pre'] is not None else '-':>6} {r['walls']:>7d} "
-              f"{r['openings']:>6d} {r.get('gt_cov', '-'):>7} {r.get('gt_pre', '-'):>7}   {delta}")
+              f"{r['openings']:>6d} {r.get('gt_cov', '-'):>7} {r.get('gt_pre', '-'):>7} "
+              f"{r.get('gt_inst', '-'):>7}   {delta}")
 
     path = ROOT / "data" / "_matrix_last.json"
     path.write_text(json.dumps(results, indent=1), encoding="utf-8")
