@@ -1221,6 +1221,63 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
 - **Diagnostiikkaraportti** (`qa/diagnostics.py`): joka ajosta `diagnostics.txt`
   output-hakemistoon (versio, ympäristö, vaihelokit, virhe) — pilottiasiakas ei
   voi jakaa skanneja, tämän voi. Ei koordinaatteja.
+- **`wall_normals`in korkeusportti oli TASO EIKÄ SUHDE — korjattu katkaisulla.**
+  `_segments` vaati segmentiltä `0.45 × kaista`, eli 10 m runkohallissa 4.05 m.
+  Rohbaun 2–4 m väliseinä on silloin mahdoton riippumatta siitä onko se oikea
+  seinä. Ablaatio (`data/_normals_gate_probe.py`, viisi sceneä GT:tä vasten):
+  neljästä portista `_MIN_PTS`, `_MIN_LEN` ja `_GAP_MM` eivät pure käytännössä
+  lainkaan, `_SPAN_FRAC` on sitova. Sen löysääminen nosti sekä kattavuutta ETTÄ
+  tarkkuutta → portti ei erotellut seinää roskasta, se karsi seiniä.
+  Sääntökokeilu (`data/_normals_span_rule.py`, GT-instanssikattavuus/tarkkuus/F1):
+  | sääntö | kattavuus | tarkkuus | F1 |
+  |---|---|---|---|
+  | `0.45 × kaista` (vanha) | 0.316 | 0.725 | 0.435 |
+  | ei porttia lainkaan | 0.834 | 0.318 | 0.458 |
+  | `0.20 × kaista` | 0.783 | 0.619 | 0.687 |
+  | **`min(2400 mm, 0.45 × kaista)`** | **0.768** | **0.846** | **0.804** |
+  Katkaisu puree vasta kun vapaa korkeus ylittää ~6.5 m, joten sääntö ei voi
+  olla missään entistä TIUKEMPI — matalassa tilassa se on bitilleen entinen, ja
+  matriisi vahvisti sen: 3dses, test_room ja synth +0.000. Korkeus millimetreinä
+  on rakennuksen ominaisuus eikä skannin, joten se ei riko absoluuttisten
+  pistekynnysten kieltoa.
+- **KUMOTTU: lattiakosketus ei korvaa korkeusporttia.** "Seinä seisoo lattialla,
+  roska leijuu" on hyvä käsite mutta huono mittari: F1 0.555 vs katkaisun 0.804.
+  Rohbaun runkovaiheessa myös roska seisoo lattialla.
+- **KUMOTTU: aspektisuhde ei korvaa korkeusporttia.** "Korkea suhteessa omaan
+  pituuteensa" päästää lyhyet pystyrykelmät läpi: tarkkuus 0.426, F1 0.524.
+- **KUMOTTU LOPULLISESTI: histogrammin piikkikynnys mediaani+3·MAD.** Juurisyy
+  (globaali `mean + 3σ` sulkee lyhyet seinät ulos) on oikea ja mitattu, mutta
+  tämä korjaus kaataa kaksi aineistoa: rohbau_07000 0.959 → 0.896 ja retail_l
+  0.695 → 0.643 (37 → 10 seinää). Detektorivalinnan korjaus F1:ksi pelasti
+  KELLARIN (0.366 pysyi ennallaan, kun se aiemmin romahti 0.203:een) muttei
+  retail_l:ää — romahdus on siis detektorissa, ei enää valinnassa. Lievempää
+  muotoa (robusti k=6/k=12, kvantiili) ei ole vielä mitattu putken läpi.
+- **GT-VAPAA MITTARI EI VOI PALKITA LYHYIDEN SEINIEN LÖYTÄMISESTÄ — mitattu.**
+  Tämä selittää kerralla miksi kolmetoista hypoteesia on näyttänyt +0.000.
+  `coverage.wallish_points` vaatii XY-solulta `0.50 × kaista` pystypintaa, eli
+  10 m hallissa 4.6 m — 3 m väliseinä ei ole mittarille seinä lainkaan.
+  Koe (`data/_metric_blindness.py`) ei käytä detektoria: "malli" rakennetaan
+  GT-instansseista ja sitä rajataan pituuden mukaan.
+  | scene | vain yli 4 m | kaikki | kattavuus | F1 |
+  |---|---|---|---|---|
+  | 07000 | 10 seinää | 47 | 0.728 → 0.743 | 0.486 → **0.447** |
+  | 07002 | 7 | 41 | 0.735 → 0.755 | 0.591 → **0.552** |
+  | 07003 | 6 | 26 | 0.709 → 0.731 | 0.472 → **0.445** |
+  Kaikkien lyhyiden seinien lisääminen — 77–83 % jokaisen scenen seinistä —
+  nostaa kattavuutta 0.014–0.022 ja **laskee F1:tä**. Mittari siis rankaisee
+  oikeiden seinien löytämisestä, ja `_best_detector` (joka valitsee tällä
+  F1:llä) suosii mallia joka jättää lyhyet seinät löytämättä.
+  **Seuraus työtapaan: lyhyiden seinien korjaus on validoitava GT-instanssi-
+  kattavuudella (Rohbau), ei matriisilla. Matriisin tehtävä on vastata
+  kysymykseen "huononiko mikään", ei kysymykseen "auttoiko tämä".**
+- **KUMOTTU: mittarin oman span-vaatimuksen katkaisu ei korjaa sokeutta.**
+  Sama katkaisu joka toimi `wall_normals`issa mitattiin mittarille GT:tä vastaan
+  (`data/_metric_cap_probe.py`, viisi sceneä, keskimääräinen itseisero GT:hen):
+  nykyinen 0.120, katkaisu 3400 mm 0.100, 2800 mm 0.118, **2400 mm 0.139**,
+  **2000 mm 0.301**. Juuri niillä arvoilla jotka tekisivät lyhyistä seinistä
+  näkyviä mittari eroaa GT:stä ENEMMÄN, koska sama löysäys laskee työmaatavaran
+  seinäksi — mistä `coverage.py`:n oma dokumentaatio jo varoitti. Sokeus on
+  todellinen, mutta se ei ratkea kynnystä siirtämällä.
 
 ## Tunnetut rajoitukset
 

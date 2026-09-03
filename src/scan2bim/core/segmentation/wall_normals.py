@@ -37,6 +37,7 @@ _PLANE_BAND = 45.0     # mm — kaista tason ympärillä
 _GAP_MM = 700.0        # mm — tätä pidempi aukko katkaisee segmentin
 _MIN_LEN = 900.0       # mm
 _SPAN_FRAC = 0.45      # segmentin z-välin oltava tämä osuus kaistasta
+_SPAN_CAP = 2400.0     # mm — mutta ei koskaan tätä enempää (ks. _need_span)
 _MIN_PTS = 60
 _PAIR_MIN, _PAIR_MAX = 80.0, 500.0    # mm — vastakkaisen pinnan etäisyys
 _OVERLAP_FRAC = 0.40   # osuus lyhyemmästä: näin paljon päällekkäin = sama seinä
@@ -108,6 +109,41 @@ def _directions(ang: np.ndarray) -> list[float]:
     return out
 
 
+def _need_span(z_lo: float, z_hi: float) -> float:
+    """Kuinka korkealle segmentin on yletyttävä ollakseen seinä.
+
+    Portin tehtävä on erottaa seinä hyllynreunasta ja putkesta: ilman sitä
+    tarkkuus romahtaa 0.725 → 0.318 (`data/_normals_span_rule.py`, viisi
+    Rohbau-sceneä GT:tä vasten). Portti siis tarvitaan.
+
+    Vaatimus oli aiemmin pelkkä `_SPAN_FRAC * (z_hi - z_lo)` — osuus koko
+    rakennuksen kaistasta. Se on TASO EIKÄ SUHDE samalla tavalla kuin
+    `wall_histogram`in entinen globaali piikkikynnys: 10 m runkohallissa se
+    vaatii seinältä 4.05 m korkeutta, jolloin 2–4 m väliseinä on mahdoton
+    riippumatta siitä onko se oikea seinä. Mitattuna GT-instansseista löytyi
+    2–4 m luokasta 0.19 ja 1–2 m luokasta 0.05.
+
+    Katkaisu poistaa juuri sen: vaatimus lakkaa kasvamasta katonkorkeuden
+    mukana. Matalassa tilassa `_SPAN_FRAC * kaista` on pienempi ja sääntö on
+    täsmälleen entinen — katkaisu puree vasta kun vapaa korkeus ylittää
+    ~6.5 m, joten sääntö ei voi olla missään entistä TIUKEMPI.
+
+    Mitattu viidellä Rohbau-scenellä (GT-instanssikattavuus / tarkkuus / F1):
+
+        nykyinen           0.316 / 0.725 / 0.435
+        _SPAN_FRAC 0.20    0.783 / 0.619 / 0.687
+        katkaisu 2400 mm   0.768 / 0.846 / **0.804**
+
+    Kaksi käsitteellistä vaihtoehtoa mitattiin ja kumottiin: lattiakosketus
+    ("seinä seisoo lattialla") F1 0.555 ja aspektisuhde (korkeus suhteessa
+    omaan pituuteen) F1 0.524 — kumpikin selvästi huonompi kuin katkaisu.
+
+    Korkeus millimetreinä on rakennuksen ominaisuus eikä skannin: toisin kuin
+    kielletyt pistekynnykset se ei riipu pistetiheydestä.
+    """
+    return min(_SPAN_CAP, _SPAN_FRAC * (z_hi - z_lo))
+
+
 def _segments(q: np.ndarray, sel: np.ndarray, deg: float,
               z_lo: float, z_hi: float) -> list[dict]:
     """Yhden suunnan seinätasot ja niiden pituussuuntaiset segmentit."""
@@ -121,7 +157,7 @@ def _segments(q: np.ndarray, sel: np.ndarray, deg: float,
     peaks = [i for i in range(1, len(hist) - 1)
              if hist[i] and hist[i] == hist[max(0, i - 2):i + 3].max()]
 
-    need_span = _SPAN_FRAC * (z_hi - z_lo)
+    need_span = _need_span(z_lo, z_hi)
     out: list[dict] = []
     for i in peaks:
         c = float(centers[i])
