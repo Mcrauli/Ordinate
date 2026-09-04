@@ -546,7 +546,7 @@ def _single_face_lock(wall, hist, centers, pks, normal, p0, p1, inward=None):
     return wall.model_copy(update={"axis": [
         [round(p0[0] + shift_vec[0], 2), round(p0[1] + shift_vec[1], 2)],
         [round(p1[0] + shift_vec[0], 2), round(p1[1] + shift_vec[1], 2)],
-    ]})
+    ], "measured_thickness": None})
 
 
 def _unsupported_thickness_lock(wall, hist, centers, pks, normal, p0, p1, inward):
@@ -580,6 +580,7 @@ def _unsupported_thickness_lock(wall, hist, centers, pks, normal, p0, p1, inward
             [round(p1[0] + shift_vec[0], 2), round(p1[1] + shift_vec[1], 2)],
         ],
         "thickness": _TL_ONE_SIDED_T,
+        "measured_thickness": None,
     })
 
 
@@ -671,6 +672,7 @@ def _thickness_lock_wall(wall, pts: np.ndarray, ceiling_xy: np.ndarray | None = 
                 [round(p1[0] + shift_vec[0], 2), round(p1[1] + shift_vec[1], 2)],
             ],
             "thickness": round(t_one, 1),
+            "measured_thickness": None,
         })
 
     updates: dict = {}
@@ -682,7 +684,11 @@ def _thickness_lock_wall(wall, pts: np.ndarray, ceiling_xy: np.ndarray | None = 
         ]
     if abs(t_new - wall.thickness) >= 0.2:
         updates["thickness"] = round(t_new, 1)
-    return wall.model_copy(update=updates) if updates else wall
+    # AINOA paikka jossa paksuus on oikeasti MITATTU: kaksi keilattua pintaa.
+    # Kaikki muut polut asettavat kentan None:ksi, jolloin IFC jattaa
+    # `scan2bim_Mittaus`-psetin kokonaan pois — mittausta ei vaiteta.
+    updates["measured_thickness"] = round(t_new, 1)
+    return wall.model_copy(update=updates)
 
 
 def _count_disjoint_regions(cloud, grid_mm: float = 500.0, min_area_m2: float = 4.0) -> int:
@@ -936,6 +942,14 @@ def _snap_delivery_thickness(walls, cloud) -> list:
     index = _xy_index(pts, walls, cloud)
     out = []
     for w in walls:
+        # `measured_thickness` on paksuuslukituksen paatos: se on asetettu VAIN
+        # kun kaksi keilattua pintaa on mitattu. Aiemmin tama funktio kirjoitti
+        # sen jokaiselle seinalle snappia edeltavasta arvosta, jolloin myos
+        # `_TL_ONE_SIDED_T`-vakio 200 mm paatyi IFC:hen mittauslukuna. Mitattu
+        # synteettisella myymalalla (GT tunnettu): nelja ulkoseinaa ovat 250 mm
+        # ja malli vaitti mitatusti 200/200/120/200 mm luottamuksella 1.00,
+        # kun kaikki viisi kaksipuolista sisaseinaa olivat tasmalleen oikein.
+        # Yksipuolisen seinan paksuutta ei voi mitata — vain sen PINTA on oikein.
         measured = round(w.thickness, 1)
         snapped = min(_STD_THICK, key=lambda s: abs(s - w.thickness))
         # Snap vain kun mitattu on USKOTTAVASTI standardi: 219mm betoniseinä
@@ -943,7 +957,9 @@ def _snap_delivery_thickness(walls, cloud) -> list:
         # toleranssi). Kaukana standardista mitattu arvo on toimitusarvo.
         if abs(snapped - measured) > _STD_SNAP_TOL:
             snapped = measured
-        updates = {"measured_thickness": measured, "thickness": snapped}
+        updates: dict = {"thickness": snapped}
+        if w.measured_thickness is not None:
+            updates["measured_thickness"] = measured
         delta = snapped - w.thickness
         if abs(delta) >= 0.5 and len(w.axis) >= 2 and len(pts):
             p0 = np.array(w.axis[0], float)
@@ -2035,6 +2051,22 @@ class Pipeline:
                                            keep_thickness=True)
                 model.walls = model.walls + _res
                 self._progress(f"  Jäännösseiniä lisätty: {len(_res)}")
+                # Hyllynpoisto ajettiin ENNEN tätä, joten jäännöksenä syntynyt
+                # hyllyn etupinta ei ollut koskaan sen nähtävissä. Mitattu
+                # retail_l: `wall_res_000` on 91.2 m ja sen kumppani 93.2 m
+                # 888 mm päässä peitolla 1.00 — jokainen sääntöehto täyttyy,
+                # se selviää vain järjestyksen takia. Sääntö on idempotentti
+                # (poistaa vain sen mille löytyy pidempi rinnakkainen
+                # kumppani), joten toinen ajo ei voi poistaa mitään mitä
+                # ensimmäinen olisi säästänyt.
+                _pre_res = list(model.walls)
+                model.walls = remove_shelf_front_walls(model.walls, retail=is_retail)
+                _kept_res = {w.id for w in model.walls}
+                _late = [w for w in _pre_res if w.id not in _kept_res]
+                if _late:
+                    self._shelf_fronts += _late
+                    self._progress(
+                        f"  Hyllyn etupinta-valeseiniä poistettu jäännöksestä: {len(_late)}")
         except Exception as _e:  # noqa: BLE001
             self._progress(f"  Jäännösseinähaku ohitettu: {_e}")
 

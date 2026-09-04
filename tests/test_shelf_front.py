@@ -45,3 +45,28 @@ def test_perimeter_itself_not_removed():
     kept = remove_shelf_front_walls(walls, retail=True)
     left = [w for w in kept if round(w.axis[0][0]) == 0 and round(w.axis[1][0]) == 0]
     assert left, "aito vasen perimetriseinä poistettiin"
+
+
+def test_saanto_on_idempotentti():
+    """Toinen ajo ei saa poistaa mitaan mita ensimmainen sailytti.
+
+    Putki ajaa saannon nyt KAHDESTI — kerran ennen jaannosseinahakua ja kerran
+    sen jalkeen — koska jaannoksena syntynyt hyllyn etupinta ei ollut koskaan
+    ensimmaisen ajon nahtavissa. Toinen ajo on turvallinen vain jos se on
+    idempotentti: muuten se sois mallia joka ajolla.
+    """
+    walls = _box() + [_wall(900, 5000, 900, 13000)]
+    once = remove_shelf_front_walls(walls, retail=True)
+    twice = remove_shelf_front_walls(once, retail=True)
+    assert [w.axis for w in twice] == [w.axis for w in once]
+
+
+def test_myohemmin_lisatty_hylly_poistuu_uusintaajossa():
+    """Mitattu retail_l: `wall_res_000` 91.2 m, kumppani 93.2 m 888 mm paassa,
+    peitto 1.00 — jokainen saannon ehto tayttyy, ja se selvisi VAIN siksi etta
+    se lisattiin saannon ajon jalkeen."""
+    puhdas = remove_shelf_front_walls(_box(), retail=True)
+    assert len(puhdas) == 4
+    myohemmin = puhdas + [_wall(900, 0, 900, 32000)]
+    kept = remove_shelf_front_walls(myohemmin, retail=True)
+    assert len(kept) == 4, "jaannoksena lisatty hylly jai poistamatta"

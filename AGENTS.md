@@ -447,6 +447,59 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   täsmälleen päinvastoin** — erottelua ei ole. Myös jatkuvuus kumoutui: kellarin
   ehdokaspiikeillä on kate 1.00 joka ikisellä. Paksuus on siis yhä auki, ja
   `qa/reliability.py` RAPORTOI sen (kellari −84 mm) sen sijaan että arvaisi.
+- **`measured_thickness` OLI MITTAUSVÄITE ILMAN MITTAUSTA — korjattu.**
+  Kenttä menee IFC:hen `scan2bim_Mittaus`-psetin `MitattuPaksuus_mm`:ään, eli
+  se on lupaus arkkitehdille. `_snap_delivery_thickness` kirjoitti sen
+  JOKAISELLE seinälle snappia edeltävästä paksuudesta riippumatta siitä mistä
+  paksuus oli peräisin — myös silloin kun se oli `_TL_ONE_SIDED_T`-vakio
+  200 mm eli puhdas oletus.
+  Mitattu synteettisellä myymälällä (GT tunnettu):
+  | seinä | GT | malli väitti mitatusti | confidence |
+  |---|---|---|---|
+  | ulkoseinä 72 m | 250 | 200 | 1.00 |
+  | ulkoseinä 72 m | 250 | 200 | 1.00 |
+  | ulkoseinä 48 m | 250 | **120** | 1.00 |
+  | ulkoseinä 48 m | 250 | 200 | 1.00 |
+  | 5 sisäseinää | 200/200/120/120/120 | **kaikki oikein** | 1.00 |
+  **Jokainen kaksipuolinen seinä on täsmälleen oikein, jokainen yksipuolinen
+  50–130 mm väärässä — ja kaikki väittivät luottamusta 1.00.** Kellarissa sama
+  koskee 35 perimetriseinää, jotka kaikki ilmoittivat 60 mm; koulun kellarin
+  ulkoseinä ei ole 60 mm. Yksipuolisesta seinästä on keilattu vain sisäpinta,
+  joten paksuutta EI VOI mitata — vain PINTA on oikein (fysikaalinen raja,
+  ks. alempaa).
+  Kenttä asetetaan nyt vain sillä yhdellä polulla jossa kaksi keilattua pintaa
+  mitataan; muualla se on `None`, ja `ifc/writer.py` jättää mittauspsetin
+  silloin kokonaan pois. Malli ei enää kerro paksuutta jota se ei voi tietää.
+  Matriisi: geometria bitilleen ennallaan kaikilla 12:lla.
+  **Yleistys: kenttä jonka nimessä lukee "mitattu" on sopimus. Tarkista mistä
+  polusta se todella tulee — tässä se tuli vakiosta.**
+
+- **HYLLYNPOISTO AJETTIIN ENNEN JÄÄNNÖSSEINÄHAKUA — jäännöksenä syntynyt hylly
+  oli säännön ulottumattomissa.** `remove_shelf_front_walls` ajettiin, ja vasta
+  SEN JÄLKEEN `find_residual_walls` lisäsi seiniä. Mitattu retail_l:
+  `wall_res_000` on **91.2 m**, sen kumppani `wall_053` 93.2 m 888 mm päässä
+  peitolla 1.00 — jokainen säännön ehto täyttyy, se selvisi vain järjestyksen
+  takia. Sääntö ajetaan nyt uudelleen lisäyksen jälkeen (idempotentti,
+  `tests/test_shelf_front.py`).
+  **MATRIISI SANOO HUONOMPI, GT SANOO PAREMPI — ja GT on oikeassa.**
+  | retail_l | ennen | jälkeen |
+  |---|---|---|
+  | GT-vapaa kattavuus | 0.695 | **0.624** |
+  | GT-seiniä löytyi | 7/9 | **7/9** |
+  | hyllyvaleseiniä | **2** | **1** |
+  Hyllyn etupinta ON aitoa pystypintaa, ja `wall_coverage` on puhdas recall,
+  joten mittari palkitsee valeseinästä. Tämä on ensimmäinen kerta kun matriisi
+  ja ground truth ovat eri mieltä samasta aineistosta — **kun näin käy,
+  aineiston oma GT ratkaisee ja syy kirjataan.** Perustaso päivitetty tässä
+  commitissa juuri siksi, ettei tuo −0.071 näyttäisi ikuisesti regressiolta.
+  Muut: kellari 240 → 237 seinää molemmat luvut ennallaan, apt 10 → 9
+  (poistui 1.2 m jäännöstynkä 613 mm ulkoseinän sisäpuolella, kattavuus
+  ennallaan 0.681, tarkkuus 0.636 → 0.643), muut yhdeksän +0.000.
+  **Jäljelle jää mitattu puute:** retail_l:n `wall_096` on 87.5 m hyllyseinä
+  jolla ei ole yhtään kelvollista kumppania mallissa — lähin rinnakkainen on
+  2 m tynkä peitolla 0.00 ja oikea perimetri 91 m päässä. Sitä nykyinen sääntö
+  ei voi napata millään kynnyksellä; se tarvitsee toisen todisteen.
+
 - **KUMOTTU: paksuuden huippuvalintaa ei voi parantaa — Rohbaussa valinnalla ei
   ole merkitystä eikä yksikään signaali erottele.** `_thickness_lock_wall`
   valitsee toiseksi pinnaksi toiseksi vahvimman piikin eli PISTEMÄÄRÄLLÄ, ja
