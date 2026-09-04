@@ -609,7 +609,18 @@ def _load_e57(path: Path, with_colors: bool = False) -> o3d.geometry.PointCloud:
 
 
 def scanner_origins(path: Path) -> list[np.ndarray]:
-    """E57:n skannerien origot (mm). Muut formaatit → tyhjä (ei pose-tietoa)."""
+    """E57:n skannerien origot (mm). Muut formaatit → tyhjä (ei pose-tietoa).
+
+    Yksikkö luetaan skannin PISTEISTÄ samalla säännöllä kuin itse pilvi
+    (`e57_autoscale_factor`), koska pose on määritelmän mukaan samassa
+    yksikössä kuin skannin karteesiset koordinaatit. Aiempi ehto oli origon
+    NORMI alle 200 — se mittaa rakennuksen SIJAINTIA, ei sen yksikköä.
+    Paikallisessa ruudukossa se pettää: koulun kellarin asemat ovat noin
+    (200 m, 541 m), normi 576, joten metrit jäivät skaalaamatta ja origot
+    olivat 1000× pielessä. Mitattu 37 asemalla: kertoimella 1 osui mallin
+    alueelle 0/37, kertoimella 1000 **37/37**. Sama juurisyy kuin
+    `metre_scale`:ssa — yksikkösääntö ei saa nojata rakennuksen kokoon eikä
+    sijaintiin."""
     if path.suffix.lower() != ".e57":
         return []
     try:
@@ -617,14 +628,15 @@ def scanner_origins(path: Path) -> list[np.ndarray]:
         e57 = pye57.E57(str(path))
     except Exception:
         return []
+    try:
+        scale = e57_autoscale_factor(path)
+    except Exception:  # noqa: BLE001 — pisteitä ei luettavissa → älä arvaa
+        scale = 1.0
     origins: list[np.ndarray] = []
     for i in range(e57.scan_count):
         try:
             header = e57.get_header(i)
-            t = np.asarray(header.translation, dtype=float)
-            if np.linalg.norm(t) < 200.0:   # metreissä → mm
-                t = t * 1000.0
-            origins.append(t)
+            origins.append(np.asarray(header.translation, dtype=float) * scale)
         except Exception:
             continue
     return origins

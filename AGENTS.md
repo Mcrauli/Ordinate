@@ -747,6 +747,21 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   mallinsi 250 mm rakennuksen ilman yhtään virhettä. Pisteväli erottaa yksiköt
   koosta riippumatta: mitattu Rohbau (metrit) 0.016–0.024, mm-pilvet 2–124.
   `loader.metre_scale` on ainoa paikka jossa sääntö saa olla.
+  **EIKÄ SE OLLUT AINOA — `scanner_origins` piti omaa sääntöään (4.9.2026).**
+  Se skaalasi posen metreistä millimetreiksi vain jos origon NORMI oli alle
+  200. Se ei mittaa yksikköä vaan rakennuksen SIJAINTIA: paikallisessa
+  ruudukossa kohde on satojen metrien päässä origosta. Koulun kellarin asemat
+  ovat noin (200 m, 541 m), normi 576 → skaalaus jäi tekemättä ja origot olivat
+  1000× pielessä. Mitattu 37 asemalla mallin jalanjälkeä vasten: kertoimella 1
+  osui **0/37**, kertoimella 1000 **37/37**. Pose on määritelmän mukaan samassa
+  yksikössä kuin skannin pisteet, joten kerroin luetaan niistä
+  (`e57_autoscale_factor`) — samasta paikasta kuin pilvellekin.
+  **Matriisi ei olisi löytänyt tätä koskaan:** kaikki kaksitoista aineistoa
+  ovat PLY:itä eikä PLY:ssä ole poseja, joten koko kenttä on siellä aina
+  tyhjä. Origoja käyttävät `remove_walls_beyond_scan_range` ja aukkojen
+  okkluusiotesti, eli vika oli asiakaspolulla (e57-hakemisto) jota yksikään
+  mittari ei aja. Kysy uudesta kentästä: onko sillä yhtään aineistoa jossa se
+  ei ole tyhjä?
 
 - **"Kuvaohjattu" aukkodetektio EI käytä kuvien pikseleitä.** `image_openings.py`
   päättää kokonaan pistepilven syvyyspuskurista: näkeekö skannerin säde
