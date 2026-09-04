@@ -266,12 +266,20 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   4. **Korkeusvyöhyke.** Lattiatason seinät 54/102 = 0.529, korkealla olevat
      (Facade Element / Drywall, z_min ≈ +2.2 m) 40/74 = 0.541. Sama.
   5. **Rajaus.** Puuttuvat ovat jalanjäljen SISÄLLÄ (jalanj. 1.00).
-  6. **Detektorin valintamittari.** Epäilin että pistekattavuudella valinta
-     suosii perimetriä ja hylkää väliseinät. Mitattu (`_detector_gt_ab.py`,
-     scene_07002): contour 0.227, histogram **0.409**, normals 0.227
-     instansseina — histogram voittaa MOLEMMILLA mittareilla. Valinta on oikein.
-  Jäljelle jää: yksikään kolmesta detektorista ei erottele 2–4 m väliseinää
-  tässä tilassa. Se on kyvykkyysaukko, ei viritysasia.
+  6. ~~**Detektorin valintamittari.**~~ **TÄMÄ KUMOUTUI ITSE — ks. alempaa
+     "VALINTA ON MITATUSTI VÄÄRÄ ROHBAUSSA".** Alkuperäinen mittaus
+     (`_detector_gt_ab.py`, scene_07002: contour 0.227, histogram 0.409,
+     normals 0.227) tehtiin `aa9b771`:ssä eli KOLME COMMITTIA ENNEN kuin
+     `wall_normals`in korkeusportti korjattiin (`961c453`). Normals oli
+     silloin rikki, ja rikkinäisen ehdokkaan häviö ei kerro valinnasta mitään.
+     Korjatulla normalsilla sama scene antaa 0.591 eli histogrammin 0.409
+     sijaan.
+  Jäljelle jää: **kaksi** kolmesta detektorista ei erottele 2–4 m väliseinää
+  tässä tilassa; `normals` erottelee (07002: 2–4 m 0.33 → 0.48, 1–2 m
+  0.14 → 0.71), mutta valinta ei ota sitä.
+  **OPETUS: kumottu selitys on kumottu vain sillä koodilla jolla se mitattiin.**
+  Kun jokin ehdokas korjataan, jokainen mittaus jossa se hävisi on
+  vanhentunut. Kirjaa kumoamisen yhteyteen COMMIT, ei vain päivämäärä.
 
 - **VAROITUS: Rohbau-scene EI ole kaksi kerrosta.** Seinäinstanssien alareunat
   ovat kahdessa nipussa (−2.3 m ja +2.2 m) ja se näyttää kerrosjaolta. GT sanoo
@@ -1302,6 +1310,58 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   näkyviä mittari eroaa GT:stä ENEMMÄN, koska sama löysäys laskee työmaatavaran
   seinäksi — mistä `coverage.py`:n oma dokumentaatio jo varoitti. Sokeus on
   todellinen, mutta se ei ratkea kynnystä siirtämällä.
+
+- **VALINTA ON MITATUSTI VÄÄRÄ ROHBAUSSA — mutta kolme korvaavaa mittaria on
+  kumottu, joten politiikkaa EI ole muutettu.** Kun `wall_normals`in
+  korkeusportti korjattiin (`961c453`), koko detektorivertailu piti ajaa
+  uudelleen. Viisi sceneä, kolme detektoria, koko putki, GT-instanssit
+  (`data/_detector_gt_ab.py`):
+  | scene | contour | histogram (valittu) | normals |
+  |---|---|---|---|
+  | 07000 | 0.633 | **0.673** | 0.633 |
+  | 07001 | 0.531 | 0.469 | **0.562** |
+  | 07002 | 0.227 | 0.409 | **0.591** |
+  | 07003 | 0.333 | 0.556 | **0.593** |
+  | 07004 | 0.450 | **0.550** | **0.550** |
+  | **ka.** | 0.435 | **0.531** | **0.586** |
+  Putki valitsee histogrammin joka scenessä. Täydellinen valinta antaisi
+  **0.594**, nykyinen antaa **0.531** — eli pöydällä on **+0.063** (+12 %).
+  **Miksi mittari ei näe sitä:** 07002:n valintakisassa raakaluvut 80 mm
+  koettimella ovat histogram F1 0.561 ja normals F1 0.557. Mittari asettaa ne
+  tasoihin, **väärään suuntaan 0.004:llä**, kun lopputulokset eroavat 0.182.
+  Sama sokeus kuin `_metric_blindness.py`:ssä: normalsin koko etu on lyhyissä
+  seinissä, joita mittari ei palkitse.
+  **KUMOTTU KORVAAJA 1 — `data/_wall_inst_nogt.py`.** Se oli ainoa valmis
+  ehdokas ja se testattiin nyt ensimmäistä kertaa totuutta vasten (15 mallia
+  levyllä, GT tiedossa jokaiselle): **Pearson 0.344, Spearman 0.246.** Valinta
+  sillä antaisi 0.551 eli kolmanneksen saatavilla olevasta. Syy on mitattu: se
+  rakentaa **5–10 linjaa kun GT:ssä on 27–49 instanssia**, ja suurimman voiton
+  (07002, +0.182) se menettää kokonaan koska histogram ja normals menevät
+  tasan 0.900:aan. Se lukee saman `wallish`-maskin joka on sokea korkeassa
+  hallissa — sokeus ei katoa siitä että se puetaan instansseiksi.
+  **KUMOTTU KORVAAJA 2 — mallin muotosignaalit.** Samoista 15 mallista:
+  | signaali | Pearson | Spearman | valinta → ka. GT |
+  |---|---|---|---|
+  | kokonaisseinäpituus | 0.679 | **0.786** | **0.580** |
+  | seinien lukumäärä | 0.578 | 0.679 | 0.560 |
+  | mediaanipituus | 0.037 | −0.114 | 0.514 |
+  Kokonaispituus korreloi parhaiten ja antaisi 78 % saatavilla olevasta, mutta
+  se on MÄÄRÄMITTARI eikä rankaise yhdestäkään väärästä seinästä — täsmälleen
+  se mekanismi jonka takia valinta vaihdettiin F1:ksi (`1555a6b`: löysätty
+  histogrammi kaappasi kellarin valinnan määrällä ja vei tuloksen
+  0.366 → 0.203, retail_l:n 37 → 10 seinää). Viisitoista pistettä YHDESTÄ
+  rakennuksesta ei riitä perusteeksi ottaa sitä riskiä uudelleen. Jos sitä
+  kokeillaan, tuomari on matriisi ja erityisesti kellari ja retail_l.
+  **Miksi "valitse aina normals" ei ole vastaus:** se antaisi Rohbaussa 0.586
+  eli lähes täydellisen, mutta `_prune_for_choice`in dokumentaatio kirjaa
+  mitatun vastakkaisen tuloksen liiketilassa (normals voitti raakamittauksessa
+  mutta hävisi karsinnan jälkeen: retail_s 0.724 → 0.618 ja 9 → 46 seinää,
+  retail_l 0.620 → 0.615 ja 34 → 109). Ero on aineistotyypissä, ja
+  aineistotyypin arvaaminen etukäteen on juuri se mistä `_looks_like_retail`
+  jo kärsii.
+  **Tilanne: vika on paikannettu ja mitattu, korjausta ei ole.** Älä muuta
+  valintapolitiikkaa ennen kuin jokin mittari on validoitu näitä 15 mallia
+  vasten JA matriisi on vihreä.
 
 ## Tunnetut rajoitukset
 
