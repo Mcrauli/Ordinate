@@ -178,6 +178,8 @@ Tarkkuus mitataan erillisillä QA-skripteillä — **aja tuotantomallia (`model.
 | `data/_chain_probe.py` | **Mikä ketjun vaihe kasvattaa seinät**: seinämäärän ja pituuden muutos vaiheittain koko putkiajosta |
 | `data/_snap_ablation.py` | Nurkkajatko pois → paljonko mallia jää ja mitä se maksaa kattavuudessa |
 | `data/_normals_seg_ab.py` | normals-detektorin segmentointisääntöjen A/B (pisteiden välimatka vs sarakekohtainen peitto) |
+| `data/_gt_station_pick.py` | **Mitka asemat kannattaa labeloida**: origot E57:n headerista, ahne peitto mallinnetusta seinapituudesta — kaksi vierekkaista asemaa nakee saman seinan, eika sama seina labeloituna kahdesti kerro mitaan |
+| `data/_gt_band_class.py` | **Mita mallin seinan kaistassa on** labeloidun totuuden mukaan, vyotarolta mitattuna. `_evidence_gt.py`:n vastine osittain labeloidulle aineistolle: labeloimaton piste ei ole todiste kumpaankaan suuntaan eika ole nimittajassa |
 | `data/_gt_export.py`, `data/_gt_import.py` | **Ground truth ilman valmista GT:tä**: vie asema CloudCompareen labeloitavaksi ja lue luokkatiedostot takaisin Rohbau-muotoon (`coord.npy` + `class.npy`), jolloin kaikki GT-mittarit toimivat asiakaskohteella |
 | `data/_cov_check.py`, `data/_support_verify.py` | Pintatuki mille tahansa mallille (väärät hälytykset) / tuotantototeutus vs. koetin samoilla luvuilla |
 
