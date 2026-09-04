@@ -434,6 +434,40 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   täsmälleen päinvastoin** — erottelua ei ole. Myös jatkuvuus kumoutui: kellarin
   ehdokaspiikeillä on kate 1.00 joka ikisellä. Paksuus on siis yhä auki, ja
   `qa/reliability.py` RAPORTOI sen (kellari −84 mm) sen sijaan että arvaisi.
+- **KUMOTTU: paksuuden huippuvalintaa ei voi parantaa — Rohbaussa valinnalla ei
+  ole merkitystä eikä yksikään signaali erottele.** `_thickness_lock_wall`
+  valitsee toiseksi pinnaksi toiseksi vahvimman piikin eli PISTEMÄÄRÄLLÄ, ja
+  kellarissa se on mitatusti väärin (−84 mm, 30/57 seinää yli 100 mm
+  alakanttiin). Kaksi korjausta oli jo kumottu (vastakkainen puoli, jatkuvuus);
+  kolmas yritys oli tasomaisuus, joka on ainoa yhdeksän aineiston yli kestänyt
+  erottelija. Mitattu (`data/_thick_peak_sweep.py`, 180 ehdokaspiikkiä viidestä
+  scenestä, GT-luokka piikin pisteiden enemmistöstä, 38 % aitoa pintaa):
+  | signaali | AUC | seinän sisällä osuu aitoon |
+  |---|---|---|
+  | pistemäärä `n` | **0.825** | 0.786 |
+  | tiheys (n / pituus) | 0.760 | 0.786 |
+  | sarakemediaanien aalto | 0.707 | 0.786 |
+  | **piikin korkeus (NYKYINEN)** | 0.588 | **0.714** |
+  | pystyulottuvuus `zkate` | 0.547 | 0.786 |
+  | terävyys, kate, leveys, etäisyys | 0.52–0.55 | 0.57–0.79 |
+  | **sattuma** | 0.500 | **0.751** |
+  **Kaksi opetusta:**
+  1. *Globaali AUC mittasi väärää asiaa.* `n` erottelee 0.825:llä, mutta se on
+     SEINIEN VÄLINEN ilmiö — pitkällä hyvin keilatulla seinällä on paljon
+     pisteitä. Valinta tapahtuu seinän SISÄLLÄ, ja siellä sekin on 0.786 eli
+     sattuman (0.751) tasolla. **Kun signaalia arvioidaan, ryhmittele
+     täsmälleen sen päätöksen mukaan jonka se tekee.**
+  2. *Koko kysymys on Rohbaussa lähes tyhjä.* Vain **14 seinää** viidestä
+     scenestä on sellaisia joilla on enemmän kuin yksi kelvollinen ehdokas ja
+     ainakin yksi aito pinta. Yhden seinän ero neljästätoista ei ole tulos.
+  Väärien ehdokkaiden GT-luokat: None 47, Beam 41, Column 14, ovenkarmi 9 —
+  palkin kylkipinta on toiseksi suurin saastuttaja, mutta pystyulottuvuus EI
+  erota sitä seinäpinnasta (0.89 vs 0.88), koska palkin kylki näkyy koko
+  mittauskaistan korkeudelta hajapisteinä.
+  **Paksuus jää auki kellarissa eikä sitä voi validoida siellä** — `qa/
+  reliability.py` RAPORTOI virheen (−84 mm) sen sijaan että arvaisi. Ennen kuin
+  tähän palataan, kellari tarvitsee GT:n (`data/_gt_station_pick.py`).
+
 - **PUTKI EI TIENNYT OLEVANSA EKSYKSISSÄ — nyt se kertoo sen.**
   Kellari tuotti 427 seinää joista valtaosa oli valeseiniä, eikä yksikään putken
   oma luku varoittanut: `confidence` on kokoproxy, `support` ja `continuity`
