@@ -714,7 +714,7 @@ _ENVELOPE_DILATE_CELLS = 0       # detektio rajataan katetun alueen sisään; ul
 _ENVELOPE_MIN_REMOVE_FRAC = 0.10  # rajaa vain jos poisto ≥ tämä (= selvästi ulkodataa; suojaa avointa runkoa)
 
 
-_CHOICE_MARGIN = 3.0   # uuden menetelmän oltava näin monta kertaa parempi
+_CHOICE_MARGIN = 1.5   # uuden menetelmän F1:n oltava näin monta kertaa parempi (ks. _best_detector)
 _CHOICE_VOXEL = 80.0        # mm — valinnan harvennus (järjestys säilyy, ks. _best_detector)
 _CHOICE_MAX_POINTS = 2_000_000   # tätä pienempi pilvi ajetaan sellaisenaan
 _MARGIN_ONLY = frozenset({"normals"})   # vain nämä joutuvat marginaalin taakse
@@ -1558,6 +1558,19 @@ class Pipeline:
         ground truthia. Valittu on siis määritelmän mukaan vähintään yhtä
         hyvä kuin mikä tahansa ehdokas erikseen. Tasapelin ratkaisee
         järjestys, jotta ajo pysyy deterministisenä.
+
+        Voittaja poimitaan F1:llä. 1555a6b vaihtoi mittarin F1:een mutta jätti
+        tämän rivin kattavuuteen, joten F1 päätyi vain marginaaliportin
+        vertailuluvuksi — ja siellä sitä verrattiin ehdokkaan KATTAVUUTEEN.
+        Eri yksikkö: normals pääsi portista helpommin kuin oli tarkoitus.
+
+        Marginaali oli 3.0 sekayksiköllä eikä siirry sellaisenaan. Kahdeksan
+        mitatun aineiston valintakisat toistettiin lokeista
+        (`data/_choice_rule_replay.py`): F1-vertailu antaa saman voittajan
+        joka aineistossa kun marginaali on välillä 1.193…1.848 (alaraja
+        retail_s, yläraja kellari). 3.0 veisi kellarin normalsilta
+        contourille ja lopputuloksen 0.366 → 0.046-luokkaan. 1.5 on välin
+        keskeltä.
         """
         from scan2bim.core.qa.coverage import (  # noqa: PLC0415
             detector_score, wall_scores,
@@ -1567,7 +1580,7 @@ class Pipeline:
 
         best_model = None
         best_name = names[0]
-        best_cov = -1.0
+        best_f1 = -1.0
         scores: dict[str, float] = {}
         models_by_name: dict = {}
         pts = np.asarray(cloud.points)
@@ -1626,8 +1639,8 @@ class Pipeline:
                            f"(kattavuus {cov:.3f}, tarkkuus {pre:.3f}, "
                            f"{len(candidate.walls)} seinää)")
             scores[name] = f1
-            if cov > best_cov:
-                best_model, best_name, best_cov = candidate, name, cov
+            if f1 > best_f1:
+                best_model, best_name, best_f1 = candidate, name, f1
 
         # Valinta on EPÄTARKKA: se mittaa keskeneräistä mallia. Contour saa
         # suurimman osansa vasta pintalukituksessa ketjun lopussa — mitattu
@@ -1645,14 +1658,14 @@ class Pipeline:
         settled = {n: c for n, c in scores.items() if n not in _MARGIN_ONLY}
         if settled:
             ref_name = max(settled, key=lambda n: settled[n])
-            ref_cov = settled[ref_name]
-            if best_name in _MARGIN_ONLY and best_cov < _CHOICE_MARGIN * ref_cov:
+            ref_f1 = settled[ref_name]
+            if best_name in _MARGIN_ONLY and best_f1 < _CHOICE_MARGIN * ref_f1:
                 self._progress(
-                    f"  {best_name} johtaa ({best_cov:.3f} vs {ref_cov:.3f}) mutta ero on "
-                    f"alle {_CHOICE_MARGIN:.0f}× → pidetään {ref_name}")
+                    f"  {best_name} johtaa ({best_f1:.3f} vs {ref_f1:.3f}) mutta ero on "
+                    f"alle {_CHOICE_MARGIN:.2f}× → pidetään {ref_name}")
                 best_model = models_by_name[ref_name]
-                best_name, best_cov = ref_name, ref_cov
-        self._progress(f"  valittu {best_name} (F1 {best_cov:.3f})")
+                best_name, best_f1 = ref_name, ref_f1
+        self._progress(f"  valittu {best_name} (F1 {best_f1:.3f})")
         if probe is not cloud:
             # Voittaja ajetaan uudelleen TÄYDELLÄ pilvellä: harvennettu tulos
             # kelpaa järjestykseen muttei malliksi.
