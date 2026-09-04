@@ -15,6 +15,13 @@ Tiedostonimi -> luokka:
   wall 5 | drywall 6 | floor 4 | ceiling 1 | beam 9 | column 10
   pipe/tga 17 | door 14 | window 13 | other/none 0
 
+YKSIKKO: labelointi voi tulla joko putken viemasta pilvesta (mm) tai suoraan
+CloudComparessa avatusta E57:sta (metrit) — kumpikin nayttaa CC:ssa
+identtiselta. Ilman muunnosta metreissa labeloitu GT on 1000x pielessa ja
+jokainen mittari palauttaa nollan ILMAN virheilmoitusta. Yksikko luetaan
+`loader.metre_scale`:lla, samasta paikasta kuin pilvelle — sama juurisyy kuin
+`scanner_origins`issa, jossa oma erillinen sääntö oli vaarassa.
+
 Kaytto: _gt_import.py <hakemisto>
 """
 from __future__ import annotations
@@ -23,6 +30,9 @@ import sys
 from pathlib import Path
 
 import numpy as np
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+from scan2bim.core.geometry.loader import metre_scale  # noqa: E402
 
 _CLASS = {
     "wall": 5, "drywall": 6, "floor": 4, "ceiling": 1, "beam": 9,
@@ -50,9 +60,21 @@ def main(folder: str) -> None:
         raise SystemExit("ei luokkatiedostoja — nimea ne wall.ply, floor.ply, ...")
     P = np.vstack(coords)
     C = np.concatenate(classes)
+    scale = metre_scale(P)
+    if scale != 1.0:
+        print(f"pilvi on METREISSA -> skaalataan x{scale:.0f} millimetreiksi")
+        P = P * scale
     np.save(d / "coord.npy", P.astype(np.float32))
     np.save(d / "class.npy", C)
     print(f"yhteensa {len(P):,} pistetta -> {d/'coord.npy'}, {d/'class.npy'}")
+    lo, hi = P.min(axis=0), P.max(axis=0)
+    print(f"laajuus {(hi[0]-lo[0])/1000:.1f} x {(hi[1]-lo[1])/1000:.1f} x "
+          f"{(hi[2]-lo[2])/1000:.1f} m")
+    print(f"sijainti x {lo[0]/1000:.0f}..{hi[0]/1000:.0f} m, "
+          f"y {lo[1]/1000:.0f}..{hi[1]/1000:.0f} m  "
+          f"— TARKISTA etta tama osuu mallin alueelle; CloudCompare voi "
+          f"tarjota koordinaattien siirtoa (global shift) latauksessa ja "
+          f"tallennuksessa, ja siirretty GT ei osu mihinkaan.")
 
 
 if __name__ == "__main__":
