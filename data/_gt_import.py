@@ -11,6 +11,12 @@ Numerointi on Rohbaun rekisteri (ks. `_rohbau_qa._REG`):
 kevytrakenteinen valiseina kannattaa merkita drywall.ply:ksi ja betoniseina
 wall.ply:ksi — tai kaikki wall.ply:ksi jos ero ei kiinnosta.
 
+MUOTO: .ply tai CloudComparen oma .bin. CC:n Save As tarjoaa joissakin
+tiloissa vain BIN:n, ja luokkatiedoston muoto on tyokalun asia eika kayttajan
+— .bin kaannetaan lennossa CloudComparen omalla komentorivilla
+(`CloudCompare -SILENT -O ... -SAVE_CLOUDS`), joka sailyttaa absoluuttiset
+koordinaatit. Polun voi antaa ymparistomuuttujalla CLOUDCOMPARE_EXE.
+
 Tiedostonimi -> luokka:
   wall 5 | drywall 6 | floor 4 | ceiling 1 | beam 9 | column 10
   pipe/tga 17 | door 14 | window 13 | other/none 0
@@ -29,6 +35,11 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import os
+import shutil
+import subprocess
+import tempfile
+
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
@@ -41,16 +52,54 @@ _CLASS = {
 }
 
 
-def main(folder: str) -> None:
+_CC_PATHS = (
+    r"C:\Program Files\CloudCompare\CloudCompare.exe",
+    r"C:\Program Files (x86)\CloudCompare\CloudCompare.exe",
+)
+
+
+def _cloudcompare() -> str | None:
+    exe = os.environ.get("CLOUDCOMPARE_EXE")
+    if exe and Path(exe).exists():
+        return exe
+    for c in _CC_PATHS:
+        if Path(c).exists():
+            return c
+    return shutil.which("CloudCompare")
+
+
+def _points(f: Path) -> np.ndarray:
+    """Pisteet .ply:sta tai CC:n .bin:sta (kaannetaan CC:n komentorivilla)."""
     import open3d as o3d
+    if f.suffix.lower() != ".bin":
+        return np.asarray(o3d.io.read_point_cloud(str(f)).points)
+    exe = _cloudcompare()
+    if exe is None:
+        raise SystemExit(
+            f"{f.name} on CloudComparen BIN eika CloudComparea loytynyt. "
+            "Aseta CLOUDCOMPARE_EXE tai tallenna PLY-muodossa.")
+    tmp = Path(tempfile.mkdtemp()) / f"{f.stem}.ply"
+    r = subprocess.run(
+        [exe, "-SILENT", "-O", str(f), "-C_EXPORT_FMT", "PLY",
+         "-PLY_EXPORT_FMT", "BINARY_LE", "-NO_TIMESTAMP",
+         "-SAVE_CLOUDS", "FILE", str(tmp)],
+        capture_output=True, text=True, encoding="utf-8", errors="replace")
+    if not tmp.exists():
+        raise SystemExit(
+            f"{f.name}: BIN-kaannos epaonnistui\n{r.stdout[-800:]}")
+    return np.asarray(o3d.io.read_point_cloud(str(tmp)).points)
+
+
+def main(folder: str) -> None:
     d = Path(folder)
     coords, classes = [], []
-    for f in sorted(d.glob("*.ply")):
-        name = f.stem.lower().split("_")[0]
+    files = sorted(list(d.glob("*.ply")) + list(d.glob("*.bin")))
+    for f in files:
+        name = f.stem.lower().split("_")[0].split(" ")[0]
         if name not in _CLASS:
             print(f"  ohitettu {f.name} (tuntematon luokka)")
             continue
-        pts = np.asarray(o3d.io.read_point_cloud(str(f)).points)
+        pts = _points(f)
         if not len(pts):
             continue
         coords.append(pts)
