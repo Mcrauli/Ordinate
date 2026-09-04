@@ -210,6 +210,19 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
 
 ## Kovalla työllä opitut asiat — ÄLÄ keksi uudelleen
 
+- **ÄLÄ KOSKE `src/`:ään KUN MATRIISI AJAA — se ei kaadu, se valehtelee.**
+  `data/_matrix.py` käynnistää jokaiselle aineistolle oman prosessin, joten
+  kesken ajon tehty lähdemuutos tulee voimaan seuraavasta aineistosta alkaen.
+  Tulos näyttää täysin normaalilta taulukolta, mutta sen rivit on ajettu
+  KAHDELLA eri koodilla eikä mikään kentässä kerro sitä. Tein tämän 4.9.2026
+  kahdesti saman päivän aikana (kerran detektorivertailulle, kerran
+  matriisille) ja jouduin heittämään molemmat ajot pois. Sama koskee jokaista
+  monen prosessin mittausskriptiä (`_rohbau_all.py`, `_detector_gt_ab.py`,
+  `_qa_all.py`). **Sääntö: kun pitkä mittaus on käynnissä, muokkaa vain
+  `AGENTS.md`:tä ja `data/`:n koettimia joita se ajo ei käytä — tai pysäytä
+  ajo.** Sama laji kuin `.pyc`-ansa ja `pip install onnx`: mittaus ei ole
+  pätevä jos ympäristö muuttui mittausten välissä.
+
 - **KEHITYSTYÖKALUN ASENNUS VOI RIKKOA MITTAUKSEN — AJA TESTIT HETI PERÄÄN.**
   `pip install onnx` (kertaluontoiseen kvantisointikokeeseen) veti mukanaan
   `ml-dtypes`:n, joka päivitti **numpyn 1.26 → 2.5**, ja `ndarray.ptp()`
