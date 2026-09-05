@@ -1463,6 +1463,58 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   valintapolitiikkaa ennen kuin jokin mittari on validoitu näitä 15 mallia
   vasten JA matriisi on vihreä.
 
+- **SEINAVAJEEN KARTTA — mihin ne 34 puuttuvaa instanssia oikeasti menevat
+  (5.9.2026).** Aiemmin oli tiedossa vain kokonaisluku. `data/_missing_who_finds.py`
+  jakaa sen ajamalla jokaisen puuttuvan GT-instanssin kaikkia kolmea
+  detektorimallia vasten (ne ovat levylla `_detector_gt_ab.py`:n ajoista, joten
+  mitaan ei tarvitse ajaa uudelleen). 118 instanssia mallin jalanjaljen sisalla:
+  | | kpl | osuus | |
+  |---|---|---|---|
+  | tuotanto löytää | 84 | 0.712 | |
+  | jokin TOINEN detektori löytää | 11 | 0.093 | valinta/sulautus |
+  | tasomainen ≥2 m, ei kukaan | **8** | 0.068 | **aito kyvykkyysvaje** |
+  | alle 2 m | 2 | 0.017 | `_MIN_WALL_LENGTH` sulkee tarkoituksella |
+  | Facade Element, EI TASOMAINEN | **13** | 0.110 | ei mallinnettavissa seinänä |
+  **Realistinen katto on 0.873, ei 1.000.**
+  **Julkisivuelementti ei ole seinäpinta — mitattu.** Sovita jokaiselle
+  instanssille taso ja katso jäännös: Wall 1.7–6.5 mm, Drywall 16–36 mm,
+  **Facade 75–133 mm**. Kallistus ei selitä sitä (mediaani 1.8°). Ne ovat
+  runkovaiheen karkeita koosteita — paneeli kiinnikkeineen ja muotteineen — ja
+  hajoavat ±100 mm minkä tahansa tason ympärille. Seuraukset ovat mitattuja:
+  yksikään 30 mm pikseli ei kerää pystyjaksoa (`_vertical_mask` pisin jakso
+  mediaani **1.0** kun löytyneillä 5–11, tarve 7–10), kohtisuora leveys
+  mittautuu 400–650 mm:ksi, ja `flatness_prune` (kynnys 20 mm) hylkäisi ne
+  vaikka detektori löytäisi. **Kynnyksen löysääminen EI auta: mitattu myös
+  1 pisteellä per solu ja 300/450 mm viipaleilla, pisin jakso pysyy 1.0.**
+  Ennen kuin julkisivuelementteihin käyttää aikaa, päätä kuuluvatko ne
+  malliin lainkaan — `_rohbau_qa` laskee ne seinäluokkaan, mikä painaa
+  kattavuutta 0.110 vaikka mikään ei olisi rikki.
+  **Kumottu matkalla, mitattuna:** (1) pystyvyöhyke — ylävyöhykkeen seinät
+  löytyvät lähes yhtä hyvin kuin lattialla seisovat (41/76 = 0.539 vs
+  59/100 = 0.590, ja 07003 menee päinvastoin), `data/_band_inst_probe.py`;
+  (2) `_crop_to_building_envelope` — no-op Rohbaussa, ei poista mitään;
+  (3) semanttinen suodatin — keep 92–99 % ja PointNet luokittelee ne seiniksi
+  (wall 71–99 %). Kaikki kolme ovat uskottavia selityksiä jotka mittaus kaataa.
+  **Jäljelle jäävä aito kohde on kahdeksan tasomaista 2.3–3.3 m seinää**
+  (07001 inst 8; 07002 inst 6, 83, 84, 91, 95; 07004 inst 43, 44) — ja kuusi
+  kahdeksasta on scene_07002:ssa.
+
+- **KUMOTTU: detektorien unioni.** Kysymys oli hyvä — putki ajaa jo kaikki
+  kolme ehdokasta valintaa varten ja heittaa kaksi pois, ja valinta on
+  mitatusti väärä. Mitattu (`data/_detector_union_ab.py`):
+  | | Rohbau GTinst ka. | liiketila |
+  |---|---|---|
+  | nykyinen valinta | 0.531 | retail_s 9/9 GT-seinää, **0 ylimääräistä** |
+  | unioni (kaikki kolme) | **0.588** | retail_s 9/9, **30 ylimääräistä**, 5 hyllyfronttia |
+  | unioni (contour+histogram) | 0.000…−0.037 | – |
+  Koko voitto tulee `normals`ista, ja juuri se tulvii liiketilan (22 seinää
+  joita ketju ei tuomitse). Kapea muoto ei tuo mitään, koska contour tuottaa
+  Rohbaussa **yhden** seinän (07004:ssä nolla) — contour+histogram ≈ histogram.
+  **Ja unioni EI OLE MONOTONINEN:** scene_07003:ssa se lunastaa GT-instanssista
+  36 vain 0.272 kun contour yksin lunastaa **0.677** — ketjun dedup ja sulautus
+  voivat tuhota hyvän seinän kun kilpaileva huonompi on olemassa. Unioni ei siis
+  ole yliote eikä sen tulosta voi päätellä ehdokkaiden tuloksista.
+
 ## Tunnetut rajoitukset
 
 - **KORJAUS EDELLISEEN: instanssikattavuus 0.30–0.49 EI TARKOITA että puolet
