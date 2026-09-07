@@ -285,16 +285,24 @@ def build_store(P: Parts, sx: float, sy: float, h: float, rng) -> dict:
                   "column", inst, top=False)
             gt["columns"].append([float(cx), float(cy)])
 
+    # Palkki on jannevali pilarilta pilarille, ei yksi rakennuksen mittainen
+    # kappale: yhtena instanssina kirjattu 60 m palkki nayttaa mallin
+    # pirstoutuvan 11.5-kertaisesti, vaikka putki katkaisee sen pilarien
+    # kohdalta oikein (Rohbaussa sama luku on 1.4-1.6).
     bw, bd = 400.0, 700.0
     zb = h - bd
+    col_x = list(np.arange(8000.0, sx - 3000.0, 8000.0))
+    spans = list(zip([0.0] + col_x, col_x + [sx]))
     for cy in np.arange(8000.0, sy - 3000.0, 8000.0):
-        inst = P.new_inst()
-        for sgn in (+1, -1):
-            P.face((0, cy + sgn * bw / 2), (sx, cy + sgn * bw / 2), zb, h - 20.0,
-                   "beam", inst, side=sgn)
-        P.slab(0, sx, cy - bw / 2, cy + bw / 2, zb, "beam", inst, up=False)
-        gt["beams"].append({"axis": [[0.0, float(cy)], [float(sx), float(cy)]],
-                            "width": bw, "soffit_z": float(zb), "depth": bd})
+        for sx0, sx1 in spans:
+            inst = P.new_inst()
+            for sgn in (+1, -1):
+                P.face((sx0, cy + sgn * bw / 2), (sx1, cy + sgn * bw / 2), zb,
+                       h - 20.0, "beam", inst, side=sgn)
+            P.slab(sx0, sx1, cy - bw / 2, cy + bw / 2, zb, "beam", inst, up=False)
+            gt["beams"].append({"axis": [[float(sx0), float(cy)],
+                                         [float(sx1), float(cy)]],
+                                "width": bw, "soffit_z": float(zb), "depth": bd})
 
     dw, dh = 600.0, 400.0
     for cy in np.arange(4000.0, sy - 2000.0, 8000.0):

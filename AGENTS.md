@@ -594,6 +594,38 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   keilain näkee nimenomaan sen. **Kysy jokaisesta generaattorin pinnasta:
   näkyykö se sieltä mistä sitä katsotaan?**
 
+- **KEILATUN MYYMÄLÄN ENSIMMÄINEN TUOMIO (7.9.2026) — ja se siirsi kohteen.**
+  `data/_store_m` (60×40 m, 31.8 M pistettä, 36 asemaa) putken läpi:
+  | | tulos |
+  |---|---|
+  | seinät | **10/10 GT-instanssia**, pistekattavuus 0.972 |
+  | pilarit | 25/28 = 0.893 (kaksi jäi 2–3 k pisteen katveeseen) |
+  | palkit | **31/32 = 0.969**, leveys 434–498 mm (GT 400), syvyys 687–691 (GT 700) |
+  | seiniä yhteensä | **43** kymmenelle GT-seinälle |
+  Rakenne menee siis oikein; hinta on 33 valeseinää. **Ja niiden lähde on eri
+  kuin okkluusioton aineisto antaa olettaa:** vain **2** istuu
+  hyllynetupinnalla, loput **31 ovat 1.0–2.9 m tynkiä lavahyllyjen ja
+  gondolien PÄÄDYISSÄ** (kaistassa 100 % kalustepisteitä). retail_l:n
+  perusteella koko liiketilaongelma näytti olevan hyllyn etupinta; keilatussa
+  aineistossa se on kalusteen pääty.
+  **KUMOTTU HETI: reunahajonta ei kelpaa yleiseksi portiksi.** Signaali näyttää
+  vahvalta täällä (aidot 73 mm, valeet 1166 mm, AUC 0.86) ja se on jo
+  olemassa `second_face._COHERENT`-porttina katvepintahaun sisällä. Mitattuna
+  Rohbaussa (`data/_stub_probe.py`, kolme sceneä GT:tä vasten) se on
+  **sattuman tasolla: AUC 0.44–0.55**, ja siellä AITOJEN seinien hajonta on
+  495–517 mm eli seitsenkertainen tämän aineiston aitoihin. Yleinen kynnys
+  poistaisi Rohbaun aidot seinät. Sama laji kuin kaikki aiemmin kaatuneet
+  erottelijat: se mittaa TASOA, ja taso riippuu keilausgeometriasta eikä
+  siitä onko kohde seinä. Muut mitatut: `htop` AUC 0.22–0.80, `hspan`
+  0.61–0.93, runkopisteiden osuus 0.43–0.51 — yksikään ei siirry.
+  **Kalustetyngille ei siis ole erottelijaa. Se on nyt mitattu, ei arvattu.**
+  **OMA GT OLI VÄÄRÄ, EI PUTKI.** Ensimmäinen ajo näytti palkkien
+  pirstoutuvan **11.5-kertaisesti** (46 mallin palkkia neljälle GT-palkille).
+  Syy oli generaattorissa: se kirjasi yhden 60 m palkin, vaikka palkki on
+  jänneväli pilarilta pilarille. Jännevälikohtaisella GT:llä sama malli antaa
+  **1.48** — sama kuin Rohbau (1.36–1.60). **Kun uusi aineisto näyttää ison
+  poikkeaman, epäile ensin aineiston omaa totuutta.**
+
 - **KUMOTTU: paksuuden huippuvalintaa ei voi parantaa — Rohbaussa valinnalla ei
   ole merkitystä eikä yksikään signaali erottele.** `_thickness_lock_wall`
   valitsee toiseksi pinnaksi toiseksi vahvimman piikin eli PISTEMÄÄRÄLLÄ, ja
