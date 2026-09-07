@@ -1960,7 +1960,8 @@ class Pipeline:
         # vielä. Tehdään ennen huone/aukko-detektiota jotta ne käyttävät puhdasta joukkoa.
         from scan2bim.core.semantics.wall_semantics import bridge_lintel_gaps, merge_collinear_walls
         if _use_corners:
-            model.walls = merge_collinear_walls(model.walls)   # yhdistä sama seinä jaettuna
+            model.walls = merge_collinear_walls(
+                model.walls, np.asarray(lock_cloud.points))   # yhdistä sama seinä jaettuna
         model.walls = _deduplicate(model.walls)
         # Silloita oviaukkojen katkaisemat seinät (railo + ylitysevidenssi) —
         # ovi kollineaaristen pätkien VÄLISSÄ ei muuten löydy koskaan.

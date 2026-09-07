@@ -56,6 +56,9 @@ def filter_structural_walls(walls: list[Wall], slabs: list[Slab]) -> list[Wall]:
 _COLIN_ANGLE_DEG = 8.0     # ° — collinear-yhdistyksen kulmatoleranssi
 _COLIN_PERP_MM = 130.0     # mm — saman linjan kohtisuora toleranssi
 _COLIN_GAP_MM = 450.0      # mm — vierekkäisten päiden max väli (pieni: ei yhdistä eri seiniä)
+_COLIN_GAP_EVID_MM = 800.0  # mm — TÄMÄ raja on ovi, ei viritys: kapein oviaukko on
+                            # 800 mm, joten sitä kapeampi railo jonka kohdalla ON
+                            # seinäpintaa ei voi olla aukko. Ks. merge_collinear_walls.
 _COLIN_PERIM_ANGLE_DEG = 5.0   # ° — perimetrijatke: mitatun linjan adoptio kiertää
                                # kauimman pään; pitkällä jatkeella iso kulma heittäisi
 _COLIN_PERIM_PERP_MM = 220.0   # mm — perimetriakselin tunnettu bias: kontuurigrid
@@ -63,7 +66,46 @@ _COLIN_PERIM_PERP_MM = 220.0   # mm — perimetriakselin tunnettu bias: kontuuri
                                # (~100mm) → sama fyysinen seinä voi olla ~175mm sivussa
 
 
-def merge_collinear_walls(walls: list[Wall]) -> list[Wall]:
+def _gap_has_wall_surface(p0, d, n, lo: float, hi: float, w: Wall,
+                          pts: np.ndarray) -> bool:
+    """Onko kollineaaristen pätkien VÄLISSÄ seinäpintaa koko railon matkalta?
+
+    Mitattu retail_l:stä: malli antaa 36 seinäobjektia yhdeksälle GT-seinälle, ja
+    27/29 "ylimääräisestä" on 0–225 mm päässä GT-linjasta kulmaerolla 0.00°.
+    Palasten välissä on 21 railoa joista 18 on TÄSMÄLLEEN 660 mm, ja jokaisessa
+    on seinäpinta (peitto 1.00–1.20, ~1300–2700 pistettä). Lähin pilari 11–35 m,
+    lähin GT-ovi 4.6 m — mikään fysikaalinen ei katkaise seinää siinä.
+
+    Railo putosi kahden säännön VÄLIIN: `merge_collinear_walls` vaatii railolta
+    ≤450 mm ja `bridge_lintel_gaps` kohtisuoralta ≤25 mm, kun näillä pareilla
+    railo on 660 mm ja kohtisuora 27–118 mm.
+
+    Mitataan VYÖTÄRÖLTÄ (30–70 %) samoin kuin tuki ja jatkuvuus: koko
+    korkeudelta lattia ja katto täyttäisivät jokaisen railon."""
+    if pts is None or len(pts) == 0:
+        return False
+    h = float(w.height or 0.0)
+    if h <= 0.0:
+        return False
+    z0 = float(w.z_min or 0.0)
+    half = 0.5 * float(w.thickness or 200.0) + _BRIDGE_PERP
+    rel = pts[:, :2] - p0
+    t = rel @ d
+    off = np.abs(rel @ n)
+    z = pts[:, 2]
+    m = ((t >= lo) & (t <= hi) & (off <= half)
+         & (z > z0 + 0.30 * h) & (z < z0 + 0.70 * h))
+    if int(m.sum()) < 40:
+        return False
+    nb = max(2, int(round((hi - lo) / _BRIDGE_BIN)))
+    cols = np.clip(((t[m] - lo) / _BRIDGE_BIN).astype(np.int64), 0, nb - 1)
+    return len(np.unique(cols)) >= _COLIN_EVID_FRAC * nb
+
+
+_COLIN_EVID_FRAC = 0.9      # railon sarakkeista tämän osuuden oltava katettu
+
+
+def merge_collinear_walls(walls: list[Wall], pts: np.ndarray | None = None) -> list[Wall]:
     """Yhdistä collinear vierekkäiset seinät yhdeksi (sama fyysinen seinä jaettuna).
 
     Kontuuridetektori jakaa pitkän seinän joskus kahteen pätkään eri paksuudella
@@ -123,7 +165,13 @@ def merge_collinear_walls(walls: list[Wall]) -> list[Wall]:
                 ta0, ta1 = sorted(ts[:2]); tb0, tb1 = sorted(ts[2:])
                 gap = max(ta0, tb0) - min(ta1, tb1)  # >0: väli, <0: overlap
                 if gap > _COLIN_GAP_MM:
-                    continue
+                    # Railo saa olla pidempi jos siinä ON seinäpintaa — mutta vain
+                    # ovea kapeampi, jottei suljettu ovilehti (joka täyttää railon
+                    # pinnalla) sulauta seinää aukon yli.
+                    if not (pts is not None and gap <= _COLIN_GAP_EVID_MM
+                            and _gap_has_wall_surface(
+                                p0a, da, na, min(ta1, tb1), max(ta0, tb0), a, pts)):
+                        continue
                 # yhdistä: span min..max a:n suunnassa, paksuus = ohuempi
                 lo = min(ta0, tb0); hi = max(ta1, tb1)
                 s = p0a + lo * da; e = p0a + hi * da

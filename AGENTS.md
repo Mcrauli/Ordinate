@@ -340,6 +340,40 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   Malli ei ole pirstoutunut — tila on sellainen. Älä yritä "korjata"
   fragmentaatiota jota ei ole.
 
+- **KOLLINEAARINEN SULAUTUS JA LINTTELISILTA JÄTTIVÄT VÄLIIN KUOLLEEN VYÖHYKKEEN
+  — 660 mm railo jossa ON seinäpintaa (7.9.2026).** retail_l toimitti **36
+  seinäoliota 9 GT-seinälle**. 27/29 "ylimääräisestä" on 0–225 mm päässä
+  GT-linjasta kulmalla 0.00°, eli ne ovat saman seinän paloja. Railoista
+  **18 on täsmälleen 660 mm** ja jokainen on täynnä seinäpintaa
+  (~1300–2700 pistettä); lähin pilari 11–35 m, lähin GT-ovi 4.6 m.
+  Juurisyy on kahden säännön väliin jäävä aukko: `merge_collinear_walls`
+  hyväksyy railon ≤450 mm ja `bridge_lintel_gaps` 300–2200 mm mutta vain
+  ≤25 mm kohtisuoralla erolla — 660 mm railo 130 mm sivussa ei kuulu
+  kummallekaan. 23 paria oli kiinni **pelkästään railon pituudesta**.
+  Korjaus on todistepohjainen eikä kynnyksen nosto: railo saa olla pidempi
+  vain jos sen kohdalla ON seinäpintaa (vyötärökaista 30–70 %, sarakepeitto
+  ≥0.9), ja katto on **800 mm = kapein oviaukko**. Raja on fysikaalinen: sitä
+  kapeampi railo jonka kohdalla on pintaa ei voi olla aukko, ja suljettu
+  ovilehti (joka täyttäisi railon pinnalla) ei mahdu alle sen.
+  | retail_l | ennen | jälkeen |
+  |---|---|---|
+  | seinäolioita | 36 | **13** |
+  | GT-seiniä löytyi | 7/9 | **9/9** |
+  | ylimääräisiä | 29 | **4** |
+  | hyllyvaleseinät | 0 | 0 |
+  | GT-vapaa kattavuus | 0.624 | 0.606 |
+  **Matriisi sanoo taas huonompi, GT taas parempi** (sama kuvio kuin
+  hyllyjärjestyksessä): `wall_coverage` on puhdas recall, joten kahden
+  fragmentin väliin jäävä railo ei ollut sen mielestä virhe. Perustaso
+  päivitetty tässä commitissa. **Kellari on se aineisto joka olisi paljastanut
+  liian löysän säännön** — 237 seinää, mediaanipituus 1.8 m, aidosti erillisiä
+  varastokoppien seinämiä: se pysyi **bitilleen ennallaan**, samoin kaikki
+  kymmenen muuta aineistoa (Rohbaun GT-luvut mukaan lukien).
+  **KUMOTTU MATKALLA: `_MAX_TRIM` ei ollut syy.** 300 mm/pää leikkaus näyttää
+  ilmeiseltä selitykseltä 660 mm railolle (2 × 300 + kohina), mutta ablaatio
+  (`data/_trim_ablation.py`, trim identiteettinä) antoi **35 seinää vs 36** —
+  railo ei synny leikkauksesta vaan detektorin segmentoinnista.
+
 - **KUMOTTU: "pintaparin heikompi kasvo" ei erota kellarin ohuita seiniä
   valeseinistä — se rankaisisi hyviä aineistoja enemmän.** Kellarin mallista
   148/240 seinaa (65 % pituudesta) on 60–95 mm paksuja, ja se luku on
