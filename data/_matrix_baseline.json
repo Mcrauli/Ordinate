@@ -1,14 +1,14 @@
 {
  "rohbau_07000": {
-  "cov": 0.959,
-  "pre": 0.301,
+  "cov": 0.96,
+  "pre": 0.3,
   "wallish": 445646,
-  "gt_cov": 0.92,
-  "gt_pre": 0.897,
+  "gt_cov": 0.922,
+  "gt_pre": 0.895,
   "gt_inst": 0.673,
-  "walls": 25,
+  "walls": 27,
   "openings": 10,
-  "secs": 400
+  "secs": 417
  },
  "rohbau_07001": {
   "cov": 0.855,
@@ -19,7 +19,7 @@
   "gt_inst": 0.469,
   "walls": 13,
   "openings": 4,
-  "secs": 308
+  "secs": 324
  },
  "rohbau_07002": {
   "cov": 0.896,
@@ -30,18 +30,18 @@
   "gt_inst": 0.409,
   "walls": 14,
   "openings": 10,
-  "secs": 317
+  "secs": 354
  },
  "rohbau_07003": {
-  "cov": 0.597,
-  "pre": 0.244,
+  "cov": 0.822,
+  "pre": 0.29,
   "wallish": 278163,
-  "gt_cov": 0.849,
-  "gt_pre": 0.923,
-  "gt_inst": 0.556,
-  "walls": 10,
-  "openings": 4,
-  "secs": 343
+  "gt_cov": 0.874,
+  "gt_pre": 0.855,
+  "gt_inst": 0.593,
+  "walls": 12,
+  "openings": 6,
+  "secs": 399
  },
  "rohbau_07004": {
   "cov": 0.64,
@@ -52,23 +52,23 @@
   "gt_inst": 0.55,
   "walls": 8,
   "openings": 0,
-  "secs": 274
+  "secs": 314
  },
  "kellari": {
-  "cov": 0.366,
-  "pre": 0.204,
+  "cov": 0.379,
+  "pre": 0.206,
   "wallish": 669814,
-  "walls": 237,
+  "walls": 244,
   "openings": 4,
-  "secs": 1196
+  "secs": 1365
  },
  "apt": {
-  "cov": 0.681,
-  "pre": 0.643,
+  "cov": 0.813,
+  "pre": 0.656,
   "wallish": 172826,
-  "walls": 9,
-  "openings": 2,
-  "secs": 57
+  "walls": 13,
+  "openings": 4,
+  "secs": 63
  },
  "retail_s": {
   "cov": 0.724,
@@ -76,7 +76,7 @@
   "wallish": 2336233,
   "walls": 9,
   "openings": 7,
-  "secs": 660
+  "secs": 643
  },
  "retail_l": {
   "cov": 0.606,
@@ -84,15 +84,15 @@
   "wallish": 6256621,
   "walls": 13,
   "openings": 6,
-  "secs": 3261
+  "secs": 3604
  },
  "3dses": {
   "cov": 0.994,
-  "pre": 0.64,
+  "pre": 0.634,
   "wallish": 118834,
-  "walls": 10,
+  "walls": 11,
   "openings": 3,
-  "secs": 134
+  "secs": 148
  },
  "test_room": {
   "cov": 0.998,
@@ -100,14 +100,14 @@
   "wallish": 68138,
   "walls": 4,
   "openings": 0,
-  "secs": 23
+  "secs": 24
  },
  "synth": {
-  "cov": 0.802,
+  "cov": 0.797,
   "pre": 0.67,
   "wallish": 255344,
   "walls": 17,
   "openings": 3,
-  "secs": 38
+  "secs": 41
  }
 }

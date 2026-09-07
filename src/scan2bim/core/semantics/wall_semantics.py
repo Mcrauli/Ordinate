@@ -602,9 +602,69 @@ _SKIN_MIN = 15.0      # mm — tätä lähempänä on sama pinta kahtena, ei oma
 _SKIN_MAX = 150.0     # mm — ohuempi kuin ohuinkin seinä (66 mm) + mittausvara
 
 
+
+_SHELF_LEVEL_BIN = 50.0        # mm
+_SHELF_LEVEL_SEP = 300.0       # mm — tata lahempana olevat binit ovat sama taso
+_SHELF_LEVEL_REL = 2.0         # kerroin sarakkeen omaan mediaaniin
+_SHELF_LEVEL_MIN = 4           # tasoa — ks. _shelf_levels
+_SHELF_LEVEL_LO = 100.0        # mm — aloita nain kaukana pinnasta
+_SHELF_LEVEL_HI = 1200.0       # mm — seuraa nain kauas sivuun
+_SHELF_LEVEL_PTS = 200
+
+
+def _shelf_levels(w: Wall, pts: np.ndarray) -> int:
+    """Vaakatasojen maara seinan vieressa, kummaltakin puolelta suurempi.
+
+    Hyllykon etupinnan vieressa on hyllytasoja; kipsiseinan vieressa ei ole.
+    Kynnys on mitattu (`data/_shelf_guard_probe.py`), ei arvattu:
+
+        Rohbaun 70 GT-seinainstanssia (3 sceneä)   0-2 tasoa, mediaani 0
+        myymaloiden 4 GT-hyllynetupintaa           7-9 tasoa
+
+    Vaatimus 4 on valin keskella, eli kumpaankin suuntaan on kaksinkertainen
+    marginaali. Taso lasketaan sarakkeen OMAAN mediaaniin suhteutettuna: 4x
+    keskiarvo (`second_face._gap_has_shelves`) on viritetty kapeaan valiin
+    jossa pohjataso on lahes tyhja, ja kaytavan levyisessa kaistassa sama
+    tasosarja jaa sen alle — mitattu retail_l 8969 vs pohjataso 2354.
+    """
+    a = np.asarray(w.axis[0], float)[:2]
+    b = np.asarray(w.axis[-1], float)[:2]
+    L = float(np.linalg.norm(b - a))
+    if L < 500.0 or len(pts) == 0:
+        return 0
+    u = (b - a) / L
+    n = np.array([-u[1], u[0]])
+    d = pts[:, :2] - a
+    t, perp, z = d @ u, d @ n, pts[:, 2]
+    z0 = float(w.z_min or 0.0)
+    zlo, zhi = z0 + 300.0, z0 + float(w.height or 0.0) - 300.0
+    if zhi - zlo < 1000.0:
+        return 0
+    half = 0.5 * float(w.thickness or 200.0)
+    inside = (t >= 0.0) & (t <= L) & (z > zlo) & (z < zhi)
+    best = 0
+    for sign in (1.0, -1.0):
+        side = sign * perp
+        m = inside & (side > half + _SHELF_LEVEL_LO) & (side < half + _SHELF_LEVEL_HI)
+        if int(m.sum()) < _SHELF_LEVEL_PTS:
+            continue
+        nb = max(10, int((zhi - zlo) / _SHELF_LEVEL_BIN))
+        hist, edges = np.histogram(z[m], bins=nb, range=(zlo, zhi))
+        nz = hist[hist > 0]
+        if not len(nz):
+            continue
+        med = float(np.median(nz))
+        pk = np.flatnonzero(hist >= _SHELF_LEVEL_REL * med)
+        if not len(pk):
+            continue
+        best = max(best, 1 + int((np.diff(edges[pk]) > _SHELF_LEVEL_SEP).sum()))
+    return best
+
+
 def remove_shelf_front_walls(walls, dist_lo=300.0, dist_hi=1500.0,
                              ang_tol_deg=12.0, min_partner_len=4000.0,
-                             len_ratio=2.0, min_overlap_frac=0.5, retail=False):
+                             len_ratio=2.0, min_overlap_frac=0.5, retail=False,
+                             pts=None):
     """Poista lattia-katto-hyllykön etupintaan syntyneet valeseinät.
 
     Liiketilan hyllykön etupinta ulottuu lattiasta kattoon → geometrisesti seinä,
@@ -621,7 +681,15 @@ def remove_shelf_front_walls(walls, dist_lo=300.0, dist_hi=1500.0,
     kuin perimetri (histogrammidetektori löytää molemmat pintoina). Silloin hylly =
     seinä jonka ULKOPUOLELLA (rakennuksen reunaa kohti) on pitkä rinnakkainen
     perimetriseinä 300-1500 mm. Portitettu retailiin: asunnossa aito seinä voi olla
-    lähellä ulkoseinää (komero/erkkeri) → ei saa poistaa siellä."""
+    lähellä ulkoseinää (komero/erkkeri) → ei saa poistaa siellä.
+
+    ``pts`` (pistepilvi) vaatii poistolta TODISTEEN: seinän vieressä on oltava
+    hyllytasoja (``_shelf_levels``). Ilman sitä sääntö tuomitsee pelkästä
+    muodosta, ja runkovaiheen rakennuksessa sama muoto on aito kipsiseinä
+    julkisivun edessä: mitattuna (`data/_chain_gt_probe.py`, scene_07002,
+    normals) juuri tämä kutsu pudotti viisi GT-seinää mallista peitolla 1.00,
+    kun ne olivat selvinneet koko muun ketjun läpi. ``pts=None`` säilyttää
+    entisen käytöksen."""
     def _endpoints(w):
         return np.asarray(w.axis[0], float), np.asarray(w.axis[1], float)
 
@@ -676,13 +744,13 @@ def remove_shelf_front_walls(walls, dist_lo=300.0, dist_hi=1500.0,
             ov = max(0.0, min(hi, Lj) - max(lo, 0.0))
             if ov / Li < min_overlap_frac:
                 continue
-            if long_partner:
-                remove.add(i)
-                break
-            # full_len_ok: kumppanin oltava W:n ULKOPUOLELLA (perimetri hyllyn takana)
-            if float(np.dot(0.5 * (a2 + b2) - c, n_out)) > 0:
-                remove.add(i)
-                break
+            if not long_partner and float(np.dot(0.5 * (a2 + b2) - c, n_out)) <= 0:
+                # full_len_ok: kumppanin oltava W:n ULKOPUOLELLA (perimetri hyllyn takana)
+                continue
+            if pts is not None and _shelf_levels(w, pts) < _SHELF_LEVEL_MIN:
+                continue
+            remove.add(i)
+            break
     return [w for k, w in enumerate(walls) if k not in remove]
 
 

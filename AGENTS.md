@@ -534,6 +534,66 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   2 m tynkä peitolla 0.00 ja oikea perimetri 91 m päässä. Sitä nykyinen sääntö
   ei voi napata millään kynnyksellä; se tarvitsee toisen todisteen.
 
+- **HYLLYNPOISTO TUOMITSI MUODOSTA JA POISTI AITOJA SEINIÄ KOLMESSA
+  AINEISTOSSA (7.9.2026).** `remove_shelf_front_walls` poistaa seinän joka on
+  lyhyehkö, rinnakkainen ja 300–1500 mm päässä paljon pidemmästä. Runkovaiheen
+  rakennuksessa se muoto on **aito kipsiseinä julkisivun edessä** — sama asia
+  jonka `second_face.py` on rakennettu löytämään.
+  Löytyi ketjukoettimella (`data/_chain_gt_probe.py`, uusi): scene_07002:n
+  viisi GT-seinää selviävät detektorista ja pysyvät mallissa KOKO 25-vaiheisen
+  ketjun läpi, ja tämä yksi kutsu pudottaa ne kaikki:
+  | vaihe | inst 6 | 83 | 84 | 91 | 95 |
+  |---|---|---|---|---|---|
+  | detektori | 0.48 | 1.00 | 1.00 | 0.38 | 1.00 |
+  | snap_corners (vaihe 24) | 0.44 | 1.00 | 0.95 | 0.32 | 1.00 |
+  | **shelf_front** | **0.14** | **0.00** | **0.15** | **0.11** | **0.13** |
+  Tämä kumoaa aiemman päätelmän: ne kahdeksan "tasomaista seinää joita ei
+  löydä yksikään detektori" EIVÄT ole kyvykkyysvaje. Detektori löytää ne;
+  karsinta poistaa ne.
+  **Korjaus: poisto vaatii TODISTEEN.** Seinän vieressä on oltava vaakatasoja
+  (`_shelf_levels`, kynnys 4, sarakkeen omaan mediaaniin suhteutettuna).
+  Mitattu (`data/_shelf_guard_probe.py`): Rohbaun 70 GT-seinäinstanssia 0–2
+  tasoa (mediaani 0), myymälöiden GT-hyllynetupinnat 7–9. Kynnys on välin
+  keskellä. `pts=None` säilyttää entisen käytöksen, joten `_prune_for_choice`
+  ei muutu.
+  Matriisi:
+  | aineisto | ennen | jälkeen |
+  |---|---|---|
+  | apt | 0.681, 9 seinää | **0.813, 13** (tarkkuus 0.643 → 0.656) |
+  | rohbau_07003 | 0.597, GTinst 0.556 | **0.822, GTinst 0.593** |
+  | kellari | 0.366, 237 | **0.379, 244** |
+  | retail_s / retail_l | 9/9 GT, 0 hyllyseinää | **ennallaan** |
+  | synth | 0.802 | 0.797 |
+  Sääntö poisti siis aitoja seiniä myös asunnosta ja kellarista, ei vain
+  Rohbausta. Hinta on 07003:n GT-tarkkuus 0.923 → 0.855.
+  **AUKI JA TÄRKEÄ — kynnys on johdettu aineistosta joka ei voi sitä testata.**
+  retail_s ja retail_l näytteistävät pinnat tasaisesti joka suunnasta, joten
+  niissä hyllytasot näkyvät kaikki. Uudessa KEILATUSSA aineistossa
+  (`data/_synth_store.py`) samat hyllynetupinnat saavat samalla mittarilla
+  vain **0–2 tasoa**, eli kynnys 4 tekisi säännöstä siellä no-opin. Kumpi luku
+  pätee oikeaan myymälään on ratkaisematta: keilatun aineiston hyllyillä ei
+  ollut tavaraa mittaushetkellä, ja juuri tavara tuottaa sen vaakarakenteen.
+  **Matriisi ei voi ratkaista tätä** — siinä ei ole yhtään okkludoitua
+  myymälää. Ennen kuin kynnykseen kosketaan, aja
+  `data/_shelf_guard_probe.py data/_store_60x40` tavarallisella aineistolla.
+
+- **SYNTEETTINEN AINEISTO JOKA ON KEILATTU (`data/_synth_store.py`, 7.9.2026).**
+  `_synth_retail.py` näytteistää pinnat tasaisesti joka suunnasta, eli se
+  mittaa algoritmia eikä aineistoa. Tämä ajaa jokaisen ASEMAN kulmapuskurin:
+  säde palauttaa vain lähimmän pinnan, jyrkkä kohtauskulma ei palauta, bini on
+  kulma (→ kaukainen pinta harva), ja nadir-kartio jää katveeseen. Varjot,
+  tiheysvaihtelu ja yksipuoliset ulkoseinät syntyvät geometriasta eikä niitä
+  ole koodattu erikseen. Ulostulo on Rohbau-yhteensopiva (`coord/class/
+  instance.npy`), joten koko GT-pino toimii siihen sellaisenaan; `s3dis.npy`
+  on samasta totuudesta koulutusta varten. Kalustemitat ovat oikeita
+  (gondoli 1800, seinähylly 2400/450, kylmäkaluste 2100, lavahylly 5400/1800).
+  **Kaksi omaa bugia matkalla, molemmat sellaisia joita pistemäärä ei paljasta:**
+  (1) kalusteiden pystypinnat piirtyivät normaali sisäänpäin → jokainen asema
+  hylkäsi ne takapintoina ja pilvestä puuttui juuri se mitä sillä mitataan;
+  (2) hyllytasoilla ei ollut alapintaa, vaikka 1.65 m korkeudella seisova
+  keilain näkee nimenomaan sen. **Kysy jokaisesta generaattorin pinnasta:
+  näkyykö se sieltä mistä sitä katsotaan?**
+
 - **KUMOTTU: paksuuden huippuvalintaa ei voi parantaa — Rohbaussa valinnalla ei
   ole merkitystä eikä yksikään signaali erottele.** `_thickness_lock_wall`
   valitsee toiseksi pinnaksi toiseksi vahvimman piikin eli PISTEMÄÄRÄLLÄ, ja
@@ -2066,6 +2126,7 @@ Kirjaa tähän jokainen uusi setti + sen LÄHDE, muuten kukaan ei tiedä mistä 
 | Rohbau3D site_07 (kalustamaton runko, **per-piste-GT**) | `data/_rohbau/` | open-data.unibw.de doi:10.60776/ZWJFI4, **MIT** — paras puhdas tarkkuustesti, turvallinen myös myyntimateriaaliin |
 | 3DSES (TLS npy Nx7 + CAD .obj) | `data/_3dses/` | Zenodo 13323342, **CC BY-SA 4.0** → ShareAlike-riski, ei myyntikuviin |
 | synteettinen myymälä/kauppakeskus + `.gt.json` | `data/_retail_{s,l}.ply` | oma (`data/_synth_retail.py`), lisenssivapaa |
+| **keilattu synteettinen myymälä** (asemat, varjot, per-piste-GT kahdessa skeemassa, instanssit) | `data/_store_*/` | oma (`data/_synth_store.py`), lisenssivapaa — ainoa aineisto jossa on sekä okkluusio ETTÄ totuus |
 | `gargage.e57` (27.8 M, 1 skanni; images2D on mutta 0 kelvollista asemaa) | `~/Downloads` | oma/asiakkaan — omistajuus selvittämättä |
 | `parking-lot-updated.e57` (285 kuvaa, 1 asema) | `~/Downloads` | oma/asiakkaan — **ainoa paikallinen kuvallinen E57**, kuvaohjatun aukkodetektion testi |
 | `aligned_low_{apartment,bedroom}`, `raw_scans_apartment` | `~/Downloads` | oma/asiakkaan — omistajuus selvittämättä |

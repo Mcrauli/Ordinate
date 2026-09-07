@@ -2016,7 +2016,9 @@ class Pipeline:
         # tilat lasketaan puhtaasta seinäjoukosta.
         from scan2bim.core.semantics.wall_semantics import remove_shelf_front_walls
         _pre_shelf = list(model.walls)
-        model.walls = remove_shelf_front_walls(model.walls, retail=is_retail)
+        model.walls = remove_shelf_front_walls(
+            model.walls, retail=is_retail,
+            pts=np.asarray(lock_cloud.points))
         # Muista poistetut: `data/_shelf_gt_probe.py` mittaa niiden GT-luokan,
         # eli näkeekö sääntö hyllyjä vai aitoja seiniä.
         _kept = {w.id for w in model.walls}
@@ -2061,7 +2063,9 @@ class Pipeline:
                 # kumppani), joten toinen ajo ei voi poistaa mitään mitä
                 # ensimmäinen olisi säästänyt.
                 _pre_res = list(model.walls)
-                model.walls = remove_shelf_front_walls(model.walls, retail=is_retail)
+                model.walls = remove_shelf_front_walls(
+                    model.walls, retail=is_retail,
+                    pts=np.asarray(lock_cloud.points))
                 _kept_res = {w.id for w in model.walls}
                 _late = [w for w in _pre_res if w.id not in _kept_res]
                 if _late:
