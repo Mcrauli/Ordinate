@@ -139,6 +139,22 @@ class Parts:
             a, b = seg[w]
             self.face(a, b, z0, z1, kind, inst, side=-1, keep=keep)
 
+    def hpatch(self, a, b, width, z, kind, inst, up=False, keep=1.0) -> None:
+        """Vaakalaikku janan a->b ymparille, leveys kohtisuoraan janasta."""
+        a = np.asarray(a, float)
+        b = np.asarray(b, float)
+        L = float(np.linalg.norm(b - a))
+        if L < self.step or width < self.step:
+            return
+        u = (b - a) / L
+        n = np.array([-u[1], u[0]])
+        S, O = np.meshgrid(np.arange(0.0, L, self.step),
+                           np.arange(-width / 2.0, width / 2.0, self.step))
+        xy = (a[None, :] + S.ravel()[:, None] * u[None, :]
+              + O.ravel()[:, None] * n[None, :])
+        pts = np.column_stack([xy[:, 0], xy[:, 1], np.full(len(xy), float(z))])
+        self._add(pts, (0.0, 0.0, 1.0 if up else -1.0), kind, inst, keep)
+
     def box(self, x0, x1, y0, y1, z0, z1, kind, inst, keep=1.0, top=True) -> None:
         self.sides(x0, x1, y0, y1, z0, z1, kind, inst, keep=keep)
         if top:
@@ -223,7 +239,23 @@ def build_store(P: Parts, sx: float, sy: float, h: float, rng) -> dict:
     gt: dict = {"walls": [], "columns": [], "beams": [], "openings": [],
                 "shelf_faces": [], "footprints": [], "floor_z": 0.0,
                 "ceiling_z": h}
-    T_EXT, T_BOH, T_ROOM = 250.0, 200.0, 120.0
+    T_EXT = float(rng.choice([200.0, 250.0, 300.0]))
+    T_BOH = float(rng.choice([150.0, 200.0]))
+    T_ROOM = float(rng.choice([92.0, 120.0]))
+    col_pitch = float(rng.uniform(7200.0, 8800.0))
+    col_side = float(rng.choice([350.0, 400.0, 500.0]))
+    beam_w = float(rng.uniform(300.0, 500.0))
+    beam_d = float(rng.uniform(600.0, 900.0))
+    aisle = float(rng.uniform(3200.0, 4200.0))
+    gond_h = float(rng.uniform(1600.0, 2100.0))
+    gond_deck = float(rng.uniform(350.0, 450.0))
+    gond_w = float(rng.uniform(1100.0, 1500.0))
+    shelf_h = float(rng.uniform(2200.0, 2600.0))
+    shelf_d = float(rng.uniform(800.0, 1000.0))
+    fr_h = float(rng.uniform(2000.0, 2200.0))
+    fr_d = float(rng.uniform(800.0, 1000.0))
+    boh_fx = float(rng.uniform(0.60, 0.76))
+    boh_fy = float(rng.uniform(0.26, 0.40))
 
     def wall(p0, p1, t, kind="wall", gaps=(), keep=1.0, two_sided=True, z1=None):
         p0 = np.asarray(p0, float)
@@ -248,6 +280,16 @@ def build_store(P: Parts, sx: float, sy: float, h: float, rng) -> dict:
             for sgn in sides:
                 P.face(a + sgn * (t / 2) * n, b + sgn * (t / 2) * n, za, zb,
                        kind, inst, side=sgn, keep=keep)
+        for s0, s1, gh in gaps:
+            # Aukon PIELET ja ylityspalkin alapinta. Ilman niita aukko on pelkka
+            # rako eika siina ole yhtaan pistetta, jolloin aukkodetektiota ei voi
+            # mitata — oikea keilaus nakee pielen aina.
+            oi = P.new_inst()
+            for sN, sgn in ((s0, -1), (s1, +1)):
+                c = p0 + sN * u
+                P.face(c - (t / 2) * n, c + (t / 2) * n, 20.0, gh, "door", oi,
+                       side=sgn)
+            P.hpatch(p0 + s0 * u, p0 + s1 * u, t, gh, "door", oi, up=False)
         gt["walls"].append({"axis": [list(p0), list(p1)], "thickness": t})
         for s0, s1, gh in gaps:
             ctr = p0 + ((s0 + s1) / 2.0) * u
@@ -266,7 +308,7 @@ def build_store(P: Parts, sx: float, sy: float, h: float, rng) -> dict:
     for p0, p1 in (((sx, 0), (sx, sy)), ((sx, sy), (0, sy)), ((0, sy), (0, 0))):
         wall(p0, p1, T_EXT)
 
-    bx, by = 0.68 * sx, 0.34 * sy
+    bx, by = boh_fx * sx, boh_fy * sy
     wall((bx, 0), (bx, by), T_BOH, kind="drywall",
          gaps=[(0.40 * by, 0.40 * by + 2400, 2400)])
     wall((bx, by), (sx, by), T_BOH, kind="drywall",
@@ -277,9 +319,9 @@ def build_store(P: Parts, sx: float, sy: float, h: float, rng) -> dict:
     wall((bx, 0.55 * by), (sx, 0.55 * by), T_ROOM, kind="drywall",
          gaps=[(2200, 3100, 2100), (0.55 * (sx - bx), 0.55 * (sx - bx) + 900, 2100)])
 
-    C = 400.0
-    for cx in np.arange(8000.0, sx - 3000.0, 8000.0):
-        for cy in np.arange(8000.0, sy - 3000.0, 8000.0):
+    C = col_side
+    for cx in np.arange(col_pitch, sx - 3000.0, col_pitch):
+        for cy in np.arange(col_pitch, sy - 3000.0, col_pitch):
             inst = P.new_inst()
             P.box(cx - C / 2, cx + C / 2, cy - C / 2, cy + C / 2, 20.0, h - 20.0,
                   "column", inst, top=False)
@@ -289,11 +331,11 @@ def build_store(P: Parts, sx: float, sy: float, h: float, rng) -> dict:
     # kappale: yhtena instanssina kirjattu 60 m palkki nayttaa mallin
     # pirstoutuvan 11.5-kertaisesti, vaikka putki katkaisee sen pilarien
     # kohdalta oikein (Rohbaussa sama luku on 1.4-1.6).
-    bw, bd = 400.0, 700.0
+    bw, bd = beam_w, beam_d
     zb = h - bd
-    col_x = list(np.arange(8000.0, sx - 3000.0, 8000.0))
+    col_x = list(np.arange(col_pitch, sx - 3000.0, col_pitch))
     spans = list(zip([0.0] + col_x, col_x + [sx]))
-    for cy in np.arange(8000.0, sy - 3000.0, 8000.0):
+    for cy in np.arange(col_pitch, sy - 3000.0, col_pitch):
         for sx0, sx1 in spans:
             inst = P.new_inst()
             for sgn in (+1, -1):
@@ -305,7 +347,7 @@ def build_store(P: Parts, sx: float, sy: float, h: float, rng) -> dict:
                                 "width": bw, "soffit_z": float(zb), "depth": bd})
 
     dw, dh = 600.0, 400.0
-    for cy in np.arange(4000.0, sy - 2000.0, 8000.0):
+    for cy in np.arange(0.5 * col_pitch, sy - 2000.0, col_pitch):
         inst = P.new_inst()
         zt = h - bd - 250.0
         P.box(0.02 * sx, bx, cy - dw / 2, cy + dw / 2, zt - dh, zt, "tga", inst)
@@ -372,25 +414,24 @@ def build_store(P: Parts, sx: float, sy: float, h: float, rng) -> dict:
     ay0, ay1 = 0.08 * sy, 0.94 * sy
     gx = 0.10 * sx
     while gx < bx - 4000.0:
-        fixture(gx - 650.0, gx + 650.0, ay0, ay1, 1800.0, 400.0, "shelf",
-                ("x-", "x+"))
-        gx += 3600.0
+        fixture(gx - gond_w / 2, gx + gond_w / 2, ay0, ay1, gond_h, gond_deck,
+                "shelf", ("x-", "x+"))
+        gx += aisle
 
-    sh_d, sh_h = 900.0, 2400.0
+    sh_d, sh_h = shelf_d, shelf_h
     y_back = sy - T_EXT / 2 - sh_d
     sx_shelf0, sx_shelf1 = 0.02 * sx, bx - 4000.0
     fixture(sx_shelf0, sx_shelf1, y_back, y_back + sh_d, sh_h, 450.0, "shelf",
             ("y-",), face_line=[[sx_shelf0, y_back], [sx_shelf1, y_back]])
 
     fx0 = T_EXT / 2
-    fr_d, fr_h = 900.0, 2100.0
     fy = 0.10 * sy
     while fy < 0.45 * sy:
         fixture(fx0, fx0 + fr_d, fy, fy + 3600.0, fr_h, 400.0, "fridge",
                 ("x+",), face_line=[[fx0 + fr_d, fy], [fx0 + fr_d, fy + 3600.0]])
         fy += 4000.0
     while fy < 0.88 * sy:
-        fixture(fx0, fx0 + 800.0, fy, fy + 2400.0, 2100.0, 450.0, "fridge",
+        fixture(fx0, fx0 + 800.0, fy, fy + 2400.0, fr_h, 450.0, "fridge",
                 ("x+",), glass=True,
                 face_line=[[fx0 + 800.0, fy], [fx0 + 800.0, fy + 2400.0]])
         fy += 2800.0
@@ -457,6 +498,76 @@ def write_ply(path: Path, pts: np.ndarray) -> None:
         f.write(np.ascontiguousarray(pts, dtype="<f4").tobytes())
 
 
+def generate(out: Path, sx: float, sy: float, h: float, step: float, ang: float,
+             rng_seed: int, max_range: float, pitch: float, noise: float,
+             reg: float, min_cos: float, write_cloud: bool = True) -> dict:
+    """Yksi skene levylle. Palauttaa manifestirivin."""
+    out.mkdir(parents=True, exist_ok=True)
+    rng = np.random.default_rng(rng_seed)
+    P = Parts(step, rng)
+    gt = build_store(P, sx, sy, h, rng)
+    data = P.finish()
+    st = stations_for(sx, sy, h, gt, pitch)
+    pts, kind, inst = scan(data, st, ang, max_range, min_cos, noise, reg, rng)
+    names = list(KINDS)
+    rcls = np.array([KINDS[n][0] for n in names], np.int16)[kind]
+    scls = np.array([KINDS[n][1] for n in names], np.int16)[kind]
+    np.save(out / "coord.npy", pts.astype(np.float32))
+    np.save(out / "class.npy", rcls.astype(np.int8))
+    np.save(out / "instance.npy", inst.astype(np.int32))
+    np.save(out / "s3dis.npy", scls.astype(np.int8))
+    np.save(out / "stations.npy", st)
+    if write_cloud:
+        write_ply(out / "cloud.ply", pts)
+    gt["n_points"] = int(len(pts))
+    gt["size"] = [sx, sy, h]
+    gt["stations"] = int(len(st))
+    gt["seed"] = int(rng_seed)
+    gt["scan"] = {"step": step, "ang": ang, "pitch": pitch, "range": max_range,
+                  "noise": noise, "reg": reg}
+    (out / "gt.json").write_text(json.dumps(gt, indent=1), encoding="utf-8")
+    return {"dir": out.name, "points": int(len(pts)), "stations": int(len(st)),
+            "size_m": [round(sx / 1000, 1), round(sy / 1000, 1), round(h / 1000, 1)],
+            "walls": len(gt["walls"]), "columns": len(gt["columns"]),
+            "beams": len(gt["beams"]), "openings": len(gt["openings"]),
+            "shelf_faces": len(gt["shelf_faces"]), "seed": int(rng_seed),
+            "ang": ang, "pitch": pitch}
+
+
+def batch(root: Path, n: int, seed0: int, write_cloud: bool,
+          sx_max: float, sy_max: float, h_max: float) -> None:
+    """Monta skeneä koulutusta varten: eri pohja, eri kalustejako, eri keilaus.
+
+    Yksi skene ei ole koulutusaineisto vaan yksi näyte. Vaihtelu on tässä
+    tarkoituksellisesti sellaista jonka putki NÄKEE: pohjan mitat, pilariväli,
+    käytäväjako, kalustekorkeudet, asemaväli ja keilaimen kulmaresoluutio.
+    """
+    root.mkdir(parents=True, exist_ok=True)
+    rows = []
+    for i in range(n):
+        rng = np.random.default_rng(10_000 + seed0 + i)
+        sx = float(rng.uniform(0.35, 1.0) * sx_max)
+        sy = float(rng.uniform(0.35, 1.0) * sy_max)
+        h = float(rng.uniform(0.62, 1.0) * h_max)
+        ang = float(rng.choice([0.16, 0.20, 0.25]))
+        pitch = float(rng.uniform(6_000, 9_500))
+        step = float(rng.choice([15.0, 18.0, 22.0]))
+        noise = float(rng.uniform(1.5, 4.0))
+        reg = float(rng.uniform(1.0, 6.0))
+        d = root / f"scene_{i:02d}"
+        print(f"[{i + 1}/{n}] {d.name}  {sx / 1000:.0f}x{sy / 1000:.0f} m  "
+              f"h={h / 1000:.1f}  ang={ang}  pitch={pitch / 1000:.1f} m", flush=True)
+        row = generate(d, sx, sy, h, step, ang, 20_000 + seed0 + i, 35_000.0,
+                       pitch, noise, reg, 0.12, write_cloud)
+        print(f"      {row['points']:,} pistettä, {row['stations']} asemaa, "
+              f"{row['walls']} seinää, {row['columns']} pilaria", flush=True)
+        rows.append(row)
+        (root / "manifest.json").write_text(
+            json.dumps({"scenes": rows}, indent=1), encoding="utf-8")
+    tot = sum(r["points"] for r in rows)
+    print(f"valmis: {len(rows)} skenea, {tot:,} pistetta yhteensa")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default="data/_store_a")
@@ -471,7 +582,17 @@ def main() -> None:
     ap.add_argument("--reg", type=float, default=3.0, help="rekisterointivirhe mm/asema")
     ap.add_argument("--min-cos", type=float, default=0.12, help="jyrkin palauttava kulma")
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--scenes", type=int, default=0,
+                    help="generoi N skeneä --out-hakemistoon (koulutusaineisto)")
+    ap.add_argument("--no-ply", action="store_true",
+                    help="jätä cloud.ply kirjoittamatta (npy riittää koulutukseen)")
     a = ap.parse_args()
+
+    if a.scenes > 0:
+        # eraajossa --sx/--sy/--height ovat YLARAJAT, ei kiintea koko
+        batch(Path(a.out), a.scenes, a.seed, not a.no_ply,
+              a.sx, a.sy, a.height)
+        return
 
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
