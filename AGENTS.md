@@ -981,6 +981,51 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   datan olemassaololla tai rungon pisteillä. Aineisto tähän on olemassa
   (`_synth_store.py`), joten mittaus ei enää vaadi Rohbaun tulkintaa.
 
+- **OPITTU AUKKODETEKTIO VOITTAA SÄÄNNÖT OIKEALLA DATALLA — mitattu
+  ristivalidoinnilla (8.9.2026).** `opening_detector` rakentaa jokaiselle
+  seinälle miehitysruudukon ja lukee siitä aukot käsin kirjoitetuilla
+  sarakesäännöillä. Ruudukko ON kuva, ja sille on nyt totuus. Koko koe ajetaan
+  TUOTANNON omasta ruudukosta (`_find_openings` patchattuna kiinni), joten
+  verkko ja säännöt saavat bitilleen saman syötteen — ero on menetelmässä eikä
+  esikäsittelyssä.
+  Malli: 1D-konvoluutio seinän pituussuunnassa, syötteenä z-profiili 48
+  kaistana + sarakkeen tiheys, dilaatiot 1…64 (näköala ~7.5 m), ulostulona
+  per sarake P(aukko). Koulutus erillisessä `.venv-train`-ympäristössä
+  (torch CPU) — tuotanto-venviin EI kosketa, ks. `pip install onnx` -opetus.
+  **Rohbau, leave-one-scene-out, nimittäjä puhdistettu `_MIN_W`/`_MIN_H`
+  -kokoisiksi (läpiviennit pois):**
+  | validointiscene | verkko katt./tark. | säännöt katt./tark. |
+  |---|---|---|
+  | 07000 | 0.524 / 0.632 | 0.333 / 0.438 |
+  | 07001 | 0.500 / 1.000 | 0.300 / 1.000 |
+  | 07002 | 0.636 / 0.583 | 0.364 / 0.444 |
+  | 07003 | 0.545 / 0.500 | 0.364 / 0.333 |
+  | 07004 | **1.000** / 0.462 | **0.000** / 0.000 |
+  | **ka.** | **0.641 / 0.635** | **0.272 / 0.443** |
+  Verkko voittaa JOKAISELLA scenellä molemmilla mittareilla; kattavuus on
+  2.4-kertainen. Tämä on ensimmäinen kerta kun opittu komponentti on mitattu
+  tässä projektissa tuotantosääntöjä vastaan samasta syötteestä.
+  **KUMOTTU SAMASSA KOKEESSA: synteettisellä koulutettu malli EI siirry.**
+  Keilatulla synteettisellä myymälällä (88 seinää koulutus, 33 validointi)
+  verkko on selvästi sääntöjä parempi — **tarkkuus 1.000 vs 0.529** eikä
+  yhtään valeaukkoa, kun säännöt tekevät kahdeksan (kuvista näkyy syy:
+  säännöt lukevat keilausvarjon aukoksi). Mutta sama malli Rohbauhun ajettuna
+  antaa **0.151 / 0.870 kun säännöt antavat 0.208 / 0.893** — eli se häviää.
+  Synteettinen aineisto opettaa generaattorin, ei rakennusta. **Opittu
+  komponentti tarvitsee oikeaa labeloitua dataa; synteettinen ei korvaa sitä.**
+  **Mitä tämä EI vielä ole:** (1) leave-one-scene-out samalla site_07:llä ei
+  ole leave-one-BUILDING-out — yleistyminen toiseen rakennukseen on
+  todistamatta ja se vaatii toisen labeloidun kohteen (kellarin GT);
+  (2) luvut ovat ruudukkotasolla, ei koko putken läpi (`_refine_opening_edges`
+  ja sill/head-mittaus tulevat päälle); (3) mitään ei ole integroitu — jos se
+  integroidaan, oikea paikka on `_best_detector`-tyylinen mitattu valinta eikä
+  sääntöjen korvaaminen.
+  Ketju: `data/_op_dataset.py` (synteettinen) ja `data/_op_rohbau.py`
+  (oikea data, totuus per-piste-luokista) poimivat ruudukot,
+  `data/_op_baseline.py` laskee sääntöjen ennusteen samoista ruudukoista,
+  `data/_op_train.py` kouluttaa ja vertaa, `data/_op_eval.py` arvioi valmiin
+  mallin toiseen aineistoon.
+
 - **MYYMÄLÄN VALESEINÄT TULEVAT JÄÄNNÖSHAUSTA, EIVÄT DETEKTORISTA (8.9.2026).**
   Keilatussa myymälässä malli antaa 52 seinää yhdelletoista GT-seinälle. Lähde
   on yksiselitteinen: **35/52 on `find_residual_walls`in tuotosta ja 22 niistä

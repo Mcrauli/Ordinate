@@ -46,3 +46,8 @@ data/_3dses/
 # MobileSAM ONNX (dev/training-labelointityökalu, Apache-2.0, ladattavissa HF:stä)
 models/mobilesam/
 data/_store_*/
+
+# koulutusymparisto ja opetusdata (ei gitiin)
+.venv-train/
+data/_op_data/
+data/_op_rohbau/
