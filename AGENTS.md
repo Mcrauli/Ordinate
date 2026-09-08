@@ -980,6 +980,36 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   erotettava AITO seinän pään aukko ROSOISESTA päästä jollain muulla kuin
   datan olemassaololla tai rungon pisteillä. Aineisto tähän on olemassa
   (`_synth_store.py`), joten mittaus ei enää vaadi Rohbaun tulkintaa.
+
+- **MYYMÄLÄN VALESEINÄT TULEVAT JÄÄNNÖSHAUSTA, EIVÄT DETEKTORISTA (8.9.2026).**
+  Keilatussa myymälässä malli antaa 52 seinää yhdelletoista GT-seinälle. Lähde
+  on yksiselitteinen: **35/52 on `find_residual_walls`in tuotosta ja 22 niistä
+  alle 2 m**, kun contour-detektori tuottaa 17 seinää joista vain 2 on lyhyttä.
+  | | seiniä | GT-instanssit | pistekattavuus |
+  |---|---|---|---|
+  | nykyinen | 52 | 10/10 | 0.972 |
+  | jäännöshaku pois (`data/_residual_ab.py`) | **17** | 10/11 | 0.924 |
+  | jäännösseinät < 2500 mm pois | **25** | **11/11** | 0.934 |
+  Haku ei siis ole melua: ilman sitä katoaa aito **16.4 m** seinä jota
+  detektori ei löydä. Mutta sen lyhyt tuotos on täällä lähes kokonaan
+  kalusteiden päätyjä.
+  **KUMOTTU: pituusraja ei kelpaa globaalisti.** Sama 2500 mm raja Rohbaussa:
+  07000 0.673 → **0.592**, 07001 0.469 → **0.406**, 07002 0.409 → **0.341**
+  (07003 ja 07004 ennallaan). Jäännöshaku rakennettiin nimenomaan löytämään
+  1–2 m seiniä rungosta, ja raja poistaa juuri ne.
+  **Eikä `_looks_like_retail` voi erottaa näitä:** se on tosiasiassa "iso ja
+  korkea", ja Rohbaun 10 m runko laukaisee sen itsekin. Ero on kalusteissa,
+  ei koossa.
+  **Erottelijaa etsittiin ja seitsemän kaatui:** tasomaisuus, kontrasti, tuki,
+  jatkuvuus, reunahajonta (AUC 0.86 täällä mutta 0.44–0.55 Rohbaussa),
+  pystyulottuvuus ja **jaksollisuus** — viimeinen mitattiin tänään
+  (`data/_periodic_probe.py`): kohtisuoran tiheysprofiilin autokorrelaatio
+  2–6.5 m viiveillä, AUC **0.476**, mediaanit 0.248 vs 0.248. Profiili mittaa
+  HUONETTA eikä seinää: myymälässä myös aito seinä näkee vieressään saman
+  gondolirivistön.
+  **Kannattava kohde on silti tunnistettu:** jos konteksti joskus saadaan
+  mitattua, palkinto on 27 oliota pois 52:sta ilman yhtään menetettyä
+  GT-instanssia.
   **Läpiviennit eivät kuulu nimittäjään:** Rohbaun `WallCutout`-instanssit ovat
   mitattuna 544 × 423 mm ja mediaani-alareuna 8998 mm lattiasta, eli putki- ja
   kanavaläpivientejä katonrajassa. `_MIN_H = 600` hylkää ne oikein.
