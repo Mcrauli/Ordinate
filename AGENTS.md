@@ -944,6 +944,42 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   kuin aukkoihin käyttää aikaa; kolme neljästä "puutteesta" on keilausvarjo.
   Niistä viidestä yksi on 3527 mm leveä (yli `_MAX_W` 3000), loput 2278–2795 mm
   eli leveysportti ei niitä estä — syy on muualla (reunaehto/korkeusprofiili).
+
+- **AUKOT MITATTU PUHDASTA GT:tä VASTEN ENSIMMÄISTÄ KERTAA (8.9.2026).**
+  `data/_store_m` (keilattu synteettinen myymälä, 14 GT-aukkoa: 5 lasiruutua
+  ja loput ovia):
+  | | tulos |
+  |---|---|
+  | kattavuus | 8/14 = **0.571** |
+  | isäntäseinä mallissa | 8/13 = 0.615 — eli vaje on detektorin omaa |
+  | tarkkuus | 5/6 = **0.833** |
+  Rohbaussa samat luvut ovat 0.19–0.23 ja 0.44–0.80. Ero tukee aiempaa
+  päätelmää: siellä nimittäjää hallitsevat puuttuvat isäntäseinät ja
+  keilausvarjot, eivät detektorin virheet. **Tämä on ensimmäinen luku joka
+  kertoo aukkodetektorin oman suorituskyvyn.**
+  **JUURISYY LÖYTYI: aukko seinän PÄÄSSÄ on hakualueen ulkopuolella.**
+  `_find_openings` rajaa haun uloimpien lattiasolidien sarakkeiden väliin
+  (`x_lo..x_hi`), joten pään aukolla ei ole solidia saraketta ulkopuolellaan
+  eikä siitä voi syntyä ehdokasta. Mitattu: `wall_025`:n 2.4 m ikkunan
+  kohdalla täyttö on 0.08 ja viereisen seinän 0.98 — reikä on räikeästi
+  näkyvissä eikä ehdokasta synny lainkaan.
+  **KOLME KORJAUSVARIANTTIA MITATTU JA KAIKKI KUMOTTU:**
+  | variantti | myymälä katt./tark. | 07000 katt./tark. | 07002 |
+  |---|---|---|---|
+  | nykyinen | 0.571 / 0.833 | 0.190 / **0.800** | 0.227 / 0.444 |
+  | haku ankkuroidun pään yli | **0.714** / 0.778 | 0.214 / **0.526** | 0.273 / 0.500 |
+  | + vaadi dataa aukossa | 0.714 / 0.778 | 0.214 / **0.526** | 0.273 / 0.556 |
+  | + vaadi PIELI (`_has_jamb`) | 0.643 / 0.750 | 0.214 / **0.526** | 0.273 / 0.500 |
+  Myymälässä laajennus toimii (+2 aitoa, +1 väärä), mutta Rohbaussa se tuottaa
+  yhdeksän uutta aukkoa joista yksi on oikea → tarkkuus 0.800 → 0.526.
+  Runkovaiheen seinänpää on rosoinen ja **siinä ON dataa**, joten "vaadi dataa"
+  ei muuta mitään; ja rungon sisällä on pisteitä (raudoitus, muotti, mallia
+  paksumpi seinä), joten pielikään ei ole siellä todiste — se vain poisti yhden
+  aidon aukon myymälästä.
+  **Vika on todellinen mutta erottelijaa ei ole.** Seuraavan yrityksen on
+  erotettava AITO seinän pään aukko ROSOISESTA päästä jollain muulla kuin
+  datan olemassaololla tai rungon pisteillä. Aineisto tähän on olemassa
+  (`_synth_store.py`), joten mittaus ei enää vaadi Rohbaun tulkintaa.
   **Läpiviennit eivät kuulu nimittäjään:** Rohbaun `WallCutout`-instanssit ovat
   mitattuna 544 × 423 mm ja mediaani-alareuna 8998 mm lattiasta, eli putki- ja
   kanavaläpivientejä katonrajassa. `_MIN_H = 600` hylkää ne oikein.

@@ -57,6 +57,7 @@ KINDS = {
     "drywall":  (R_DRYWALL, S_WALL),
     "glass":    (R_WINDOW, S_WINDOW),
     "door":     (R_DOOR, S_DOOR),
+    "window":   (R_WINDOW, S_WINDOW),
     "floor":    (R_FLOOR, S_FLOOR),
     "ceiling":  (R_CEIL, S_CEIL),
     "column":   (R_COLUMN, S_COL),
@@ -265,12 +266,15 @@ def build_store(P: Parts, sx: float, sy: float, h: float, rng) -> dict:
         u = (p1 - p0) / L
         n = np.array([-u[1], u[0]])
         inst = P.new_inst()
+        gs = [(g[0], g[1], g[2], g[3] if len(g) > 3 else 0.0) for g in gaps]
         spans = []
         cur = 0.0
-        for s0, s1, gh in sorted(gaps):
+        for s0, s1, head, sill in sorted(gs):
             if s0 > cur:
                 spans.append((cur, s0, 20.0, zt - 20.0))
-            spans.append((s0, s1, gh, zt - 20.0))
+            spans.append((s0, s1, head, zt - 20.0))
+            if sill > 0.0:
+                spans.append((s0, s1, 20.0, sill))
             cur = s1
         if cur < L:
             spans.append((cur, L, 20.0, zt - 20.0))
@@ -280,31 +284,50 @@ def build_store(P: Parts, sx: float, sy: float, h: float, rng) -> dict:
             for sgn in sides:
                 P.face(a + sgn * (t / 2) * n, b + sgn * (t / 2) * n, za, zb,
                        kind, inst, side=sgn, keep=keep)
-        for s0, s1, gh in gaps:
-            # Aukon PIELET ja ylityspalkin alapinta. Ilman niita aukko on pelkka
-            # rako eika siina ole yhtaan pistetta, jolloin aukkodetektiota ei voi
-            # mitata — oikea keilaus nakee pielen aina.
+        for s0, s1, head, sill in gs:
+            # Aukon PIELET, ylityspalkin alapinta ja ikkunan sisapielen ylapinta.
+            # Ilman niita aukko on pelkka rako eika siina ole yhtaan pistetta,
+            # jolloin aukkodetektiota ei voi mitata — oikea keilaus nakee
+            # pielen aina.
             oi = P.new_inst()
+            okind = "window" if sill > 0.0 else "door"
             for sN, sgn in ((s0, -1), (s1, +1)):
                 c = p0 + sN * u
-                P.face(c - (t / 2) * n, c + (t / 2) * n, 20.0, gh, "door", oi,
-                       side=sgn)
-            P.hpatch(p0 + s0 * u, p0 + s1 * u, t, gh, "door", oi, up=False)
+                P.face(c - (t / 2) * n, c + (t / 2) * n, max(sill, 20.0), head,
+                       okind, oi, side=sgn)
+            P.hpatch(p0 + s0 * u, p0 + s1 * u, t, head, okind, oi, up=False)
+            if sill > 0.0:
+                P.hpatch(p0 + s0 * u, p0 + s1 * u, t, sill, okind, oi, up=True)
         gt["walls"].append({"axis": [list(p0), list(p1)], "thickness": t})
-        for s0, s1, gh in gaps:
+        for s0, s1, head, sill in gs:
             ctr = p0 + ((s0 + s1) / 2.0) * u
             gt["openings"].append({"center": [float(ctr[0]), float(ctr[1])],
-                                   "width": float(s1 - s0), "height": float(gh),
-                                   "type": "door" if gh <= 2400.0 else "window"})
+                                   "width": float(s1 - s0),
+                                   "height": float(head - sill),
+                                   "sill": float(sill),
+                                   "type": "window" if sill > 0.0 else "door"})
         return inst
 
     P.slab(-T_EXT, sx + T_EXT, -T_EXT, sy + T_EXT, 0.0, "floor", P.new_inst())
     P.slab(-T_EXT, sx + T_EXT, -T_EXT, sy + T_EXT, h, "ceiling", P.new_inst(), up=False)
 
+    # Myymalan julkisivu on lasiruutuja pilarien valissa, ei yhta 12 m ikkunaa:
+    # yksi pitka lasikaista antaisi GT:hen yhden 12 m aukkoinstanssin jota
+    # mikaan detektori ei voi loytaa aukkona.
     g0, g1 = 0.14 * sx, 0.34 * sx
+    pane, mull = 2400.0, 300.0
+    panes = []
+    x = g0
+    while x + pane <= g1:
+        panes.append((x - g0 + mull, x - g0 + mull + pane, 3000.0, 200.0))
+        x += pane + mull
     wall((0, 0), (g0, 0), T_EXT)
-    wall((g0, 0), (g1, 0), T_EXT, kind="glass", keep=0.05)
+    wall((g0, 0), (g1, 0), T_EXT, gaps=panes)
     wall((g1, 0), (sx, 0), T_EXT)
+    for ps0, ps1, head, sill in panes:
+        gi = P.new_inst()
+        P.face((g0 + ps0, 0.0), (g0 + ps1, 0.0), sill, head, "glass", gi,
+               side=+1, keep=0.05)
     for p0, p1 in (((sx, 0), (sx, sy)), ((sx, sy), (0, sy)), ((0, sy), (0, 0))):
         wall(p0, p1, T_EXT)
 
