@@ -1025,6 +1025,26 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   `data/_op_baseline.py` laskee sääntöjen ennusteen samoista ruudukoista,
   `data/_op_train.py` kouluttaa ja vertaa, `data/_op_eval.py` arvioi valmiin
   mallin toiseen aineistoon.
+  **JATKO 9.9.2026 — SIIRTYMINEN RAKENNUKSESTA TOISEEN EI TOIMI, ja tämä
+  kumoaa edellisen kohdan integrointisuosituksen.** Mitattu molempiin suuntiin:
+  | koulutus → arviointi | verkko katt./tark. | säännöt |
+  |---|---|---|
+  | synteettinen → Rohbau | 0.151 / 0.870 | 0.208 / 0.893 |
+  | Rohbau → synteettinen | **0.000 / 0.000** | 0.859 / 0.733 |
+  Jälkimmäinen ei ole kynnysasia: mallin ulostulo on käytännössä nolla
+  kaikkialla (keskimääräinen maksimi aukon kohdalla **0.039**) ja
+  sarake-AUC **0.570** eli sattuma. Malli ei näe toisen rakennuksen aukkoja.
+  **KUMOTTU KORJAUS: piirteiden normalisointi seinän omaan mediaaniin.**
+  Hypoteesi oli tämän repon oma vakio-oppi — miehitysTASO on rakennuksen
+  ominaisuus, suhde siirtyy. Mitattu: siirtyminen pysyy **0.000**, ja
+  Rohbaun oma tulos jopa heikkenee (tarkkuus 0.632 → 0.464, 0.583 → 0.538,
+  0.462 → 0.333 kolmella foldilla). Selitys ei siis ole taso-vs-suhde.
+  **Seuraus tuotteelle: opittua aukkodetektiota EI saa laittaa yleiseksi
+  detektoriksi.** Se toimii vain sillä kohteella jolla se on koulutettu.
+  Käyttökelpoinen muoto on per-projekti: labeloi kohteesta muutama asema,
+  kouluta, aja loppuun samasta rakennuksesta — mikä on täsmälleen kellarin
+  työnkulku. Yleistyminen vaatisi monen eri rakennuksen labeloitua dataa,
+  jota ei ole eikä ole helposti saatavissa.
 
 - **MYYMÄLÄN VALESEINÄT TULEVAT JÄÄNNÖSHAUSTA, EIVÄT DETEKTORISTA (8.9.2026).**
   Keilatussa myymälässä malli antaa 52 seinää yhdelletoista GT-seinälle. Lähde

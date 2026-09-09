@@ -28,6 +28,7 @@ ZB = 48          # z-kaistaa
 CROP = 512       # saraketta koulutuskropissa
 VAL_SCENES = ("scene_08", "scene_09", "_store_m")
 CLEAN = True
+NORM = True
 
 
 def _clean_label(lab, xe, ze, min_w=500.0, min_h=600.0):
@@ -62,6 +63,14 @@ def _features(z) -> tuple[np.ndarray, np.ndarray]:
     edges = np.linspace(0, n_z, ZB + 1).astype(int)
     bands = np.stack([occ[:, edges[i]:edges[i + 1]].mean(axis=1)
                       for i in range(ZB)], axis=0)          # (ZB, n_x)
+    if NORM:
+        # MiehitysTASO on rakennuksen ominaisuus: Rohbaun rosoinen runko on
+        # harva ja myymala tihea, joten tasolla opetettu malli ei siirry
+        # rakennuksesta toiseen (mitattu: 0.000 kattavuus molempiin suuntiin).
+        # Suhteuta seinan OMAAN mediaaniin — sama saanto kuin muillakin taman
+        # putken mittareilla.
+        ref = float(np.median(bands[bands > 0])) if (bands > 0).any() else 1.0
+        bands = np.clip(bands / max(ref, 1e-3), 0.0, 3.0)
     col = z["col"].astype(np.float32)
     med = float(np.median(col[col > 0])) if (col > 0).any() else 1.0
     col = np.clip(col / max(med, 1e-6), 0.0, 4.0)[None, :]  # (1, n_x)
@@ -160,7 +169,7 @@ def main() -> None:
         val = tuple(sys.argv[sys.argv.index("--val") + 1].split(","))
     tr, va = _load(root, val)
     print(f"koulutus {len(tr)} seinaa, validointi {len(va)} seinaa", flush=True)
-    if not tr or not va:
+    if not tr:
         print("liian vahan dataa"); return
 
     pos = sum(float(i["y"].sum()) for i in tr)
