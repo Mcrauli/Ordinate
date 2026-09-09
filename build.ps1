@@ -27,6 +27,17 @@ if ($LASTEXITCODE -eq 0) {
     if (-not (Test-Path $exe)) { $exe = Join-Path $PSScriptRoot "dist\scan2bim.exe" }
     $size = [math]::Round((Get-Item $exe).Length / 1MB, 1)
     Write-Host "✓ Build valmis: $exe ($size MB)" -ForegroundColor Green
+
+    # SAVUTESTI on osa buildia, ei erillinen muistettava vaihe. Nelja vikaa
+    # loytyi 9.9.2026 pelkastaan silla etta pakattua tuotetta ajettiin
+    # ensimmaista kertaa repon ULKOPUOLELTA; testit ja matriisi eivat aja
+    # rakennettua exea lainkaan, joten ne eivat voi nahda taman luokan vikoja.
+    Write-Host "Savutesti (pakattu tuote repon ulkopuolella)..." -ForegroundColor Yellow
+    & "$venv\python" (Join-Path $PSScriptRoot "scripts\smoke_exe.py")
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "✗ Savutesti epäonnistui — pakattu tuote ei toimi" -ForegroundColor Red
+        exit 1
+    }
 } else {
     Write-Host "✗ Build epäonnistui" -ForegroundColor Red
     exit 1

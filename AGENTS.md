@@ -210,6 +210,39 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
 
 ## Kovalla työllä opitut asiat — ÄLÄ keksi uudelleen
 
+- **TESTIT JA MATRIISI EIVÄT AJA PAKATTUA TUOTETTA — ja siihen kertyi neljä
+  vikaa (9.9.2026).** Kaikki neljä ovat samaa lajia: toimii kehitysvenvistä,
+  rikki paketissa, eikä näy missään mittarissa.
+  1. **Spec pakkasi mallin ehdolla `if os.path.exists`.** Ilman mallia exe
+     kääntyy normaalisti ja putki putoaa geometriseen fallbackiin — asiakas
+     saa mitatusti huonomman tuloksen eikä buildissa näy mitään. Nyt build
+     **keskeytyy**.
+  2. **Paketissa ei ollut komentoriviä lainkaan.** Julkaistava exe rakentuu
+     `gui/__main__.py`:stä ja `console=False`, joten `scan2bim.exe convert …`
+     vain avaa ikkunan. Asiakas ei voi skriptata tai eräajaa mitään. Nyt
+     samasta `Analysis`:sta rakentuu **`scan2bim-cli.exe`** (console=True) —
+     samat riippuvuudet ja sama malli, ei toista latausta eikä versioeroa.
+  3. **`cli.py`:stä puuttui `if __name__ == "__main__"` -vartija.** Se toimi
+     kehityksessä vain koska `pip install -e` luo `console_scripts`-
+     käynnistimen joka kutsuu `main()`:ia; suoraan ajettuna moduuli määritteli
+     komennot ja päättyi **koodilla 0 tekemättä mitään**.
+  4. **`UnicodeEncodeError` cp1252-konsolissa.** Pelkkä `--help` kaatoi CLI:n,
+     koska suomenkielisessä tekstissä on `→`. Kehitys ei näe tätä, koska venv
+     ajaa `PYTHONIOENCODING=utf-8`. `stdout`/`stderr` pakotetaan nyt UTF-8:aan
+     `errors="replace"`.
+  **Suoja: `scripts/smoke_exe.py` ajetaan osana `build.ps1`:tä.** Se kopioi
+  `dist/scan2bim`:n repon ULKOPUOLELLE, ajaa `--help`in ja konversion, ja
+  vaatii että `model.json`, `model.ifc` ja `model.dxf` syntyvät.
+  **Tärkein rivi siinä on `--semantic-filter pointnet`:** ilman pakotusta
+  `auto` ohittaa suodattimen pienessä tilassa, jolloin mallin latautumista ei
+  testata lainkaan ja fallback-tarkistus on tyhjä — oma ensimmäinen versioni
+  meni läpi juuri siitä syystä.
+  **Salausta varten tarkistettu:** mikään ei lue lähdekoodia ajonaikana (ei
+  `inspect.getsource`, `pkg_resources` eikä `importlib.resources`), `__file__`
+  on vain siinä haarassa jota pakattu build ei aja, ja `sys.executable` vain
+  itsepäivityksessä. Mallipolku on pakatussa buildissa `sys._MEIPASS` eikä sillä
+  ole repo-fallbackia.
+
 - **ÄLÄ KOSKE `src/`:ään KUN MATRIISI AJAA — se ei kaadu, se valehtelee.**
   `data/_matrix.py` käynnistää jokaiselle aineistolle oman prosessin, joten
   kesken ajon tehty lähdemuutos tulee voimaan seuraavasta aineistosta alkaen.
