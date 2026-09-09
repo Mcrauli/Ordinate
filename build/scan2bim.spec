@@ -48,10 +48,18 @@ _ort_bins = collect_dynamic_libs('onnxruntime')
 # (cb50610 sulautti ne). Molempien bundlaaminen lisäsi 3.4 MB turhaa
 # jokaiseen latauksen ja itsepäivitykseen; PointNetFilter putoaa
 # oletusmalliin kun retail-tiedostoa ei ole.
-_model_data = []
+# Puuttuva malli EI saa mennä hiljaa läpi: exe rakentuisi normaalisti ja
+# putki putoaisi geometriseen fallbackiin, eli asiakas saisi mitatusti
+# huonomman tuloksen ilman että kukaan huomaa buildissa mitään. Sama
+# tuotesääntö kuin muuallakin: hiljainen heikennys on pahempi kuin virhe.
 _model_file = os.path.join(ROOT, 'models', 's3dis_pointnet.onnx')
-if os.path.exists(_model_file):
-    _model_data.append((_model_file, 'models'))
+if not os.path.exists(_model_file):
+    raise SystemExit(
+        "BUILD KESKEYTETTY: semanttisen suodattimen malli puuttuu:\n"
+        + _model_file + "\n"
+        "Ilman sita exe kaantyy mutta putki ajaa geometrisella fallbackilla.\n"
+        "Hae malli gitista: git checkout -- models/s3dis_pointnet.onnx")
+_model_data = [(_model_file, 'models')]
 
 # Kolmannen osapuolen lisenssit on TOIMITETTAVA sovelluksen mukana: MIT
 # (Cloud2BIM, ks. wall_contour.py) vaatii copyright-ilmoituksen säilyttämisen ja
