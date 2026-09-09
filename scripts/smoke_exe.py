@@ -33,6 +33,16 @@ def main() -> int:
         print(f"EI LOYDY: {cloud}")
         return 2
 
+    # Paketin on sisallettava MOLEMMAT exet ja malli. GUI on se mita asiakas
+    # kayttaa; CLI on se mita voi testata automaattisesti. Jos toinen puuttuu,
+    # paketti on vajaa vaikka konversio onnistuisi.
+    missing = [str(f) for f in (dist / "scan2bim.exe",
+                                dist / "_internal" / "models" / "s3dis_pointnet.onnx")
+               if not f.exists()]
+    if missing:
+        print("PUUTTUU PAKETISTA: " + ", ".join(missing))
+        return 1
+
     tmp = Path(tempfile.mkdtemp(prefix="s2b_smoke_"))
     try:
         shutil.copytree(dist, tmp / "app")
