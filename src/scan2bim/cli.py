@@ -27,6 +27,18 @@ def force_utf8_output() -> None:
                 pass
 
 
+# Windowsin konsolin oletuskoodisivu on cp1252, eika se osaa nuolta tai
+# aaskosia. Pakatussa CLI:ssa se KAATAA ohjelman heti (`--help` riitti:
+# UnicodeEncodeError '→'), koska kehitysajossa PYTHONIOENCODING=utf-8
+# peittaa asian eika vika nay missaan. Pakota UTF-8 ja korvaa se mita
+# konsoli ei osaa — teksti voi nayttaa vajaalta, mutta ajo ei kaadu siihen.
+for _s in (sys.stdout, sys.stderr):
+    try:
+        _s.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
+
 @click.group()
 @click.version_option(__version__, prog_name="scan2bim")
 def main() -> None:
@@ -94,3 +106,7 @@ def convert(
     model = Pipeline(cfg, progress=log).run(input_file, output_dir)
     click.echo(f"\n{model.summary()}")
     click.echo(f"Tulokset: {output_dir.resolve()}", file=sys.stdout)
+
+
+if __name__ == "__main__":
+    main()

@@ -129,6 +129,26 @@ a = Analysis(
 
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
+# KOMENTORIVI OMANA EXENAAN. GUI-exe on `console=False`, joten silla ei ole
+# stdoutia eika komentorivi toimi siina lainkaan — `scan2bim.exe convert ...`
+# vain avaa ikkunan. Eraajo, skriptaus ja asiakkaan oma automaatio tarvitsevat
+# konsoliversion, ja se on saatava SAMASTA paketista: kaiken on tultava exesta.
+# Sama Analysis → tasmalleen samat riippuvuudet ja sama malli, ei toista
+# latausta eika versioeroa.
+a_cli = Analysis(
+    [os.path.join(ROOT, 'src/scan2bim/cli.py')],
+    pathex=[os.path.join(ROOT, 'src')],
+    binaries=[],
+    datas=[],
+    hiddenimports=a.hiddenimports,
+    hookspath=[],
+    runtime_hooks=[],
+    excludes=[],
+    noarchive=False,
+    cipher=block_cipher,
+)
+pyz_cli = PYZ(a_cli.pure, a_cli.zipped_data, cipher=block_cipher)
+
 # ONE-DIR, ei one-file. Syy on juridinen: IfcOpenShell ja Qt (PySide6) ovat
 # LGPL-3.0, ja LGPL §4(d)(1) edellyttää että käyttäjä voi VAIHTAA kirjaston
 # omaan versioonsa. One-file purkaa kaiken väliaikaishakemistoon → ei täyty.
@@ -155,8 +175,29 @@ exe = EXE(
     icon=_icon,
 )
 
+exe_cli = EXE(
+    pyz_cli,
+    a_cli.scripts,
+    [],
+    exclude_binaries=True,
+    name='scan2bim-cli',
+    debug=False,
+    bootloader_ignore_signals=False,
+    strip=False,
+    upx=False,
+    console=True,
+    disable_windowed_traceback=False,
+    argv_emulation=False,
+    target_arch=None,
+    codesign_identity=None,
+    entitlements_file=None,
+    version=os.path.join(SPECPATH, 'version_info.py'),
+    icon=_icon,
+)
+
 coll = COLLECT(
     exe,
+    exe_cli,
     a.binaries,
     a.zipfiles,
     a.datas,
