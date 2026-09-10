@@ -4,7 +4,44 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 [`Mcrauli/scan2bim-web`](https://github.com/Mcrauli/scan2bim-web/releases):iin;
 sovellus päivittää itsensä sieltä.
 
-## Julkaisematon
+## v0.9.22 (10.9.2026) — putki 36 % nopeampi, komentorivi pakettiin, kadonneet seinät takaisin
+
+- **Komentorivi puuttui paketista kokonaan — nyt mukana `scan2bim-cli.exe`.**
+  Julkaistava exe rakentuu GUI:sta ja on `console=False`, joten
+  `scan2bim.exe convert …` vain avasi ikkunan: eräajo tai skriptaus ei ollut
+  mahdollista millään koneella. CLI rakentuu nyt samasta `Analysis`:sta, eli
+  siinä on täsmälleen samat riippuvuudet ja sama malli — ei toista latausta
+  eikä versioeroa. Käyttö: `scan2bim-cli.exe convert <pilvi> <ulos>`.
+
+- **Kolme muuta pakettivikaa, kaikki sellaisia jotka toimivat kehityksessä ja
+  hajosivat asiakkaalla.** (1) Spec pakkasi semanttisen suodattimen mallin
+  ehdolla, joten ilman mallia exe kääntyi normaalisti ja putki putosi
+  **hiljaa** geometriseen fallbackiin — build keskeytyy nyt virheeseen.
+  (2) `cli.py`:stä puuttui `__main__`-vartija; se toimi vain `pip install -e`:n
+  luoman käynnistimen kautta ja päättyi muuten koodilla 0 tekemättä mitään.
+  (3) `--help` kaatoi CLI:n `UnicodeEncodeError`iin cp1252-konsolissa, koska
+  suomenkielisessä tekstissä on `→`; tulostus pakotetaan nyt UTF-8:aan.
+  Suojaksi `scripts/smoke_exe.py` ajetaan osana buildia **ennen zippausta**:
+  se kopioi paketin repon ulkopuolelle ja ajaa siellä oikean konversion, joten
+  asennuspaketti ja itsepäivitys perivät saman takuun.
+
+- **Kadonneet seinät: hyllynpoisto tuomitsi muodosta.** `remove_shelf_front_walls`
+  poisti seinän joka on lyhyehkö, rinnakkainen ja 300–1500 mm päässä paljon
+  pidemmästä — mutta runkovaiheen rakennuksessa se muoto on aito kipsiseinä
+  julkisivun edessä. Poisto vaatii nyt todisteen: seinän vieressä on oltava
+  vaakatasoja (mitattu erottelu — Rohbaun GT-seinät 0–2 tasoa, myymälän
+  hyllynetupinnat 7–9). Mitattu: asunto kattavuus **0.681 → 0.813** ja seiniä
+  9 → 13, Rohbau 07003 GT-instanssit 0.556 → 0.593, kellari 0.366 → 0.379;
+  myymälät ennallaan 9/9 GT-seinällä ja nollalla hyllyvaleseinällä.
+
+- **Seinien pirstoutuminen: 660 mm kuollut vyöhyke kahden säännön välissä.**
+  `merge_collinear_walls` hyväksyi railon ≤450 mm ja `bridge_lintel_gaps`
+  300–2200 mm mutta vain ≤25 mm kohtisuoralla erolla, joten 660 mm railo
+  130 mm sivussa ei kuulunut kummallekaan. Railo saa nyt olla pidempi jos sen
+  kohdalla ON seinäpintaa, katto 800 mm = kapein oviaukko. Mitattu
+  liiketilassa: **36 seinäoliota → 13**, GT-seiniä löytyi 7/9 → **9/9**,
+  ylimääräisiä 29 → 4.
+
 
 - **Detektorivalinta ei enää palkitse MÄÄRÄSTÄ.** `_best_detector` valitsi
   detektorin `wall_coverage`lla, joka on puhdas recall: jokainen lisätty seinä
