@@ -14,7 +14,9 @@ ilman etta kenenkaan tarvitsee labeloida mitaan.
 Vertailukohta on ANTELIAS: paras yhden piirteen kynnys samalla foldilla —
 eli se mita kasin viritetty globaali portti parhaimmillaan olisi.
 
-Kaytto: _perproj_probe.py <model.json> <scene_dir> [nimi]
+Kaytto:
+  _perproj_probe.py <model.json> <scene_dir> [nimi]          # GT per-piste
+  _perproj_probe.py <model.json> <pilvi.ply> [nimi] --labels <labels.json>
 """
 from __future__ import annotations
 
@@ -102,17 +104,38 @@ def _auc(s, y):
     return float((p[:, None] > n[None, :]).mean() + 0.5 * (p[:, None] == n[None, :]).mean())
 
 
-def main(model_json: str, scene: str, tag: str = "") -> None:
+def main(model_json: str, scene: str, tag: str = "", *_rest) -> None:
     W = json.loads(Path(model_json).read_text(encoding="utf-8"))["walls"]
     d = Path(scene)
-    P = np.load(d / "coord.npy").astype(np.float64)
-    if float(np.ptp(P[:, 0])) < 500.0:
+    labels = None
+    if "--labels" in sys.argv:
+        labels = json.loads(Path(sys.argv[sys.argv.index("--labels") + 1])
+                            .read_text(encoding="utf-8"))
+        sel = [(i, w) for i, w in enumerate(W) if str(i) in labels]
+        idx_of = {id(w): i for i, w in sel}
+        W = [w for _, w in sel]
+    if d.is_dir():
+        P = np.load(d / "coord.npy").astype(np.float64)
+        C = np.load(d / "class.npy")
+    else:
+        # Kasin labeloitu kohde: totuus tulee seinatason labeleista, ei
+        # pisteluokista. Pilvea tarvitaan yha piirteisiin.
+        import open3d as o3d
+        P = np.asarray(o3d.io.read_point_cloud(str(d)).points)
+        C = np.zeros(len(P), np.int16)
+    if len(P) and float(np.ptp(P[:, 0])) < 500.0:
         P = P * 1000.0
-    C = np.load(d / "class.npy")
     lens = [float(np.linalg.norm(np.asarray(w["axis"][-1], float)[:2]
                                  - np.asarray(w["axis"][0], float)[:2])) for w in W]
     med_len = float(np.median(lens)) if lens else 1.0
-    rows = [f for f in (_feat(w, P, C, med_len) for w in W) if f]
+    rows = []
+    for w in W:
+        f = _feat(w, P, C, med_len)
+        if not f:
+            continue
+        if labels is not None:
+            f["_truth"] = float(labels[str(idx_of[id(w)])])
+        rows.append(f)
     if len(rows) < 8:
         print(f"{tag or d.name}: liian vahan seinia ({len(rows)})"); return
     keys = [k for k in rows[0] if not k.startswith("_")]
