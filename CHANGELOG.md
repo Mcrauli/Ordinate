@@ -4,6 +4,50 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 [`Mcrauli/scan2bim-web`](https://github.com/Mcrauli/scan2bim-web/releases):iin;
 sovellus päivittää itsensä sieltä.
 
+## v0.9.24 (10.9.2026) — kaksoisid:t pois, paketti todistaa GUI:n ajopolun
+
+- **Sama seinä-id kahdesti samassa mallissa.** Putki ajaa jäännösseinähaun
+  kahdesti (geometriaketjun sisällä ja sen jälkeen) ja kumpikin ajo numeroi
+  nollasta, joten koulun kellarin mallissa oli `wall_res_000…008` **kahteen
+  kertaan**. Duplikaatti-id sekoittaa IFC:n, QA:n ja jokaisen työkalun joka
+  viittaa seinään id:llä — se löytyi labeloinnista, jossa kaksi eri seinää
+  näytti samalta riviltä. Numerointi jatkuu nyt mallissa jo olevista id:istä
+  (`tests/test_residual_ids.py`, varmistettu mutatoimalla). Matriisi:
+  **kaikki 12 aineistoa +0.000**, Rohbaun GT-instanssit +0.000 — korjaus ei
+  liikuta geometriaa.
+
+- **Savutesti todistaa nyt myös sen että GUI löytää komentorivin.**
+  `cli_command()`:n `sys.frozen`-haara — se joka etsii `scan2bim-cli.exe`n
+  GUI-exen vierestä — ei aja kehityksessä koskaan, eli se on täsmälleen sitä
+  lajia joka toimii venvissä ja hajoaa asiakkaalla. Paketista ajetaan nyt
+  `scan2bim-cli.exe selftest-paths`, joka ratkaisee polun samalla koodilla
+  kuin GUI ja vaatii että molemmat exet ovat olemassa.
+
+## v0.9.23 (10.9.2026) — sovellus ei enää jäädy
+
+- **Putki ajetaan nyt ERILLISENÄ PROSESSINA, ei säikeenä.** `ProcessWorker` oli
+  `QThread` joka ajoi `Pipeline.run_floors()`:n samassa prosessissa. Putken
+  semantiikkaketju on täynnä puhdasta Python-silmukkaa, joka pitää GIL:iä →
+  Qt:n tapahtumasilmukka ei päässyt ajoon ja ikkuna jäätyi kesken ajon
+  ("ei vastaa"). Nyt GUI käynnistää paketin oman `scan2bim-cli.exe run`
+  -komennon `QProcess`illa ja lukee vain sen stdoutin; tulokset luetaan
+  levyltä (`floor_NN/model.json`). Mitattu offscreen-ajossa: koko putkiajon
+  aikana UI-säikeen pisin tauko **78 ms** (ennen: koko ajon mittainen).
+  Tämä on myös se syy miksi komentorivi kuuluu pakettiin — GUI on nyt sen
+  ensimmäinen käyttäjä, ja `scripts/smoke_exe.py` ajaa `run`-komennon
+  pakatusta tuotteesta ennen zippausta.
+
+- **3D-tarkastus jäätyi pistepilveä avattaessa.** Kolme syytä, kaikki
+  UI-säikeellä: pistebudjetti oli 6 M, `_rgba`/`_pts`-taulukot rakennettiin
+  vasta latauksen jälkeen pääsäikeessä, ja **residuaaliluokittelu ajoi 219
+  seinää × 6 M pistettä** ennen kuin mitään piirtyi — mitattu **34.4 s**
+  pelkkää luokittelua UI-säikeellä. Nyt budjetti on 1.5 M,
+  taulukot rakennetaan lataussäikeessä ja luokittelu ajetaan omassa
+  säikeessään — näkymä piirtyy heti ja väritys päivittyy kun laskenta
+  valmistuu. Lisäksi `_stop_thread` kutsui `QThread.wait()`ia pääsäikeestä
+  ilman aikarajaa; teardown on nyt ei-blokkaava. Mitattu kellarin 219 seinän
+  mallilla: lataus 9.6 s + luokittelu 8.8 s, **UI-säikeen pisin tauko 130 ms**.
+
 ## v0.9.22 (10.9.2026) — putki 36 % nopeampi, komentorivi pakettiin, kadonneet seinät takaisin
 
 - **Komentorivi puuttui paketista kokonaan — nyt mukana `scan2bim-cli.exe`.**

@@ -210,6 +210,65 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
 
 ## Kovalla työllä opitut asiat — ÄLÄ keksi uudelleen
 
+- **PER-PROJEKTI-OPPIMINEN MITATTU ENSIMMÄISTÄ KERTAA OIKEAN KÄYTTÄJÄN
+  LABELEILLA (10.9.2026) — ja se on selvästi paras tulos kellarissa.**
+  Aiemmat per-projekti-luvut tulivat Rohbaun GT:stä. Nyt käyttäjä labeloi
+  kontaktiarkeilta koulun kellarin seinät kyllä/ei (216 seinää 244:stä;
+  sheetit 19–20 jäivät kesken, eli juuri vaikeimmat puuttuvat).
+  `data/_perproj_probe.py`, 13 piirrettä, koulutus satunnaiselle puolikkaalle
+  ja arviointi toiselle, 20 toistoa:
+  | | tulos |
+  |---|---|
+  | seiniä labeloituna | 208 (180 aitoa, 28 valetta) |
+  | **yhdistelmä, AUC** | **0.912 ± 0.043** |
+  | paras yksi piirre (antelias vertailu) | 0.776 |
+  | kynnys "ei menetä yhtään aitoa koulutuksessa" | **valeista poistuu 43 %**, aidoista menetetään 2 % |
+  Painavimmat piirteet: jatkuvuus +0.59, confidence +0.52, tasomaisuus −0.36,
+  log(pisteet) +0.36, kontrasti +0.34.
+  **Mitä tämä EI ole:** labelit ovat yhden ihmisen yksi visuaalinen läpikäynti
+  eivätkä ground truth, ja labeloimatta jäivät nimenomaan ne seinät joita oli
+  vaikein arvioida — joten luku on todennäköisesti optimistinen. Se EI myöskään
+  yleisty toiseen rakennukseen (mitattu aiemmin: AUC 0.570).
+  **Mutta se vastaa siihen tuotekysymykseen johon globaali kynnys ei ole
+  vastannut kertaakaan:** arkkitehti korjaa osan seinistä, ja sovellus oppii
+  NIISTÄ korjauksista mikä tässä rakennuksessa erottaa aidon valeseinästä.
+  **Labelien uudelleenavainnus:** arkin `walls.json` säilyttää id:n ja
+  pituuden per indeksi, joten labelit voi siirtää uuteen ajoon vertaamalla
+  pituussarjaa. Tällä löytyi että kaksoisid siirsi yhden seinän listan
+  loppuun (vanha 243 → uusi 183) — id-korjauksen jälkeen ryhmä on yhtenäinen.
+
+- **ID JOKA NUMEROIDAAN NOLLASTA EI OLE UNIIKKI JOS VAIHE AJETAAN KAHDESTI.**
+  `find_residual_walls` ajetaan ketjun sisällä JA sen jälkeen, ja `_to_walls`
+  numeroi `wall_res_{len(walls):03d}` eli kummallakin kerralla nollasta →
+  kellarin mallissa `wall_res_000…008` kahteen kertaan. Sama ansa oli jo
+  kerran korjattu perimetrissä (`add_perimeter_walls` numeroi
+  polygonikohtaisesti, ks. `pipeline.py` "uniikit id:t koko joukolle"), joten
+  se on toistuva eikä yksittäinen. **Vika ei näy missään mittarissa** —
+  kattavuus, tarkkuus ja GT-luvut ovat bitilleen samat — se näkyy vasta kun
+  johonkin viitataan id:llä (IFC, QA, labelointi). Löytyi labeloinnista.
+  Kysy jokaisesta id-generaattorista: voiko tämä funktio ajaa kahdesti samalle
+  mallille?
+
+- **GUI JÄÄTYI KOSKA PUTKI AJOI SAMASSA PROSESSISSA — QThread ei riitä kun
+  työ on puhdasta Pythonia (10.9.2026).** `ProcessWorker(QThread)` näytti
+  oikealta: raskas työ omassa säikeessään. Mutta numpy vapauttaa GIL:n vain
+  taulukko-operaation ajaksi, ja semantiikkaketju on per-seinä-silmukkaa
+  Pythonissa — ikkuna jäi "ei vastaa" -tilaan minuuteiksi kerrallaan
+  (mitattu: `Responding: False`, CPU ~0, muistia 25 GB vapaana → **blokissa,
+  ei laskemassa**). Korjaus on rakenteellinen eikä optimointi: GUI käynnistää
+  `scan2bim-cli.exe run` -komennon `QProcess`illa ja lukee stdoutia; mallit
+  luetaan levyltä. Mitattu koko putkiajon ajalta: UI-säikeen **pisin tauko
+  78 ms**. Sivutuote: GUI on nyt komentorivin ensimmäinen käyttäjä, joten
+  `smoke_exe.py` testaa myös sen polun pakatusta tuotteesta.
+  **Ansa: älä laita `logging.basicConfig(INFO)` siihen komentoon** — ezdxf
+  tulvii lokipaneeliin "creating ACAD_* dictionary" -rivit. Käyttäjän viestit
+  tulevat progress-callbackista.
+  **Toinen jäätymä samasta lajista: 3D-tarkastus.** `_stop_thread` kutsui
+  `QThread.wait()`ia ilman aikarajaa PÄÄSÄIKEESTÄ, taulukot rakennettiin
+  pääsäikeessä latauksen jälkeen, ja residuaaliluokittelu ajoi **219 seinää ×
+  6 M pistettä** ennen ensimmäistäkään piirtoa. Kysy jokaisesta slotista:
+  paljonko työtä se tekee ennen kuin palaa tapahtumasilmukkaan?
+
 - **TESTIT JA MATRIISI EIVÄT AJA PAKATTUA TUOTETTA — ja siihen kertyi neljä
   vikaa (9.9.2026).** Kaikki neljä ovat samaa lajia: toimii kehitysvenvistä,
   rikki paketissa, eikä näy missään mittarissa.
