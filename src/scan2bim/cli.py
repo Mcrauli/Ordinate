@@ -108,5 +108,63 @@ def convert(
     click.echo(f"Tulokset: {output_dir.resolve()}", file=sys.stdout)
 
 
+@main.command(name="run")
+@click.argument("inputs", nargs=-1, required=True,
+                type=click.Path(exists=True, path_type=Path))
+@click.option("--out", required=True, type=click.Path(path_type=Path),
+              help="Tuloshakemisto")
+@click.option("--config", type=click.Path(exists=True, path_type=Path),
+              help="PipelineConfig JSON-tiedostona")
+def run_floors_cmd(inputs: tuple[Path, ...], out: Path, config: Path | None) -> None:
+    """Tuotantoajo (run_floors): N skannia -> kerrosjako -> mallit.
+
+    EI logging.basicConfig(INFO): GUI lukee taman stdoutin lokipaneeliinsa,
+    ja ezdxf tulvii sinne "creating ACAD_* dictionary" -rivit. Kayttajan
+    nakemat viestit tulevat progress-callbackista.
+    """
+    import json
+
+    from scan2bim.core.pipeline import Pipeline, PipelineConfig
+
+    cfg = PipelineConfig()
+    if config is not None:
+        raw = json.loads(Path(config).read_text(encoding="utf-8"))
+        smp = raw.get("semantic_model_path")
+        raw["semantic_model_path"] = Path(smp) if smp else None
+        cfg = PipelineConfig(**raw)
+
+    def log(msg: str) -> None:
+        click.echo(msg, file=sys.stdout)
+        try:
+            sys.stdout.flush()
+        except Exception:
+            pass
+
+    models = Pipeline(cfg, progress=log).run_floors(list(inputs), Path(out))
+    log(f"VALMIS kerroksia={len(models)}")
+
+
+@main.command(name="selftest-paths", hidden=True)
+def selftest_paths() -> None:
+    """Ratkaiseeko GUI komentorivin polun oikein TASSA paketissa.
+
+    GUI ajaa putken aliprosessina `cli_command()`:n palauttamalla komennolla.
+    Se haara joka lukee `sys.frozen`in ja etsii `scan2bim-cli.exe`n GUI-exen
+    vierelta ei aja kehityksessa KOSKAAN — juuri sita lajia joka toimii
+    venvissa ja hajoaa asiakkaalla. Savutesti ajaa taman paketista.
+    """
+    from scan2bim.gui.process_worker import cli_command
+
+    cmd = cli_command()
+    click.echo("CLI: " + " ".join(cmd))
+    if getattr(sys, "frozen", False):
+        cli = Path(cmd[0])
+        gui = cli.with_name("scan2bim.exe")
+        missing = [str(f) for f in (cli, gui) if not f.exists()]
+        if missing:
+            raise SystemExit("PUUTTUU: " + ", ".join(missing))
+    click.echo("POLUT OK")
+
+
 if __name__ == "__main__":
     main()

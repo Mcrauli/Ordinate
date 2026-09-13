@@ -16,6 +16,11 @@ os.environ.setdefault("PYQTGRAPH_QT_LIB", "PySide6")
 import pyqtgraph.opengl as gl  # noqa: E402
 from pyqtgraph import Vector  # noqa: E402
 
+# 6 M pistetta jaadytti tarkastelun: lataus, taulukkojen rakennus ja
+# residuaaliluokittelu kasvavat kaikki lineaarisesti. 1.5 M riittaa
+# visuaaliseen tarkastukseen ja pitaa naytelman responsiivisena.
+_MAX_VIEW_PTS = 1_500_000
+
 
 class _FlyView(gl.GLViewWidget):
     """GLViewWidget + WASD/QE-lentokamera. Hiiri kääntää (orbit), näppäimet
@@ -208,7 +213,7 @@ def _opening_segments(model):
 # --- taustalatain -----------------------------------------------------------
 
 class _Loader(QtCore.QObject):
-    done = QtCore.Signal(object, object, object)  # Ps_raw, rgb, offset
+    done = QtCore.Signal(object, object, object, object)  # Ps_raw, rgba, pts, offset
     failed = QtCore.Signal(str)
 
     def __init__(self, cloud_path, max_pts: int):
@@ -250,8 +255,26 @@ class _Loader(QtCore.QObject):
             step = max(1, -(-len(P) // self._max))
             Ps = np.ascontiguousarray(P[::step])
             offset = Ps.mean(axis=0)
-            rgb = _rgb_all[::step]
-            self.done.emit(Ps, np.ascontiguousarray(rgb), offset)
+            rgb = np.ascontiguousarray(_rgb_all[::step])
+            rgba = np.column_stack([rgb, np.ones(len(rgb), np.float32)])
+            pts = np.ascontiguousarray(Ps - offset, dtype=np.float32)
+            self.done.emit(Ps, rgba, pts, offset)
+        except Exception as e:  # noqa: BLE001
+            self.failed.emit(str(e))
+
+
+class _Classifier(QtCore.QObject):
+    done = QtCore.Signal(object)
+    failed = QtCore.Signal(str)
+
+    def __init__(self, Ps, model):
+        super().__init__()
+        self._Ps = Ps
+        self._model = model
+
+    def run(self) -> None:
+        try:
+            self.done.emit(classify_explained(self._Ps, self._model))
         except Exception as e:  # noqa: BLE001
             self.failed.emit(str(e))
 
@@ -267,6 +290,8 @@ class InspectView(QtWidgets.QWidget):
         self._cloud_path: str | None = None
         self._thread = None
         self._loader = None
+        self._cthread = None
+        self._classifier = None
         # ladattu pilvi (välimuistissa → mallin muutos ei vaadi uudelleenlatausta)
         self._Ps = None; self._rgb = None; self._offset = None; self._pts = None
         self._rgba = None; self._res = None; self._expl = None
@@ -320,7 +345,9 @@ class InspectView(QtWidgets.QWidget):
             self._apply_model()          # sama pilvi ladattu → päivitä vain malli
             return
         self._cloud_path = cloud_path
+        self._stop_classifier()
         self._Ps = None; self._pts = None
+        self._res = None; self._expl = None
         self._view.clear()
         self._scatter = None; self._grid = None; self._model_items = []
         self._mode.setEnabled(False)
@@ -339,7 +366,7 @@ class InspectView(QtWidgets.QWidget):
         self._load_btn.setEnabled(False)
         self._info.setText("Ladataan pistepilveä…")
         self._thread = QtCore.QThread(self)
-        self._loader = _Loader(self._cloud_path, 6_000_000)
+        self._loader = _Loader(self._cloud_path, _MAX_VIEW_PTS)
         self._loader.moveToThread(self._thread)
         self._thread.started.connect(self._loader.run)
         self._loader.done.connect(self._on_loaded)
@@ -347,20 +374,38 @@ class InspectView(QtWidgets.QWidget):
         self._thread.start()
 
     def _stop_thread(self) -> None:
-        if self._thread is not None:
-            self._thread.quit(); self._thread.wait()
-            self._thread = None; self._loader = None
+        """Irrota lataussäie ILMAN wait()-kutsua. wait() blokkaa UI-säikeen
+        rajattomasti; säie on jo tehnyt työnsä kun signaali saapuu."""
+        th, ld = self._thread, self._loader
+        self._thread = None; self._loader = None
+        if th is not None:
+            th.finished.connect(th.deleteLater)
+            if ld is not None:
+                th.finished.connect(ld.deleteLater)
+            th.quit()
+
+    def _stop_classifier(self) -> None:
+        th, cl = self._cthread, self._classifier
+        self._cthread = None; self._classifier = None
+        if th is not None:
+            try:
+                cl.done.disconnect()
+                cl.failed.disconnect()
+            except (RuntimeError, TypeError):
+                pass
+            th.finished.connect(th.deleteLater)
+            th.finished.connect(cl.deleteLater)
+            th.quit()
 
     def _on_failed(self, msg: str) -> None:
         self._stop_thread()
         self._info.setText(f"Lataus epäonnistui: {msg}")
         self._load_btn.setEnabled(True)
 
-    def _on_loaded(self, Ps, rgb, offset) -> None:
+    def _on_loaded(self, Ps, rgba, pts, offset) -> None:
         self._stop_thread()
-        self._Ps = Ps; self._rgb = rgb; self._offset = offset
-        self._rgba = np.column_stack([rgb, np.ones(len(rgb), np.float32)])
-        self._pts = (Ps - offset).astype(np.float32)
+        self._Ps = Ps; self._offset = offset
+        self._rgb = rgba[:, :3]; self._rgba = rgba; self._pts = pts
         # perspektiivikoko (maailmayksikkö mm): lähellä pisteet suurenevat →
         # pinnat täyttyvät valokuvamaisiksi kun navigoi lähelle
         # pxMode=True (PIKSELIkoko): renderöityy luotettavasti joka mittakaavassa
@@ -417,12 +462,34 @@ class InspectView(QtWidgets.QWidget):
                                      color=(1.0, 0.1, 0.1, 1.0), width=3.0, mode="lines")
             line.setGLOptions("opaque")
             self._view.addItem(line); self._model_items.append(line)
-        # residuaaliluokittelu (talletetaan; väritys näkymämoodin mukaan)
-        self._expl = classify_explained(self._Ps, self._model)
+        # Residuaaliluokittelu on 219 seinaa x 1.5 M pistetta — se EI kuulu
+        # UI-saikeelle. Nakyma piirtyy heti ja varitys paivittyy kun laskenta
+        # valmistuu.
+        self._expl = None; self._res = None
+        self._refresh_scatter()
+        self._info.setText(f"{len(self._Ps)} pistettä · lasketaan residuaalia…")
+        self._stop_classifier()
+        self._cthread = QtCore.QThread(self)
+        self._classifier = _Classifier(self._Ps, self._model)
+        self._classifier.moveToThread(self._cthread)
+        self._cthread.started.connect(self._classifier.run)
+        self._classifier.done.connect(self._on_classified)
+        self._classifier.failed.connect(self._on_class_failed)
+        self._cthread.start()
+
+    def _on_class_failed(self, msg: str) -> None:
+        self._stop_classifier()
+        self._info.setText(f"Residuaalia ei voitu laskea: {msg}")
+
+    def _on_classified(self, expl) -> None:
+        self._stop_classifier()
+        if expl is None or self._Ps is None or len(expl) != len(self._Ps):
+            return
+        self._expl = expl
         res = np.tile(np.array([0.95, 0.12, 0.12, 1.0], np.float32), (len(self._Ps), 1))
-        res[self._expl, :3] = self._rgb[self._expl] * 0.3     # selitetty himmeäksi → punainen erottuu
+        res[expl, :3] = self._rgb[expl] * 0.3     # selitetty himmeäksi
         self._res = res
-        miss = int((~self._expl).sum())
+        miss = int((~expl).sum())
         self._info.setText(f"{len(self._Ps)} pistettä · kattamatta {miss} "
                            "· syaani=seinä keltainen=pilari vihreä=palkki punainen=aukko")
         self._refresh_scatter()
@@ -431,6 +498,8 @@ class InspectView(QtWidgets.QWidget):
         if self._scatter is None or self._pts is None:
             return
         mode = self._mode.currentIndex()
+        if self._res is None:
+            mode = 0                                           # residuaali kesken
         s = self._psize
         if mode == 0:                                          # Väri
             self._scatter.setData(pos=self._pts, color=self._rgba, size=s, pxMode=True)

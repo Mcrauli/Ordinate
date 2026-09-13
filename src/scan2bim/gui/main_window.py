@@ -388,6 +388,14 @@ class MainWindow(QtWidgets.QMainWindow):
         self._inspect_view.set_source(model_dict, [str(p) for p in self._last_inputs])
         self._tabs.setCurrentWidget(self._inspect_view)
 
+    def closeEvent(self, ev) -> None:
+        """Sulkeminen kesken ajon ei saa jattaa orpoa taustaprosessia."""
+        try:
+            self._worker.stop()
+        except Exception:
+            pass
+        super().closeEvent(ev)
+
     def _on_tab_changed(self, idx: int) -> None:
         """Täytä 3D-välilehti kun siihen siirrytään."""
         if idx == self._inspect_tab_idx and self._result_models:

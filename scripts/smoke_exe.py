@@ -81,6 +81,41 @@ def main() -> int:
             print("KAATUI: semanttista suodatinta ei ajettu vaikka se pakotettiin")
             return 1
         print("  semanttinen suodatin latasi mallin paketista")
+
+        # GUI EI AJA PUTKEA ITSE — se kaynnistaa taman komennon aliprosessina
+        # (jaatymisen juurisyy oli in-process QThread). Jos `run` puuttuu tai
+        # --config ei deserialisoidu, sovellus on rikki vaikka `convert` toimii.
+        import dataclasses as _dc
+        import json as _json
+        from scan2bim.core.pipeline import PipelineConfig as _PC
+        raw = {k: (str(v) if isinstance(v, Path) else v)
+               for k, v in _dc.asdict(_PC()).items()}
+        (tmp / "cfg.json").write_text(_json.dumps(raw), encoding="utf-8")
+        r = subprocess.run([str(exe), "run", "--out", "out2",
+                            "--config", "cfg.json", "scan.ply"], cwd=tmp,
+                           capture_output=True, text=True, encoding="utf-8",
+                           errors="replace")
+        if r.returncode != 0:
+            print("KAATUI: run (GUI:n ajopolku)")
+            print(r.stdout[-3000:], r.stderr[-3000:])
+            return 1
+        floors = sorted((tmp / "out2").glob("floor_*/model.json"))
+        if not floors:
+            print("PUUTTUU: out2/floor_00/model.json — GUI ei saisi tulosta")
+            return 1
+        print(f"  run ok — {len(floors)} kerros(ta), GUI:n ajopolku toimii")
+
+        # Ja loytaako GUI sen komennon TASTA paketista: `cli_command()`:n
+        # frozen-haara ei aja kehityksessa koskaan.
+        r = subprocess.run([str(exe), "selftest-paths"], cwd=tmp,
+                           capture_output=True, text=True, encoding="utf-8",
+                           errors="replace")
+        if r.returncode != 0 or "POLUT OK" not in r.stdout:
+            print("KAATUI: GUI ei loytaisi komentorivia paketista")
+            print(r.stdout[-2000:], r.stderr[-2000:])
+            return 1
+        print("  " + r.stdout.strip().splitlines()[0])
+
         print("SAVUTESTI OK — pakattu tuote toimii repon ulkopuolella")
         return 0
     finally:
