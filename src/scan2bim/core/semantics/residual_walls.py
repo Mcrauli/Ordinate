@@ -135,7 +135,8 @@ def find_residual_walls(walls: list[Wall], cloud, floor_z: float,
         p_hi = cq + u * float(sq.max())
         out.append((p_lo, p_hi, u, float(sq.ptp())))
 
-    return _to_walls(_drop_near_existing(_pair_faces(out), walls), h_w, th_w, z_min_w)
+    return _to_walls(_drop_near_existing(_pair_faces(out), walls), h_w, th_w, z_min_w,
+                     taken={w.id for w in walls})
 
 
 def _drop_near_existing(pairs: list, walls: list[Wall]) -> list:
@@ -217,13 +218,27 @@ def _pair_faces(faces: list) -> list:
     return out
 
 
-def _to_walls(pairs: list, h_w: float, th_w: float, z_min_w: float) -> list[Wall]:
+def _to_walls(pairs: list, h_w: float, th_w: float, z_min_w: float,
+              taken: set[str] | None = None) -> list[Wall]:
+    """taken = mallissa jo olevat id:t.
+
+    Putki ajaa jäännöshaun KAHDESTI (ketjun sisällä ja sen jälkeen), ja
+    kumpikin numeroi nollasta → kellarin mallissa oli `wall_res_000…008`
+    kahteen kertaan. Duplikaatti-id sekoittaa IFC:n, QA:n ja jokaisen
+    työkalun joka viittaa seinään id:llä.
+    """
+    used = set(taken or ())
     walls: list[Wall] = []
+    n = 0
     for p0, p1, thickness in pairs:
         if float(np.linalg.norm(np.asarray(p1) - np.asarray(p0))) < _MIN_LEN:
             continue
+        while f"wall_res_{n:03d}" in used:
+            n += 1
+        wid = f"wall_res_{n:03d}"
+        used.add(wid)
         walls.append(Wall(
-            id=f"wall_res_{len(walls):03d}",
+            id=wid,
             confidence=0.5,
             classification="wall",
             source=ElementSource(method="residual"),
