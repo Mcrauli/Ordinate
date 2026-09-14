@@ -1506,6 +1506,13 @@ class Pipeline:
                 self._progress(f"  Tarkistettavaa: {len(left)} seinää")
         except Exception as e:
             self._progress(f"  Pintatuen mittaus ohitettu: {e}")
+        # VIIMEISENÄ, lopullisille seinille: GUI oppii käyttäjän korjauksista
+        # näiden piirteiden avulla eikä sillä ole pilveä.
+        try:
+            from scan2bim.core.qa.wall_evidence import measure_wall_evidence  # noqa: PLC0415
+            measure_wall_evidence(model, cloud)
+        except Exception as e:  # noqa: BLE001
+            self._progress(f"  Seinätodisteiden mittaus ohitettu: {e}")
 
     def _semantic_filter(self, cloud):
         """Vaihe 2: poista kalusteet/krääsä ennen detektiota."""

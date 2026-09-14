@@ -42,6 +42,7 @@ class Wall(Element):
     support: float | None = None     # 0..1 — pinnasta keilattu osuus (MITATTU, ei detektorin arvio)
     support_offset: float | None = None  # mm — jos tuki puuttuu: kuinka kaukana lähin pinta on
     continuity: float | None = None  # 0..1 — yhtenäisyys vyötärökorkeudella (palkkilinja = matala)
+    evidence: dict[str, float] | None = None  # pilvipiirteet per-projekti-oppimiseen (qa/wall_evidence.py)
 
 
 class Slab(Element):
