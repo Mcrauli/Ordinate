@@ -7,6 +7,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from scan2bim._version import __version__
 from scan2bim.core.pipeline import PipelineConfig
+from scan2bim.core.qa.project_learning import CorrectionLearner
 from scan2bim.gui.file_panel import FilePanel
 from scan2bim.gui.log_panel import LogPanel
 from scan2bim.gui.plan_view import PlanView, _polygon_area
@@ -81,11 +82,20 @@ class MainWindow(QtWidgets.QMainWindow):
         self._review = ReviewPanel()
         self._review.element_selected.connect(self._on_review_select)
         self._review.delete_requested.connect(self._on_review_delete)
-        self._review.reexport_requested.connect(self._on_reexport)
+        self._review.accept_requested.connect(self._on_review_accept)
+        self._review.setMinimumWidth(300)
         self._log_panel = LogPanel()
         self._inspect_view = InspectView()
-        self._tabs.addTab(self._plan_view, "Pohja")
-        self._review_tab_idx = self._tabs.addTab(self._review, "Tarkistus")
+        # Tarkistus pohjan VIERESSÄ eikä omana välilehtenä: jokainen listan
+        # valinta korostaa seinän pohjassa, ja välilehtien välillä pomppiminen
+        # teki kymmenien seinien läpikäynnistä käytännössä mahdotonta.
+        self._plan_split = QtWidgets.QSplitter(QtCore.Qt.Orientation.Horizontal)
+        self._plan_split.setChildrenCollapsible(False)
+        self._plan_split.addWidget(self._plan_view)
+        self._plan_split.addWidget(self._review)
+        self._plan_split.setStretchFactor(0, 1)
+        self._plan_split.setSizes([800, 320])
+        self._tabs.addTab(self._plan_split, "Pohja")
         self._inspect_tab_idx = self._tabs.addTab(self._inspect_view, "3D-tarkastus")
         # Välilehteä voi klikata suoraan, jolloin `_inspect_3d` ei ajaisi
         # lainkaan ja näkymä jäisi tyhjäksi — se oli kytketty vain alapalkin
@@ -96,6 +106,7 @@ class MainWindow(QtWidgets.QMainWindow):
         splitter.setStretchFactor(1, 1)
 
         self._result_models: list = []
+        self._learner = CorrectionLearner()
         self._result_multi = False
         self._last_cfg: PipelineConfig | None = None
         self._selected: list = []
@@ -186,6 +197,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self._select_label.setStyleSheet(f"color:{TEXT};font-size:13px;")
         row.addWidget(self._select_label)
         row.addStretch()
+        ok_btn = QtWidgets.QPushButton("Hyväksy")
+        ok_btn.clicked.connect(self._on_selected_accept)
+        row.addWidget(ok_btn)
         del_btn = QtWidgets.QPushButton("Poista")
         del_btn.clicked.connect(self._on_selected_delete)
         row.addWidget(del_btn)
@@ -271,29 +285,71 @@ class MainWindow(QtWidgets.QMainWindow):
         else:
             self._log_panel.set_results(result.summary())
             self._plan_view.show_model(result)
-        self._tabs.setCurrentWidget(self._plan_view)   # näytä pohja heti
+        self._tabs.setCurrentWidget(self._plan_split)   # näytä pohja heti
         self._result_models = models
         self._result_multi = isinstance(result, list)
-        self._review.set_models(models)
-        self._update_review_tab()
+        self._learner = self._load_corrections()
+        self._review.set_models(models, self._learner)
         self._show_results(models)
         self.statusBar().showMessage("Valmis")
 
-    def _update_review_tab(self) -> None:
-        n = self._review.flag_count()
-        self._tabs.setTabText(self._review_tab_idx, f"Tarkistus ({n})" if n else "Tarkistus")
+    def _corrections_path(self) -> Path | None:
+        return None if self._last_out is None else self._last_out / "corrections.json"
+
+    def _load_corrections(self) -> CorrectionLearner:
+        import json
+        p = self._corrections_path()
+        if p is not None and p.exists():
+            try:
+                return CorrectionLearner.from_json(json.loads(p.read_text(encoding="utf-8")))
+            except (OSError, ValueError, KeyError, TypeError):
+                pass
+        return CorrectionLearner()
+
+    def _save_corrections(self) -> None:
+        import json
+        p = self._corrections_path()
+        if p is None:
+            return
+        try:
+            p.write_text(json.dumps(self._learner.to_json()), encoding="utf-8")
+        except OSError as e:
+            self._log_panel.info(f"Korjauksia ei voitu tallentaa: {e}")
 
     def _on_review_select(self, floor_idx: int, kind: str, elem_id: str) -> None:
         if 0 <= floor_idx < len(self._result_models):
             self._plan_view._floor_combo.setCurrentIndex(floor_idx)
-        self._tabs.setCurrentWidget(self._plan_view)
         self._plan_view.highlight(kind, elem_id)
+
+    def _accept(self, pairs) -> int:
+        n = 0
+        for fi, kind, eid in pairs:
+            w = self._element_by(fi, kind, eid) if kind == "wall" else None
+            if w is not None and self._learner.record(w, is_real=True):
+                n += 1
+        if n:
+            self._save_corrections()
+        return n
+
+    def _on_review_accept(self, floor_idx: int, kind: str, elem_id: str) -> None:
+        self._accept([(floor_idx, kind, elem_id)])
+        self._review.mark_accepted([(floor_idx, kind, elem_id)])
+
+    def _on_selected_accept(self) -> None:
+        if not self._selected:
+            return
+        self._accept(self._selected)
+        self._review.mark_accepted(self._selected)
+        self._clear_selection()
 
     def _remove_one(self, floor_idx: int, kind: str, elem_id: str) -> bool:
         if not (0 <= floor_idx < len(self._result_models)):
             return False
         m = self._result_models[floor_idx]
         if kind == "wall":
+            w = next((w for w in m.walls if w.id == elem_id), None)
+            if w is not None and self._learner.record(w, is_real=False):
+                self._save_corrections()
             m.walls = [w for w in m.walls if w.id != elem_id]
         elif kind == "column":
             m.columns = [c for c in m.columns if c.id != elem_id]
@@ -307,7 +363,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self._plan_view.show_models(self._result_models)
         self._review.mark_edited()
         self._footer_reexport.setVisible(True)
-        self._update_review_tab()
         self._log_panel.info(f"Poistettu {n} elementti{'ä' if n != 1 else ''}.")
 
     def _on_review_delete(self, floor_idx: int, kind: str, elem_id: str) -> None:
@@ -337,7 +392,6 @@ class MainWindow(QtWidgets.QMainWindow):
             self._log_panel.error(f"IFC:n uudelleenkirjoitus epäonnistui: {e}")
             QtWidgets.QMessageBox.warning(self, "Virhe", str(e))
             return
-        self._review.mark_saved()
         self._footer_reexport.setVisible(False)
         self._log_panel.success("✓ IFC kirjoitettu uudelleen muokatusta mallista.")
         self.statusBar().showMessage("IFC päivitetty")
