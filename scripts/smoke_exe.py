@@ -105,6 +105,18 @@ def main() -> int:
             return 1
         print(f"  run ok — {len(floors)} kerros(ta), GUI:n ajopolku toimii")
 
+        # Tarkistuksen oppiminen lukee `Wall.evidence`n mallista. Mittaus on
+        # try/except-suojattu putkessa, joten jos se kaatuu paketissa, ajo
+        # onnistuu ja oppiminen kuolee hiljaa — GUI vain ei koskaan järjestä.
+        import json as _json2
+        walls = _json2.loads(floors[0].read_text(encoding="utf-8"))["walls"]
+        with_ev = sum(1 for w in walls if w.get("evidence"))
+        if walls and not with_ev:
+            print(f"KAATUI: yhdelläkään {len(walls)} seinästä ei ole evidence-kenttää "
+                  "— Tarkistus ei voi oppia korjauksista")
+            return 1
+        print(f"  evidence ok — {with_ev}/{len(walls)} seinää")
+
         # Ja loytaako GUI sen komennon TASTA paketista: `cli_command()`:n
         # frozen-haara ei aja kehityksessa koskaan.
         r = subprocess.run([str(exe), "selftest-paths"], cwd=tmp,
