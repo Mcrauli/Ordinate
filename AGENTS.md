@@ -236,6 +236,41 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   pituuden per indeksi, joten labelit voi siirtää uuteen ajoon vertaamalla
   pituussarjaa. Tällä löytyi että kaksoisid siirsi yhden seinän listan
   loppuun (vanha 243 → uusi 183) — id-korjauksen jälkeen ryhmä on yhtenäinen.
+  **JATKO 13.9.2026 — TUOTTEESSA SE ON JÄRJESTYS, EI POISTO.** Kaksi uutta
+  mittausta muuttivat muodon:
+  1. *Oppimiskäyrä* (`data/_perproj_curve.py`): automaattinen poisto maksaa
+     20 korjauksella **15 % aidoista** ja 40:llä 6 % — ei kelpaa ennen ~80:tä.
+     Mutta 20 epäilyttävimmän joukossa on jo 20 korjauksella **64 %
+     valeseiniä, kun satunnaisesti 13 %**.
+  2. *Työnkulun simulaatio* (`data/_perproj_sim.py`, tuotannon oma
+     `CorrectionLearner`, 30 arvontaa): montako valeseinää 28:sta löytyy kun
+     käyttäjä tarkistaa k seinää listan järjestyksessä.
+  | k | satunnainen | nykyinen lista | opittu | **opittu + luottamus nousevasti** |
+  |---|---|---|---|---|
+  | 10 | 1.1 | 1.7 | 1.7 | **7.0** |
+  | 20 | 2.4 | 3.1 | 3.1 | **15.0** |
+  | 40 | 5.2 | 5.8 | 17.5 | **22.0** |
+  | 60 | 8.0 | 8.5 | 23.0 | 23.0 |
+  | 80 | 10.9 | 11.3 | 24.4 | 24.0 |
+  **Tuotevika joka paljastui samalla: kellarin Tarkistus-listalla oli 2
+  seinää** (`flag_low_confidence`), eli käyttäjä ei olisi koskaan päässyt 20
+  korjaukseen sen kautta. Lista kattaa nyt kaikki seinät: ensin liputetut,
+  sitten luottamus nousevasti, ja 20 päätöksen jälkeen opittu epäily.
+  Aloitusjärjestys on mitattu VAIN kellarissa — luottamus on kokoproxy, ja
+  kellarin valeseinät ovat lyhyitä. Rakennuksessa jonka virheet ovat pitkiä
+  (Rohbaun palkkilinjat) se ei auta, mutta opittu vaihe korjaa sen.
+  **Rohbau ja synteettinen myymälä EIVÄT pysty testaamaan tätä:** 8–33
+  seinää per malli, eli testijoukko on pienempi kuin top-20-lista.
+  **Piirteet mitataan putkessa** (`core/qa/wall_evidence.py` →
+  `Wall.evidence`), koska GUI ei enää näe pilveä (putki ajaa aliprosessina).
+  Todistettu bitilleen samaksi kuin koetin: 244 seinää, 0 arvoeroa — ja
+  XYIndexillä **5.3 s vs koettimen 322 s**. GUI toistaa simulaation
+  täsmälleen (7 / 15 / 22 / 23 / 24), hitain päätös 47 ms, korjaukset
+  tallentuvat `corrections.json`:iin ja säilyvät uudelleenavauksessa.
+  **Ansa: hyväksytty seinä ilman mitattua todistetta ei ole label** —
+  ensimmäinen versio piti sitä tarkistamattomana ja se jäi listalle ikuisesti.
+  **Ansa: tarkistus omana välilehtenä teki työnkulusta mahdottoman** — jokainen
+  valinta hyppäsi Pohja-välilehdelle. Lista on nyt pohjan vieressä.
 
 - **ID JOKA NUMEROIDAAN NOLLASTA EI OLE UNIIKKI JOS VAIHE AJETAAN KAHDESTI.**
   `find_residual_walls` ajetaan ketjun sisällä JA sen jälkeen, ja `_to_walls`

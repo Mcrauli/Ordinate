@@ -4,6 +4,29 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 [`Mcrauli/scan2bim-web`](https://github.com/Mcrauli/scan2bim-web/releases):iin;
 sovellus päivittää itsensä sieltä.
 
+## v0.9.25 (14.9.2026) — Tarkistus oppii korjauksistasi
+
+- **Tarkistus käy nyt koko mallin läpi ja järjestää seinät sen mukaan mitä
+  tässä rakennuksessa on opittu.** Hyväksy aito seinä tai poista väärä, ja
+  lista siirtyy suoraan seuraavaan. 20 päätöksen jälkeen sovellus oppii
+  päätöksistäsi mikä erottaa valeseinän aidosta juuri tässä kohteessa ja
+  nostaa epäilyttävimmät kärkeen. Mitään ei poisteta automaattisesti.
+  Mitattu koulun kellarilla (28 valeseinää, käyttäjän omat labelit, 30
+  arvontaa): **40 tarkistuksella löytyy 22 valeseinää, kun vanhalla listalla
+  5.8** — ja se vanha lista oli kellarissa vain kaksi seinää pitkä.
+  Korjaukset tallentuvat tuloskansioon (`corrections.json`) ja säilyvät kun
+  mallin avaa uudelleen. Opittu ei siirry toiseen rakennukseen (mitattu),
+  joten jokainen projekti aloittaa alusta.
+- **Tarkistus on pohjakuvan vieressä eikä omana välilehtenä**, joten
+  valittu seinä näkyy korostettuna koko ajan.
+- **Listalla ei näytetä epäilyprosenttia.** Järjestys on mitatusti oikea,
+  mutta mallin todennäköisyys ei ole: kellarissa 10 epäilyttävimmästä viisi
+  oli valeseiniä samalla kun luku väitti keskimäärin 6 %.
+- Putki mittaa jokaiselle seinälle kymmenen pilvipiirrettä
+  (`Wall.evidence`), 5 s kellarissa. Todistettu bitilleen samaksi kuin
+  mittauskoetin kaikilla 244 seinällä. Geometria ennallaan: matriisi
+  kaikilla 12 aineistolla +0.000.
+
 ## v0.9.24 (10.9.2026) — kaksoisid:t pois, paketti todistaa GUI:n ajopolun
 
 - **Sama seinä-id kahdesti samassa mallissa.** Putki ajaa jäännösseinähaun
