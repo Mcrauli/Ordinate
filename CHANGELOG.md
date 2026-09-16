@@ -4,7 +4,7 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 [`Mcrauli/scan2bim-web`](https://github.com/Mcrauli/scan2bim-web/releases):iin;
 sovellus päivittää itsensä sieltä.
 
-## v0.9.26 (16.9.2026) — ei enää jäätymistä, ajo selvästi nopeampi
+## v0.9.27 (16.9.2026) — ei enää jäätymistä, skannien luku 1.7× nopeampi
 
 - **"Näytä pistepilvi" jäädytti koko sovelluksen — myös pohjanäkymän.**
   Pilvi ladattiin taustasäikeessä, mutta e57-lukija ei vapauta GIL:iä:
@@ -18,6 +18,10 @@ sovellus päivittää itsensä sieltä.
   4 prosessia **2.24×**, 6 ei enää parane (levy rajoittaa). Tulos on
   bitilleen sama — todistettu SHA1-tarkistussummalla työpilvelle,
   täysresoluutiokaistalle ja 5 mm pilvelle.
+- **Mitattu koko ajo, koulun kellari 37 skannia (31.7 GB): 66 min → 56 min.**
+  Tiedostojen luku (neljä kierrosta) 2607 s → **1541 s**. Loppuaika on nyt
+  PointNet-suodattimessa (591 s) ja semantiikkaketjussa — ne ovat seuraavat
+  kohteet, lukua nopeuttamalla ei enää saada paljoa.
 - Matriisi: kaikki 12 aineistoa +0.000.
 
 ## v0.9.25 (14.9.2026) — Tarkistus oppii korjauksistasi
