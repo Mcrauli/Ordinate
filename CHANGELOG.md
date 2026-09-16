@@ -4,6 +4,21 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 [`Mcrauli/scan2bim-web`](https://github.com/Mcrauli/scan2bim-web/releases):iin;
 sovellus päivittää itsensä sieltä.
 
+## v0.9.28 (16.9.2026) — kaatumisesta jää vihdoin jälki
+
+- **Sovellus kaatui kahdesti eikä lokiin jäänyt riviäkään.** Syy oli lokissa
+  itsessään: `sys.stderr` ohjattiin tiedostoon Pythonin tasolla, mutta
+  PySide6 tappaa prosessin `abort()`illa kun Python-poikkeus jää
+  käsittelemättä slotissa, ja se jälki menee **C-tason stderriin (fd 2)** —
+  joka ikkunasovelluksessa ei osoita mihinkään. Nyt fd 1 ja 2 ohjataan
+  `os.dup2`:lla lokitiedostoon, `faulthandler` on päällä ja käsittelemätön
+  poikkeus kirjataan aikaleimalla sekä pää- että taustasäikeistä.
+  Loki: `%TEMP%\scan2bim_gui.log`, ja siihen kirjataan myös versio ja
+  käynnistysaika, jotta rivit osaa yhdistää oikeaan ajoon.
+  Molemmat kaatumiset (0xc0000409, ucrtbase) tapahtuivat pääsäikeessä Qt:n
+  tapahtumasilmukassa — itse vika on vielä selvittämättä, ja tämä on se
+  muutos jolla se saadaan näkyviin.
+
 ## v0.9.27 (16.9.2026) — ei enää jäätymistä, skannien luku 1.7× nopeampi
 
 - **"Näytä pistepilvi" jäädytti koko sovelluksen — myös pohjanäkymän.**
