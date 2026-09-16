@@ -14,6 +14,7 @@ from pathlib import Path
 
 import numpy as np
 from PySide6 import QtCore, QtWidgets
+from scan2bim.gui.safe import guard
 
 os.environ.setdefault("PYQTGRAPH_QT_LIB", "PySide6")
 import pyqtgraph.opengl as gl  # noqa: E402
@@ -381,6 +382,7 @@ class InspectView(QtWidgets.QWidget):
         lay.addWidget(self._view, stretch=1)
 
     # -- julkinen API --
+    @guard
     def set_source(self, model: dict, cloud_path) -> None:
         """Aseta tarkastettava malli + pilvipolku (yksi tai lista)."""
         self._model = model
@@ -401,6 +403,7 @@ class InspectView(QtWidgets.QWidget):
         self._info.setText("Paina 'Näytä pistepilvi'.")
 
     # -- lataus --
+    @guard
     def _start_load(self) -> None:
         if not self._model or not self._cloud_path or self._job is not None:
             return
@@ -434,11 +437,13 @@ class InspectView(QtWidgets.QWidget):
         job.deleteLater()
         self._cancel_btn.setVisible(False)
 
+    @guard
     def _on_cancel(self) -> None:
         self._stop_job(cancel=True)
         self._info.setText("Lataus peruttu.")
         self._load_btn.setEnabled(True)
 
+    @guard
     def _on_progress(self, line: str) -> None:
         if not line.startswith("VALMIS"):
             self._info.setText(f"Ladataan pistepilveä… {line.strip()}")
@@ -456,11 +461,13 @@ class InspectView(QtWidgets.QWidget):
             th.finished.connect(cl.deleteLater)
             th.quit()
 
+    @guard
     def _on_failed(self, msg: str) -> None:
         self._stop_job()
         self._info.setText(f"Lataus epäonnistui: {msg}")
         self._load_btn.setEnabled(True)
 
+    @guard
     def _on_loaded(self, Ps, rgb) -> None:
         self._stop_job()
         self._load_btn.setEnabled(True)
@@ -496,11 +503,13 @@ class InspectView(QtWidgets.QWidget):
         self._size_slider.setEnabled(True)
         self._apply_model()
 
+    @guard
     def _on_size(self, val: int) -> None:
         self._psize = float(val)
         self._refresh_scatter()
 
     # -- mallin piirto + residuaali (välimuistin pisteillä, ei uudelleenlatausta) --
+    @guard
     def _apply_model(self) -> None:
         if self._Ps is None or self._model is None:
             return
@@ -540,10 +549,12 @@ class InspectView(QtWidgets.QWidget):
         self._classifier.failed.connect(self._on_class_failed)
         self._cthread.start()
 
+    @guard
     def _on_class_failed(self, msg: str) -> None:
         self._stop_classifier()
         self._info.setText(f"Residuaalia ei voitu laskea: {msg}")
 
+    @guard
     def _on_classified(self, expl) -> None:
         self._stop_classifier()
         if expl is None or self._Ps is None or len(expl) != len(self._Ps):
@@ -557,6 +568,7 @@ class InspectView(QtWidgets.QWidget):
                            "· syaani=seinä keltainen=pilari vihreä=palkki punainen=aukko")
         self._refresh_scatter()
 
+    @guard
     def _refresh_scatter(self) -> None:
         if self._scatter is None or self._pts is None:
             return

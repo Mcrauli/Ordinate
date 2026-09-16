@@ -9,6 +9,7 @@ ja se lista oli kellarissa vain kaksi seinää pitkä.
 from __future__ import annotations
 
 from PySide6 import QtCore, QtWidgets
+from scan2bim.gui.safe import guard
 
 import math
 
@@ -59,6 +60,7 @@ class ReviewPanel(QtWidgets.QWidget):
         btn_row.addStretch()
         layout.addLayout(btn_row)
 
+    @guard
     def set_models(self, models: list, learner: CorrectionLearner | None = None) -> None:
         self._models = [m for m in models if m is not None]
         self._learner = learner if learner is not None else CorrectionLearner()
@@ -79,6 +81,7 @@ class ReviewPanel(QtWidgets.QWidget):
         walls = [w for m in self._models for w in m.walls]
         return [(floor_of[id(w)], w, p) for w, p in self._learner.rank(walls)]
 
+    @guard
     def _rebuild(self, select: bool = True) -> None:
         keep_row = max(self._list.currentRow(), 0)
         self._list.blockSignals(True)
@@ -147,6 +150,7 @@ class ReviewPanel(QtWidgets.QWidget):
         cur = self._list.currentItem()
         return None if cur is None else cur.data(QtCore.Qt.ItemDataRole.UserRole)
 
+    @guard
     def _on_select(self, cur: QtWidgets.QListWidgetItem | None, _prev=None) -> None:
         self._del_btn.setEnabled(cur is not None)
         self._ok_btn.setEnabled(cur is not None)
@@ -154,19 +158,23 @@ class ReviewPanel(QtWidgets.QWidget):
             fi, kind, eid = cur.data(QtCore.Qt.ItemDataRole.UserRole)
             self.element_selected.emit(fi, kind, eid)
 
+    @guard
     def _on_delete(self) -> None:
         key = self._current_key()
         if key is not None:
             self.delete_requested.emit(*key)
 
+    @guard
     def _on_accept(self) -> None:
         key = self._current_key()
         if key is not None:
             self.accept_requested.emit(*key)
 
+    @guard
     def mark_edited(self) -> None:
         self._rebuild()
 
+    @guard
     def mark_accepted(self, keys) -> None:
         """Hyväksytty poistuu listalta myös silloin kun siitä ei saatu labelia
         (seinältä puuttuu mitattu todiste, tai kyse on aukosta/pilarista)."""

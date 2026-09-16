@@ -4,6 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6 import QtCore, QtGui, QtWidgets
+from scan2bim.gui.safe import guard
 
 from scan2bim._version import __version__
 from scan2bim.core.pipeline import PipelineConfig
@@ -221,6 +222,7 @@ class MainWindow(QtWidgets.QMainWindow):
             return next((b for b in m.beams if b.id == elem_id), None)
         return next((o for o in m.openings if o.id == elem_id), None)
 
+    @guard
     def _on_plan_pick(self, floor_idx: int, kind: str, elem_id: str) -> None:
         if not kind:
             self._select_bar.setVisible(False)
@@ -234,6 +236,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._selected = [(floor_idx, kind, elem_id)]
         self._select_bar.setVisible(True)
 
+    @guard
     def _on_selected_delete(self) -> None:
         if not self._selected:
             return
@@ -242,6 +245,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self._after_edit(n)
         self._clear_selection()
 
+    @guard
     def _clear_selection(self) -> None:
         self._select_bar.setVisible(False)
         self._selected = []
@@ -264,6 +268,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.statusBar().showMessage("Käsitellään…")
         self._worker.start_job(inputs, out, cfg)
 
+    @guard
     def _on_progress(self, msg: str) -> None:
         self._log_panel.info(msg)
         self.statusBar().showMessage(msg)
@@ -271,6 +276,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if st is not None:
             self._stage.set_active(st)
 
+    @guard
     def _on_finished(self, result: object) -> None:
         self._file_panel.set_busy(False)
         self._progress_bar.setVisible(False)
@@ -316,6 +322,7 @@ class MainWindow(QtWidgets.QMainWindow):
         except OSError as e:
             self._log_panel.info(f"Korjauksia ei voitu tallentaa: {e}")
 
+    @guard
     def _on_review_select(self, floor_idx: int, kind: str, elem_id: str) -> None:
         if 0 <= floor_idx < len(self._result_models):
             self._plan_view._floor_combo.setCurrentIndex(floor_idx)
@@ -331,10 +338,12 @@ class MainWindow(QtWidgets.QMainWindow):
             self._save_corrections()
         return n
 
+    @guard
     def _on_review_accept(self, floor_idx: int, kind: str, elem_id: str) -> None:
         self._accept([(floor_idx, kind, elem_id)])
         self._review.mark_accepted([(floor_idx, kind, elem_id)])
 
+    @guard
     def _on_selected_accept(self) -> None:
         if not self._selected:
             return
@@ -359,21 +368,25 @@ class MainWindow(QtWidgets.QMainWindow):
             m.openings = [o for o in m.openings if o.id != elem_id]
         return True
 
+    @guard
     def _after_edit(self, n: int) -> None:
         self._plan_view.show_models(self._result_models)
         self._review.mark_edited()
         self._footer_reexport.setVisible(True)
         self._log_panel.info(f"Poistettu {n} elementti{'ä' if n != 1 else ''}.")
 
+    @guard
     def _on_review_delete(self, floor_idx: int, kind: str, elem_id: str) -> None:
         if self._remove_one(floor_idx, kind, elem_id):
             self._after_edit(1)
 
+    @guard
     def _on_plan_box(self, floor_idx: int, pairs: list) -> None:
         self._selected = [(floor_idx, k, i) for (k, i) in pairs]
         self._select_label.setText(f"{len(pairs)} elementtiä valittu")
         self._select_bar.setVisible(True)
 
+    @guard
     def _on_reexport(self) -> None:
         from scan2bim.core.ifc.writer import write_ifc, write_building_ifc
         crs = self._last_cfg.crs_epsg if self._last_cfg else 3067
@@ -422,6 +435,7 @@ class MainWindow(QtWidgets.QMainWindow):
         hits = sorted(self._last_out.glob("**/*.ifc"))
         return hits[0] if hits else None
 
+    @guard
     def _inspect_3d(self) -> None:
         """Näytä malli + pistepilvi 3D-tarkastus-välilehdessä."""
         if not self._result_models or not self._last_inputs:
@@ -450,20 +464,24 @@ class MainWindow(QtWidgets.QMainWindow):
             pass
         super().closeEvent(ev)
 
+    @guard
     def _on_tab_changed(self, idx: int) -> None:
         """Täytä 3D-välilehti kun siihen siirrytään."""
         if idx == self._inspect_tab_idx and self._result_models:
             self._inspect_3d()
 
+    @guard
     def _open_ifc(self) -> None:
         p = self._find_ifc()
         if p is not None:
             QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(str(p)))
 
+    @guard
     def _open_folder(self) -> None:
         if self._last_out is not None and self._last_out.exists():
             QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(str(self._last_out)))
 
+    @guard
     def _on_failed(self, error: str) -> None:
         self._file_panel.set_busy(False)
         self._progress_bar.setVisible(False)
