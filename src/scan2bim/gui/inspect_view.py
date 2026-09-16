@@ -559,14 +559,27 @@ class InspectView(QtWidgets.QWidget):
         self._stop_classifier()
         if expl is None or self._Ps is None or len(expl) != len(self._Ps):
             return
+        rgb = self._rgb
+        if rgb is None or len(rgb) != len(expl):
+            # Pituusero olisi rajojen yli menevä indeksointi. Nimetään se
+            # virheeksi sen sijaan että se kaatuisi C-tasolla.
+            self._info.setText("Residuaalia ei voitu värittää: pilven värit ja "
+                               f"pisteet eri mittaiset ({0 if rgb is None else len(rgb)} "
+                               f"vs {len(expl)}).")
+            return
         self._expl = expl
-        res = np.tile(np.array([0.95, 0.12, 0.12, 1.0], np.float32), (len(self._Ps), 1))
-        res[expl, :3] = self._rgb[expl] * 0.3     # selitetty himmeäksi
+        res = np.empty((len(expl), 4), np.float32)
+        res[:, 0] = 0.95; res[:, 1] = 0.12; res[:, 2] = 0.12; res[:, 3] = 1.0
+        res[expl, :3] = rgb[expl] * 0.3     # selitetty himmeäksi
         self._res = res
         miss = int((~expl).sum())
-        self._info.setText(f"{len(self._Ps)} pistettä · kattamatta {miss} "
+        self._info.setText(f"{len(expl)} pistettä · kattamatta {miss} "
                            "· syaani=seinä keltainen=pilari vihreä=palkki punainen=aukko")
-        self._refresh_scatter()
+        # Väri-moodissa residuaali ei näy, joten koko pilven lataaminen
+        # näytönohjaimelle uudelleen on turhaa työtä juuri siinä kohdassa
+        # jossa sovellus on kaatunut.
+        if self._mode.currentIndex() != 0:
+            self._refresh_scatter()
 
     @guard
     def _refresh_scatter(self) -> None:
