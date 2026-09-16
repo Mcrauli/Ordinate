@@ -28,7 +28,32 @@ def _acquire_app_mutex() -> None:
         _mutex_handle = None  # mutex on vain asennus-avustus, ei saa kaataa appia
 
 
+def _install_crash_log() -> None:
+    """Kirjaa käsittelemätön poikkeus lokiin ENNEN kuin PySide6 tappaa prosessin.
+
+    PySide6 kutsuu `abort()`ia kun poikkeus jää käsittelemättä slotissa, joten
+    ilman tätä käyttäjä näkee vain ikkunan katoavan.
+    """
+    import datetime
+    import threading
+    import traceback
+
+    def _log(exc_type, exc, tb, where: str = "") -> None:
+        try:
+            print(f"\n=== KAATUI {datetime.datetime.now():%Y-%m-%d %H:%M:%S} {where} ===",
+                  file=sys.stderr)
+            traceback.print_exception(exc_type, exc, tb, file=sys.stderr)
+            sys.stderr.flush()
+        except Exception:  # noqa: BLE001
+            pass
+
+    sys.excepthook = _log
+    threading.excepthook = lambda a: _log(a.exc_type, a.exc_value, a.exc_traceback,
+                                          f"säikeessä {a.thread.name if a.thread else '?'}")
+
+
 def run() -> None:
+    _install_crash_log()
     _acquire_app_mutex()
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication(sys.argv)
     apply_theme(app)
