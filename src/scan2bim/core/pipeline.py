@@ -2100,12 +2100,17 @@ class Pipeline:
         if room_poly and len(room_poly) >= 3:
             model.slabs = [s.model_copy(update={"boundary": room_poly}) for s in model.slabs]
 
-        self._progress(f"  Seinien viimeistely valmis ({len(model.walls)} seinää) — "
-                       "tilat, aukot, pilarit, palkit…")
+        # Nama neljä vaihetta olivat YKSI nimetön jakso, ja kellarin ajossa se
+        # kesti 496 s ilman ainoatakaan viestiä — eikä diagnostiikasta nähnyt
+        # kumpi niistä sen söi. Sama vika kuin auto-voxelin hiljaisessa
+        # lukukierroksessa: mittaamaton jakso ei korjaannu koskaan.
+        self._progress(f"  Seinien viimeistely valmis ({len(model.walls)} seinää).")
+        self._progress("  Tilat…")
         from scan2bim.core.semantics.room_detector import detect_rooms
         model.spaces = detect_rooms(model.walls, floor_z, ceiling_z,
                                     boundaries=floor_contours)
 
+        self._progress(f"  Aukot ({len(model.spaces)} tilaa)…")
         from scan2bim.core.segmentation.opening_detector import detect_openings, reclassify_interior_windows
         model.openings = detect_openings(model.walls, cloud, floor_z, scanner_origins=self._scanner_origins)
         # Ikkuna vaatii ulkoseinän: sisäseinän (huone molemmin puolin) leveä aukko → ovi.
@@ -2130,9 +2135,11 @@ class Pipeline:
             except Exception as _e:  # noqa: BLE001
                 self._progress(f"  Kuva-aukot ohitettu: {_e}")
 
+        self._progress(f"  Pilarit ({len(model.openings)} aukkoa)…")
         from scan2bim.core.segmentation.column_detector import detect_columns
         model.columns = detect_columns(cloud, model.walls, floor_z, ceiling_z)
 
+        self._progress(f"  Palkit ({len(model.columns)} pilaria)…")
         from scan2bim.core.segmentation.beam_detector import detect_beams
         # Soffit-rajaus vain jos AITO kattolaatta löytyi (valmis tila) — työmaalla
         # ceiling_z on seinänlakivarasija eikä rajausta saa tehdä (katkoisi palkit).
