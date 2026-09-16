@@ -4,6 +4,15 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 [`Mcrauli/scan2bim-web`](https://github.com/Mcrauli/scan2bim-web/releases):iin;
 sovellus päivittää itsensä sieltä.
 
+## v0.9.29 (16.9.2026) — kaatumisesta jää jälki, eikä virhe enää tapa ikkunaa
+
+- **Virhe toiminnossa ei enää sulje sovellusta.** PySide6 tappaa prosessin
+  `abort()`illa kun Python-poikkeus jää käsittelemättä slotissa — ikkuna vain
+  katoaa. Kaikki 35 käyttäjän toimintoa (tarkistuslista, pohjan valinta,
+  3D-tarkastus, IFC:n uudelleenkirjoitus) on nyt suojattu: virhe kirjataan
+  lokiin, näkyy ilmoituksena ja sovellus jatkaa. Ilmoitus on ei-modaali,
+  koska modaali dialogi olisi itsessään uusi jäätymä.
+
 ## v0.9.28 (16.9.2026) — kaatumisesta jää vihdoin jälki
 
 - **Sovellus kaatui kahdesti eikä lokiin jäänyt riviäkään.** Syy oli lokissa
