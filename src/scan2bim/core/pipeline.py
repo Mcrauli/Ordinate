@@ -51,7 +51,6 @@ class PipelineConfig:
 
 
 _AUTO_TARGET_POINTS = 4_000_000
-_PROBE_VOXEL = 20.0
 _AUTO_VOXEL_MIN = 8.0
 _AUTO_VOXEL_MAX = 25.0
 
@@ -1115,8 +1114,6 @@ class Pipeline:
         floors = detect_floors_from_files(paths, sample_step=sample)
         self._progress(f"Löydettiin {len(floors)} kerros(ta).")
 
-        _probe = None
-        _probe_samples: list = []
         if self.config.auto_voxel:
             # Adaptiivinen voxel datasta: kevyt 20mm-otos ensimmäisen kerroksen
             # kaistasta (muistiturvallinen isollekin talolle) → _auto_voxel skaalaa
@@ -1125,17 +1122,13 @@ class Pipeline:
             try:
                 from scan2bim.core.geometry.streaming import load_floor_slice as _probe_lfs
                 _z_lo0, _z_hi0 = floors[0]
-                _probe = _probe_lfs(paths, _z_lo0, _z_hi0, voxel_size=_PROBE_VOXEL,
-                                    progress_cb=self._progress,
-                                    sample_out=_probe_samples if len(paths) > 1 else None)
+                _probe = _probe_lfs(paths, _z_lo0, _z_hi0, voxel_size=20.0, progress_cb=None)
                 if len(_probe.points) >= 500:
                     self.config.voxel_size = _auto_voxel(_probe)
                 else:
                     self.config.voxel_size = 12.0
-                    _probe = None
             except Exception:
                 self.config.voxel_size = 12.0
-                _probe = None
             self._progress(f"  Auto-voxel: {self.config.voxel_size:.1f} mm")
 
         source = paths[0]
@@ -1150,32 +1143,14 @@ class Pipeline:
 
             from scan2bim.core.geometry.streaming import load_floor_slice, check_scan_consistency
             _samples: list = []
-            # Voxelin valinta luki juuri KAIKKI tiedostot 20 mm:llä, ja heti
-            # perään sama data luettiin uudelleen työpilveksi: kellarin ajosta
-            # (36 e57, 30.8 GB) se on 602 s + 575 s. Kun valittu voxel on
-            # karkeampi kuin otoksen, työpilvi saadaan otosta harventamalla
-            # eikä toista lukukierrosta tarvita. Kun se on hienompi (pieni
-            # kohde, jossa luku on halpa), luetaan kuten ennenkin.
-            _reuse = (_probe is not None and floor_idx == 0
-                      and self.config.voxel_size > _PROBE_VOXEL
-                      and not self.config.icp_refine and len(paths) > 1)
-            if _reuse:
-                self._progress("  Työpilvi otoksesta (ei toista lukukierrosta)…")
-                cloud = _probe.voxel_down_sample(self.config.voxel_size)
-                # Skannien yhteensopivuusvaroitus tulee otoksen omista
-                # näytteistä — muuten se katoaisi juuri isoilta aineistoilta,
-                # joissa se on tarpeellisin.
-                _samples = _probe_samples
-            else:
-                cloud = load_floor_slice(
-                    paths, z_lo, z_hi,
-                    voxel_size=self.config.voxel_size,
-                    progress_cb=self._progress,
-                    icp_refine=self.config.icp_refine,
-                    sample_out=_samples if len(paths) > 1 else None,
-                )
-            _probe = None
-            if len(paths) > 1 and _samples:
+            cloud = load_floor_slice(
+                paths, z_lo, z_hi,
+                voxel_size=self.config.voxel_size,
+                progress_cb=self._progress,
+                icp_refine=self.config.icp_refine,
+                sample_out=_samples if len(paths) > 1 else None,
+            )
+            if len(paths) > 1:
                 _bad = check_scan_consistency(_samples)
                 if _bad:
                     self._progress(
