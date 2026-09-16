@@ -210,6 +210,28 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
 
 ## Kovalla työllä opitut asiat — ÄLÄ keksi uudelleen
 
+- **KUMOTTU: voxeliotoksen uudelleenkäyttö työpilvenä — se puolittaa monen
+  skannin pilven (16.9.2026).** Kellarin ajossa voxelikoon valinta lukee
+  KAIKKI tiedostot 20 mm:llä (602 s) ja heti perään sama data luetaan
+  työpilveksi (575 s). Otoksen harventaminen valittuun voxeliin näyttää
+  ilmeiseltä: yksi lukukierros pois, ja matriisi sanoi **+0.000 kaikilla
+  12 aineistolla**.
+  Oikealla e57-aineistolla se romahdutti mallin:
+  | | ennen | otoksesta |
+  |---|---|---|
+  | työpilven pisteet | 29.2 M | **15.2 M** |
+  | seiniä | 219 | **269** |
+  | tiloja | 12 | **5** |
+  Syy on siinä MISSÄ voxelointi tapahtuu: `load_floor_slice` voxeloi
+  jokaisen tiedoston ERIKSEEN, joten päällekkäin keilaavien asemien pisteet
+  säilyvät kaikki. `voxel_down_sample` yhdistetylle otokselle on GLOBAALI ja
+  poistaa juuri ne. 36 asemaa samassa kellarissa = valtava päällekkäisyys.
+  **Matriisi ei voi nähdä tätä: jokainen sen aineisto on YKSI tiedosto**,
+  jolloin per-tiedosto- ja globaali voxelointi ovat sama asia. Sama sokea
+  kohta kuin `scanner_origins`-yksikkövirheessä. **Kysy jokaisesta
+  lukupolun muutoksesta: muuttuuko tulos kun tiedostoja on monta ja ne
+  limittyvät? Jos muuttuu, matriisi ei ole todiste.**
+
 - **PER-PROJEKTI-OPPIMINEN MITATTU ENSIMMÄISTÄ KERTAA OIKEAN KÄYTTÄJÄN
   LABELEILLA (10.9.2026) — ja se on selvästi paras tulos kellarissa.**
   Aiemmat per-projekti-luvut tulivat Rohbaun GT:stä. Nyt käyttäjä labeloi
