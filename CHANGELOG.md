@@ -4,6 +4,19 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 [`Mcrauli/scan2bim-web`](https://github.com/Mcrauli/scan2bim-web/releases):iin;
 sovellus päivittää itsensä sieltä.
 
+## v0.9.30 (16.9.2026) — 3D-tarkastuksen kaatuminen korjattu, varoitus hitaasta levystä
+
+- **3D-tarkastus kaatoi sovelluksen.** Loki nimesi sen vihdoin: muistin
+  suojausvirhe `numpy.tile`-kutsussa residuaalivärien rakennuksessa. Väritaulu
+  varataan nyt suoraan, pisteiden ja värien määrät tarkistetaan sen sijaan
+  että indeksoitaisiin taulukon yli, eikä koko pilveä ladata enää turhaan
+  näytönohjaimelle väri-moodissa — juuri siinä kohdassa sovellus kuoli.
+- **Putki varoittaa hitaasta syötelevystä.** Mitattu samalla 37 skannin
+  kellarilla: **USB-tikulta 56 min, koneen omalta NVMe:ltä 39 min**, tulos
+  bitilleen sama. Putki lukee skannit neljä kertaa, joten tikulla 26 minuuttia
+  ajosta on pelkkää levyn odottamista. Ajo mittaa nyt syötelevyn nopeuden alle
+  sekunnissa ja kertoo sen.
+
 ## v0.9.29 (16.9.2026) — kaatumisesta jää jälki, eikä virhe enää tapa ikkunaa
 
 - **Virhe toiminnossa ei enää sulje sovellusta.** PySide6 tappaa prosessin
