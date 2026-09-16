@@ -1,13 +1,17 @@
 from pathlib import Path
 from scan2bim.core.pipeline import Pipeline, PipelineConfig
 from _paths import DOWNLOADS, OUTPUT  # portable dev-tool paths
-apt = Path(str(DOWNLOADS / "raw_scans_apartment/apartment"))
-paths = sorted(apt.glob("scan_*.ply"))
-cfg = PipelineConfig(detector="contour", auto_voxel=True,
-                     export_ifc=True, export_dxf=False, export_qa=False)
-out = Path(str(OUTPUT / "_contour_ifc"))
-models = Pipeline(cfg).run_floors(paths, out)
-for m in models:
-    print(f"walls={len(m.walls)} spaces={len(m.spaces)} "
-          f"doors={sum(1 for o in m.openings if o.opening_type=='door')}")
-print("IFC:", out / "building.ifc")
+# Monen tiedoston ajo lukee tiedostot prosessipoolissa, ja Windowsin
+# spawn importtaa lapsessa __main__:in — ilman tätä vartijaa skripti
+# käynnistäisi itsensä rekursiivisesti.
+if __name__ == "__main__":
+    apt = Path(str(DOWNLOADS / "raw_scans_apartment/apartment"))
+    paths = sorted(apt.glob("scan_*.ply"))
+    cfg = PipelineConfig(detector="contour", auto_voxel=True,
+                         export_ifc=True, export_dxf=False, export_qa=False)
+    out = Path(str(OUTPUT / "_contour_ifc"))
+    models = Pipeline(cfg).run_floors(paths, out)
+    for m in models:
+        print(f"walls={len(m.walls)} spaces={len(m.spaces)} "
+              f"doors={sum(1 for o in m.openings if o.opening_type=='door')}")
+    print("IFC:", out / "building.ifc")
