@@ -6,7 +6,10 @@ Näkymämoodit: Väri / Residuaali (punainen = malli ei kata) / Vain puuttuvat.
 """
 from __future__ import annotations
 
+import codecs
 import os
+import sys
+import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -210,57 +213,96 @@ def _opening_segments(model):
     return np.array(segs, float) if segs else None
 
 
-# --- taustalatain -----------------------------------------------------------
+# --- pilven lataus ALIPROSESSISSA ------------------------------------------
+# E57-lukija ei vapauta GIL:ia (mitattu: yksi 834 MB tiedosto seisottaa toista
+# saiketta 4.2 s), joten QThread ei auta — 36 tiedostoa jaadyttaa koko ikkunan
+# viideksi minuutiksi. Sama ratkaisu kuin putkella: oma prosessi, stdout
+# progressiksi.
 
-class _Loader(QtCore.QObject):
-    done = QtCore.Signal(object, object, object, object)  # Ps_raw, rgba, pts, offset
+class _CloudJob(QtCore.QObject):
+    progress = QtCore.Signal(str)
+    done = QtCore.Signal(object, object)   # pts (Nx3 f32), rgb (Nx3 f32 0..1)
     failed = QtCore.Signal(str)
 
-    def __init__(self, cloud_path, max_pts: int):
-        super().__init__()
-        # Lista TAI yksi polku: malli tehdaan kaikista asemista, joten
-        # tarkastuksen on nahtava sama joukko. Yhden aseman pilvi keskittyy
-        # eri kohtaan (mitattu kellarilla: 43.3 m ero keskipisteissa) ja malli
-        # piirtyy sen verran sivuun.
-        self._paths = [cloud_path] if isinstance(cloud_path, (str, Path)) else list(cloud_path)
-        self._max = max_pts
+    def __init__(self, paths, max_pts: int, parent=None) -> None:
+        super().__init__(parent)
+        self._paths = [str(p) for p in ([paths] if isinstance(paths, (str, Path)) else paths)]
+        self._max = int(max_pts)
+        self._proc: QtCore.QProcess | None = None
+        self._npz: Path | None = None
+        self._buf = ""
+        self._dec = codecs.getincrementaldecoder("utf-8")(errors="replace")
+        self._tail: list[str] = []
 
-    def run(self) -> None:
+    def start(self) -> None:
+        from scan2bim.gui.process_worker import cli_command
+        fd, tmp = tempfile.mkstemp(prefix="s2b_view_", suffix=".npz")
+        os.close(fd)
+        self._npz = Path(tmp)
+        args = cli_command() + ["viewcloud", "--out", str(self._npz),
+                                "--max-points", str(self._max)] + self._paths
+        proc = QtCore.QProcess(self)
+        proc.setProcessChannelMode(QtCore.QProcess.ProcessChannelMode.MergedChannels)
+        if sys.platform == "win32" and hasattr(proc, "setCreateProcessArgumentsModifier"):
+            def _no_window(a):
+                a.flags |= 0x08000000
+            proc.setCreateProcessArgumentsModifier(_no_window)
+        proc.readyReadStandardOutput.connect(self._on_out)
+        proc.finished.connect(self._on_done)
+        proc.errorOccurred.connect(self._on_error)
+        self._proc = proc
+        proc.start(args[0], args[1:])
+
+    def cancel(self) -> None:
+        if self._proc is not None:
+            self._proc.kill()
+        self._cleanup()
+
+    def _on_out(self) -> None:
+        if self._proc is None:
+            return
+        self._buf += self._dec.decode(bytes(self._proc.readAllStandardOutput())).replace("\r\n", "\n")
+        while "\n" in self._buf:
+            line, self._buf = self._buf.split("\n", 1)
+            line = line.strip()
+            if line:
+                self._tail.append(line)
+                del self._tail[:-20]
+                self.progress.emit(line)
+
+    def _on_error(self, err) -> None:
+        if err == QtCore.QProcess.ProcessError.FailedToStart:
+            self._cleanup()
+            self.failed.emit("pilvilukijaa ei voitu kaynnistaa")
+
+    def _on_done(self, code: int, status) -> None:
+        npz = self._npz
+        proc_ok = code == 0 and status == QtCore.QProcess.ExitStatus.NormalExit
+        self._cleanup(keep_file=True)
+        if not proc_ok:
+            if npz is not None:
+                npz.unlink(missing_ok=True)
+            self.failed.emit("\n".join(self._tail[-6:]) or f"virhekoodi {code}")
+            return
         try:
-            from scan2bim.core.geometry.loader import load_point_cloud
-            import open3d as o3d  # noqa: PLC0415
-            per = max(1, self._max // max(len(self._paths), 1))
-            chunks, cols = [], []
-            for pth in self._paths:
-                c = load_point_cloud(Path(pth), e57_colors=True)
-                q = np.asarray(c.points, dtype=np.float32)
-                if not len(q):
-                    continue
-                st = max(1, -(-len(q) // per))
-                chunks.append(q[::st])
-                cols.append(np.asarray(c.colors, dtype=np.float32)[::st]
-                            if c.has_colors() else
-                            np.full((len(q[::st]), 3), 0.6, np.float32))
-                del c, q
-            if not chunks:
-                self.failed.emit("pilvi on tyhja")
-                return
-            cloud = o3d.geometry.PointCloud()
-            P = np.vstack(chunks)
-            _rgb_all = np.vstack(cols)
-            cloud.points = o3d.utility.Vector3dVector(P.astype(np.float64))
-            cloud.colors = o3d.utility.Vector3dVector(_rgb_all.astype(np.float64))
-            # CEIL-harvennus: len//max antaa step=1 kun len<2*max → 9M pistettä
-            # jäi harventamatta. Ceil takaa että työjoukko todella cappaantuu.
-            step = max(1, -(-len(P) // self._max))
-            Ps = np.ascontiguousarray(P[::step])
-            offset = Ps.mean(axis=0)
-            rgb = np.ascontiguousarray(_rgb_all[::step])
-            rgba = np.column_stack([rgb, np.ones(len(rgb), np.float32)])
-            pts = np.ascontiguousarray(Ps - offset, dtype=np.float32)
-            self.done.emit(Ps, rgba, pts, offset)
+            with np.load(npz) as z:
+                pts = np.ascontiguousarray(z["pts"], dtype=np.float32)
+                rgb = np.ascontiguousarray(z["rgb"], dtype=np.float32) / 255.0
         except Exception as e:  # noqa: BLE001
             self.failed.emit(str(e))
+            return
+        finally:
+            if npz is not None:
+                npz.unlink(missing_ok=True)
+        self.done.emit(pts, rgb)
+
+    def _cleanup(self, keep_file: bool = False) -> None:
+        if self._proc is not None:
+            self._proc.deleteLater()
+            self._proc = None
+        if not keep_file and self._npz is not None:
+            self._npz.unlink(missing_ok=True)
+            self._npz = None
 
 
 class _Classifier(QtCore.QObject):
@@ -288,8 +330,7 @@ class InspectView(QtWidgets.QWidget):
         super().__init__(parent)
         self._model: dict | None = None
         self._cloud_path: str | None = None
-        self._thread = None
-        self._loader = None
+        self._job = None
         self._cthread = None
         self._classifier = None
         # ladattu pilvi (välimuistissa → mallin muutos ei vaadi uudelleenlatausta)
@@ -310,6 +351,10 @@ class InspectView(QtWidgets.QWidget):
         self._load_btn = QtWidgets.QPushButton("Näytä pistepilvi")
         self._load_btn.clicked.connect(self._start_load)
         bar.addWidget(self._load_btn)
+        self._cancel_btn = QtWidgets.QPushButton("Peruuta")
+        self._cancel_btn.setVisible(False)
+        self._cancel_btn.clicked.connect(self._on_cancel)
+        bar.addWidget(self._cancel_btn)
         bar.addWidget(QtWidgets.QLabel("Näkymä:"))
         self._mode = QtWidgets.QComboBox()
         self._mode.addItems(self._MODES)
@@ -345,6 +390,7 @@ class InspectView(QtWidgets.QWidget):
             self._apply_model()          # sama pilvi ladattu → päivitä vain malli
             return
         self._cloud_path = cloud_path
+        self._stop_job(cancel=True)
         self._stop_classifier()
         self._Ps = None; self._pts = None
         self._res = None; self._expl = None
@@ -356,7 +402,7 @@ class InspectView(QtWidgets.QWidget):
 
     # -- lataus --
     def _start_load(self) -> None:
-        if not self._model or not self._cloud_path or self._thread is not None:
+        if not self._model or not self._cloud_path or self._job is not None:
             return
         _first = (self._cloud_path[0] if isinstance(self._cloud_path, list)
                   else self._cloud_path)
@@ -364,25 +410,38 @@ class InspectView(QtWidgets.QWidget):
             self._info.setText("Pilvitiedostoa ei löydy — tarkastus vaatii alkuperäisen skannin.")
             return
         self._load_btn.setEnabled(False)
-        self._info.setText("Ladataan pistepilveä…")
-        self._thread = QtCore.QThread(self)
-        self._loader = _Loader(self._cloud_path, _MAX_VIEW_PTS)
-        self._loader.moveToThread(self._thread)
-        self._thread.started.connect(self._loader.run)
-        self._loader.done.connect(self._on_loaded)
-        self._loader.failed.connect(self._on_failed)
-        self._thread.start()
+        self._cancel_btn.setVisible(True)
+        n = len(self._cloud_path) if isinstance(self._cloud_path, list) else 1
+        self._info.setText(f"Ladataan pistepilveä ({n} skannia)…")
+        self._job = _CloudJob(self._cloud_path, _MAX_VIEW_PTS, self)
+        self._job.progress.connect(self._on_progress)
+        self._job.done.connect(self._on_loaded)
+        self._job.failed.connect(self._on_failed)
+        self._job.start()
 
-    def _stop_thread(self) -> None:
-        """Irrota lataussäie ILMAN wait()-kutsua. wait() blokkaa UI-säikeen
-        rajattomasti; säie on jo tehnyt työnsä kun signaali saapuu."""
-        th, ld = self._thread, self._loader
-        self._thread = None; self._loader = None
-        if th is not None:
-            th.finished.connect(th.deleteLater)
-            if ld is not None:
-                th.finished.connect(ld.deleteLater)
-            th.quit()
+    def _stop_job(self, cancel: bool = False) -> None:
+        job, self._job = self._job, None
+        if job is None:
+            return
+        try:
+            job.progress.disconnect()
+            job.done.disconnect()
+            job.failed.disconnect()
+        except (RuntimeError, TypeError):
+            pass
+        if cancel:
+            job.cancel()
+        job.deleteLater()
+        self._cancel_btn.setVisible(False)
+
+    def _on_cancel(self) -> None:
+        self._stop_job(cancel=True)
+        self._info.setText("Lataus peruttu.")
+        self._load_btn.setEnabled(True)
+
+    def _on_progress(self, line: str) -> None:
+        if not line.startswith("VALMIS"):
+            self._info.setText(f"Ladataan pistepilveä… {line.strip()}")
 
     def _stop_classifier(self) -> None:
         th, cl = self._cthread, self._classifier
@@ -398,14 +457,18 @@ class InspectView(QtWidgets.QWidget):
             th.quit()
 
     def _on_failed(self, msg: str) -> None:
-        self._stop_thread()
+        self._stop_job()
         self._info.setText(f"Lataus epäonnistui: {msg}")
         self._load_btn.setEnabled(True)
 
-    def _on_loaded(self, Ps, rgba, pts, offset) -> None:
-        self._stop_thread()
+    def _on_loaded(self, Ps, rgb) -> None:
+        self._stop_job()
+        self._load_btn.setEnabled(True)
+        offset = Ps.mean(axis=0)
         self._Ps = Ps; self._offset = offset
-        self._rgb = rgba[:, :3]; self._rgba = rgba; self._pts = pts
+        self._rgb = rgb
+        self._rgba = np.column_stack([rgb, np.ones(len(rgb), np.float32)])
+        self._pts = np.ascontiguousarray(Ps - offset, dtype=np.float32)
         # perspektiivikoko (maailmayksikkö mm): lähellä pisteet suurenevat →
         # pinnat täyttyvät valokuvamaisiksi kun navigoi lähelle
         # pxMode=True (PIKSELIkoko): renderöityy luotettavasti joka mittakaavassa

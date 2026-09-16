@@ -117,6 +117,22 @@ def main() -> int:
             return 1
         print(f"  evidence ok — {with_ev}/{len(walls)} seinää")
 
+        # PROSESSIPOOLI PAKATUSSA EXESSÄ. Rinnakkainen tiedostojen luku
+        # käynnistää lapsiprosessit samasta exestä (`--multiprocessing-fork`).
+        # Ilman `freeze_support()`ia jokainen lapsi yrittäisi jäsentää sen
+        # Click-komennoksi ja kaatuisi — kehityksessä tätä ei näe, koska siellä
+        # lapsi on python.exe. Kaksi tiedostoa pakottaa poolin käyttöön.
+        shutil.copy(tmp / "scan.ply", tmp / "scan2.ply")
+        r = subprocess.run([str(exe), "viewcloud", "--out", "view.npz",
+                            "--max-points", "200000", "scan.ply", "scan2.ply"],
+                           cwd=tmp, capture_output=True, text=True,
+                           encoding="utf-8", errors="replace")
+        if r.returncode != 0 or not (tmp / "view.npz").exists():
+            print("KAATUI: viewcloud kahdella tiedostolla (prosessipooli exessä)")
+            print(r.stdout[-3000:], r.stderr[-3000:])
+            return 1
+        print("  viewcloud ok — 3D-tarkastuksen pilvi kahdesta tiedostosta")
+
         # Ja loytaako GUI sen komennon TASTA paketista: `cli_command()`:n
         # frozen-haara ei aja kehityksessa koskaan.
         r = subprocess.run([str(exe), "selftest-paths"], cwd=tmp,
