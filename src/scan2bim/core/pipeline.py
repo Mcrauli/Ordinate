@@ -7,6 +7,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
+import time
 from pathlib import Path
 from typing import Literal
 
@@ -91,6 +92,43 @@ def _drop_stale_dxf(out_dir, progress=None) -> None:
     except OSError as e:
         if progress:
             progress(f"  Vanhaa DXF:ää ei voitu poistaa: {e}")
+
+
+_SLOW_DISK_MBS = 200.0
+_READ_PASSES = 4          # mitattu kellarilla: voxeliotos, työpilvi, keskikaista, 5mm
+_SLOW_DISK_MIN_MB = 2000.0
+
+
+def _read_speed_mbs(path: Path, nbytes: int = 64 << 20) -> float | None:
+    """Syötelevyn lukunopeus. Mitattu, ei arvattu — maksaa alle sekunnin."""
+    try:
+        got, t0 = 0, time.perf_counter()
+        with open(path, "rb", buffering=0) as f:
+            while got < nbytes:
+                blk = f.read(1 << 22)
+                if not blk:
+                    break
+                got += len(blk)
+        dt = time.perf_counter() - t0
+    except OSError:
+        return None
+    return (got / 1e6 / dt) if dt > 0 and got else None
+
+
+def slow_input_warning(total_mb: float, mbs: float | None) -> str | None:
+    """Varoitus kun ajon kesto on levyn eikä koneen kiinni.
+
+    Mitattu koulun kellarilla: 31.7 GB skanneja USB-tikulta (95 MB/s) — putki
+    lukee ne neljä kertaa, eli 22 minuuttia 56:sta oli pelkkää levyodotusta.
+    Sisäinen NVMe luki samaa tiedostoa 1884 MB/s eli 20-kertaa nopeammin.
+    """
+    if mbs is None or mbs >= _SLOW_DISK_MBS or total_mb < _SLOW_DISK_MIN_MB:
+        return None
+    wait_min = total_mb * _READ_PASSES / mbs / 60.0
+    return (f"VAROITUS: syötelevy lukee {mbs:.0f} MB/s. Ajo lukee skannit "
+            f"{_READ_PASSES} kertaa, eli noin {wait_min:.0f} min tästä ajosta on "
+            "pelkkää levyn odottamista. Kopioi skannit koneen omalle SSD:lle "
+            "ennen ajoa.")
 
 
 def _auto_voxel(cloud, target: int = _AUTO_TARGET_POINTS) -> float:
@@ -1104,6 +1142,13 @@ class Pipeline:
 
     def _run_floors_inner(self, paths: list[Path], output_dir: Path, diag) -> list[StructuralModel]:
         self._progress(f"Skannaustiedostoja: {len(paths)}")
+        try:
+            _mb = sum(p.stat().st_size for p in paths) / 1e6
+            _warn = slow_input_warning(_mb, _read_speed_mbs(paths[0]))
+            if _warn:
+                self._progress("  " + _warn)
+        except OSError:
+            pass
         self._progress("Havaitaan kerroksia Z-histogrammista…")
 
         from scan2bim.core.geometry.floor_splitter import detect_floors_from_files
