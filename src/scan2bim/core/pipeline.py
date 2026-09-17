@@ -1159,21 +1159,44 @@ class Pipeline:
         floors = detect_floors_from_files(paths, sample_step=sample)
         self._progress(f"Löydettiin {len(floors)} kerros(ta).")
 
+        _pre = None
         if self.config.auto_voxel:
             # Adaptiivinen voxel datasta: kevyt 20mm-otos ensimmäisen kerroksen
             # kaistasta (muistiturvallinen isollekin talolle) → _auto_voxel skaalaa
             # työpistemäärän mukaan. Pieni huone → 8mm (tarkempi), iso talo → 25mm.
             # (Aiemmin kovakoodattu 12mm harhaanjohtavalla "Auto-voxel"-tekstillä.)
             try:
-                from scan2bim.core.geometry.streaming import load_floor_slice as _probe_lfs
+                from scan2bim.core.geometry.streaming import (  # noqa: PLC0415
+                    load_floor_slice as _probe_lfs, load_floor_slice_voxels,
+                )
                 _z_lo0, _z_hi0 = floors[0]
-                _probe = _probe_lfs(paths, _z_lo0, _z_hi0, voxel_size=20.0, progress_cb=None)
+                _cap = None
+                if not self.config.icp_refine:
+                    # Otos (20 mm) ja katon voxel (25 mm) SAMASTA purusta, tiedosto
+                    # kerrallaan voxeloiden. Iso kohde osuu aina kattoon, jolloin
+                    # työpilvi on jo valmis eikä 30 GB:tä lueta toista kertaa
+                    # (kellari: 602 s + 575 s kahtena kierroksena). Tulos on sama
+                    # kuin erillisellä luvulla — ks. load_floor_slice_voxels.
+                    _cap_samples: list = []
+                    _probe, _cap_cloud = load_floor_slice_voxels(
+                        paths, _z_lo0, _z_hi0, [20.0, _AUTO_VOXEL_MAX],
+                        progress_cb=self._progress,
+                        sample_out=_cap_samples if len(paths) > 1 else None,
+                        sample_voxel=1,
+                    )
+                    _cap = (_cap_cloud, _cap_samples)
+                else:
+                    _probe = _probe_lfs(paths, _z_lo0, _z_hi0, voxel_size=20.0, progress_cb=None)
                 if len(_probe.points) >= 500:
                     self.config.voxel_size = _auto_voxel(_probe)
+                    if _cap is not None and self.config.voxel_size == _AUTO_VOXEL_MAX:
+                        _pre = _cap
                 else:
                     self.config.voxel_size = 12.0
+                del _probe, _cap
             except Exception:
                 self.config.voxel_size = 12.0
+                _pre = None
             self._progress(f"  Auto-voxel: {self.config.voxel_size:.1f} mm")
 
         source = paths[0]
@@ -1187,14 +1210,19 @@ class Pipeline:
             )
 
             from scan2bim.core.geometry.streaming import load_floor_slice, check_scan_consistency
-            _samples: list = []
-            cloud = load_floor_slice(
-                paths, z_lo, z_hi,
-                voxel_size=self.config.voxel_size,
-                progress_cb=self._progress,
-                icp_refine=self.config.icp_refine,
-                sample_out=_samples if len(paths) > 1 else None,
-            )
+            if floor_idx == 0 and _pre is not None:
+                self._progress("  Työpilvi luettiin jo voxelivalinnan yhteydessä")
+                cloud, _samples = _pre
+                _pre = None
+            else:
+                _samples = []
+                cloud = load_floor_slice(
+                    paths, z_lo, z_hi,
+                    voxel_size=self.config.voxel_size,
+                    progress_cb=self._progress,
+                    icp_refine=self.config.icp_refine,
+                    sample_out=_samples if len(paths) > 1 else None,
+                )
             if len(paths) > 1:
                 _bad = check_scan_consistency(_samples)
                 if _bad:
@@ -1267,34 +1295,26 @@ class Pipeline:
             self._progress(f"  Semanttinen suodatin ({len(cloud.points):,} pistettä)…")
             cloud = self._semantic_filter(cloud)
 
-            self._progress("  Ladataan keskikaista paksuusmittaukseen (täysi resa)…")
-            from scan2bim.core.geometry.streaming import load_floor_slice as _lfs
-            # TÄYSI resa (voxel=0): voxelointi kvantisoi huippujen paikat → bias
-            # (0mm→0.75mm mediaani, 1mm→1.8mm, 1.5mm→2.65mm). Raakapisteet pakolliset
-            # ali-mm paksuuteen. Vain keskikaista (~30% korkeudesta) → muisti ok.
-            # Kaista katolla 45 M pistettä — 159 M skannin 30 %-kaista on
-            # 76 M täysresa (huippu 7 GB).
-            # Satunnaisohennus (ei voxelointi) säilyttää piikin paikan → ali-mm
-            # paksuus pysyy, muisti rajattu isollakin skannilla.
-            thick_cloud = _lfs(
-                paths, band_lo, band_hi, voxel_size=0.0, progress_cb=None,
-                icp_refine=self.config.icp_refine, max_points=45_000_000,
+            self._progress("  Ladataan keskikaista paksuusmittaukseen (täysi resa) "
+                           "ja 5mm-pilvi pintalukitukseen…")
+            from scan2bim.core.geometry.streaming import load_floor_slices as _lfss
+            # TÄYSI resa keskikaistalle (voxel=0): voxelointi kvantisoi huippujen
+            # paikat → bias (0mm→0.75mm mediaani, 1mm→1.8mm, 1.5mm→2.65mm).
+            # 5mm koko korkeuden pilvi pintalukitukseen/linjaukseen — detektio-
+            # voxelin sentroidi-bias siirtää pintamediaania useita mm. Molemmilla
+            # katto 45 M: satunnaisohennus rajaa muistin eikä siirrä pintaa.
+            #
+            # YKSI läpikäynti molemmille. Erillisinä kutsuina kumpikin purki
+            # jokaisen e57:n kahdesti (laskenta + täyttö); nyt kaksi purkua
+            # neljän sijaan, ja tulos on bitilleen sama (read_e57_xyz_bands).
+            thick_cloud, refine_cloud = _lfss(
+                paths,
+                [(band_lo, band_hi, 0.0, 45_000_000), (z_lo, z_hi, 5.0, 45_000_000)],
+                progress_cb=None, icp_refine=self.config.icp_refine,
             )
-            # 5mm koko korkeuden pilvi pintalukitukseen/linjaukseen — detektiovoxelin
-            # (12mm) sentroidi-bias siirtää pintamediaania useita mm (sama syy kuin
-            # convert-polun refine_cloud). Katto 45 M: ison skannin 5mm-pilvi on
-            # 100M+ (SLAM-kohina > 5mm) → satunnaisohennus rajaa muistin eikä
-            # siirrä pintamediaania (toisin kuin karkeampi voxel).
             self._progress(
-                f"  Ladataan 5mm-pilvi pintalukitukseen ({len(thick_cloud.points):,} "
-                "keskikaistalla)…")
-            refine_cloud = _lfs(
-                paths, z_lo, z_hi, voxel_size=5.0, progress_cb=None,
-                icp_refine=self.config.icp_refine, max_points=45_000_000,
-            )
-
-            self._progress(
-                f"  5mm-pilvi {len(refine_cloud.points):,} pistettä")
+                f"  Keskikaista {len(thick_cloud.points):,} pistettä, "
+                f"5mm-pilvi {len(refine_cloud.points):,} pistettä")
 
             self._progress(f"  Seinädetektio ({self.config.detector})…")
             model = self._detect(cloud, source, refine_cloud=refine_cloud, thick_cloud=thick_cloud)

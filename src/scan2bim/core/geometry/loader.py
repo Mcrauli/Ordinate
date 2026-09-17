@@ -474,6 +474,54 @@ def read_e57_xyz_band(
     return out[:filled]
 
 
+def read_e57_xyz_bands(
+    path: Path, bands: list[tuple[float, float]], max_points: int = 0
+) -> list[np.ndarray]:
+    """Useampi kaista SAMASTA purusta — bitilleen sama kuin `read_e57_xyz_band`
+    kullekin kaistalle erikseen.
+
+    Pipeline luki paksuuskaistan ja 5 mm -pilven peräkkäin, ja kumpikin purki
+    jokaisen tiedoston kahdesti (laskenta + täyttö): neljä purkua, joista kaksi
+    riittää. Samuus perustuu kolmeen asiaan: raakalohkot tulevat samassa
+    järjestyksessä, kaistan ehto on sama (`>=` ja `<=`), ja jokaisella kaistalla
+    on oma `default_rng(0)` joka kuluttaa tasan yhtä monta lukua kuin sen
+    kaistaan osuu pisteitä — tyhjä lohko ei kuluta mitään, joten lohkojako ei
+    vaikuta valintaan.
+    """
+    nb = len(bands)
+    totals = [0] * nb
+    for xyz in e57_xyz_chunks(path, _E57_CHUNK):
+        z = xyz[:, 2]
+        for k, (lo, hi) in enumerate(bands):
+            totals[k] += int(((z >= lo) & (z <= hi)).sum())
+
+    keeps = [t if max_points <= 0 else min(t, max_points) for t in totals]
+    probs = [(kp / t) if t else 1.0 for kp, t in zip(keeps, totals)]
+    rngs = [np.random.default_rng(0) for _ in range(nb)]
+    outs = [np.empty((kp, 3), dtype=np.float64) for kp in keeps]
+    filled = [0] * nb
+
+    if any(keeps):
+        for xyz in e57_xyz_chunks(path, _E57_CHUNK):
+            if all(f >= kp for f, kp in zip(filled, keeps)):
+                break
+            z = xyz[:, 2]
+            for k, (lo, hi) in enumerate(bands):
+                if filled[k] >= keeps[k]:
+                    continue
+                m = (z >= lo) & (z <= hi)
+                if not m.any():
+                    continue
+                sub = xyz[m]
+                if probs[k] < 1.0:
+                    sub = sub[rngs[k].random(len(sub)) < probs[k]]
+                take = min(len(sub), keeps[k] - filled[k])
+                outs[k][filled[k]:filled[k] + take] = sub[:take]
+                filled[k] += take
+    return [o[:f] if t else np.zeros((0, 3), dtype=np.float64)
+            for o, f, t in zip(outs, filled, totals)]
+
+
 def read_ply_z(
     path: Path, max_keep: int = 8_000_000, chunk: int = 4_000_000
 ) -> np.ndarray | None:

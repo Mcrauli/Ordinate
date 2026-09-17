@@ -75,54 +75,68 @@ def _load_e57_band(
     return _accumulate_voxeled(e57_band_chunks(path, z_lo, z_hi), 1.0, voxel_size)
 
 
-def _accumulate_voxeled(gen, scale: float, voxel_size: float) -> o3d.geometry.PointCloud:
-    """Kasaa kaistalohkot voxeloiden — koko kaistaa ei pidetä muistissa."""
+class _VoxelAcc:
+    """Voxeloiva kertymä yhdelle voxelikoolle. Useampi kertymä voi syödä SAMAA
+    lohkovirtaa, jolloin yksi purku tuottaa useamman voxelikoon — kukin täsmälleen
+    kuten oma `_accumulate_voxeled`-kutsunsa."""
 
-    def _voxel(arr: np.ndarray) -> np.ndarray:
+    def __init__(self, voxel_size: float) -> None:
+        self.voxel_size = voxel_size
+        self.acc: np.ndarray | None = None
+        self.buf: list[np.ndarray] = []
+        self.n_buf = 0
+
+    def _voxel(self, arr: np.ndarray) -> np.ndarray:
         if len(arr) == 0:
             return arr
         # Iso taulukko: o3d:n voxel_down_sample rakentaa hash-mapin joka syö
         # ~10 GB 70M pisteelle. Käytä kevyttä numpy-ruutudedupia (yksi piste/solu)
         # → muisti ~sort(N). Pieni taulukko: o3d-sentroidi (validoitu tarkkuus).
         if len(arr) > 30_000_000:
-            return _voxel_first_np(arr, voxel_size)
+            return _voxel_first_np(arr, self.voxel_size)
         c = o3d.geometry.PointCloud()
         c.points = o3d.utility.Vector3dVector(arr)
         # .copy(): irrota o3d-puskurista → väliaikainen pilvi vapautuu heti
-        return np.asarray(c.voxel_down_sample(voxel_size).points).copy()
+        return np.asarray(c.voxel_down_sample(self.voxel_size).points).copy()
 
-    # Puskuroi RAAKAlohkot ~24M asti, sitten tyhjennä: voxeloi puskuri + sulauta
-    # kertyneeseen (dedup lohkorajat). Sulautus laukeaa kerran per 24M SYÖTETTÄ
-    # (ei per lohko) → voxeloitavaksi päätyy vain acc + ~24M, ei koko kaista,
-    # eikä työ ole O(n²).
-    acc: np.ndarray | None = None
-    buf: list[np.ndarray] = []
-    n_buf = 0
-
-    # Tänne päädytään vain detektiolle (voxel>0, ei kattorajaa). Dedup
-    # voxeloimalla pitää akun aidossa 12mm-ruutukoossa tiheysmaskille.
-    def _flush():
-        nonlocal acc, buf, n_buf
-        if not buf:
+    def _flush(self) -> None:
+        if not self.buf:
             return
-        v = _voxel(np.concatenate(buf) if len(buf) > 1 else buf[0])
-        buf, n_buf = [], 0
-        acc = v if acc is None else _voxel(np.concatenate([acc, v]))
+        v = self._voxel(np.concatenate(self.buf) if len(self.buf) > 1 else self.buf[0])
+        self.buf, self.n_buf = [], 0
+        self.acc = v if self.acc is None else self._voxel(np.concatenate([self.acc, v]))
 
+    def feed(self, xyz: np.ndarray) -> None:
+        # Puskuroi RAAKAlohkot ~24M asti, sitten tyhjennä: voxeloi puskuri + sulauta
+        # kertyneeseen (dedup lohkorajat). Sulautus laukeaa kerran per 24M SYÖTETTÄ
+        # (ei per lohko) → voxeloitavaksi päätyy vain acc + ~24M, ei koko kaista,
+        # eikä työ ole O(n²).
+        self.buf.append(xyz)
+        self.n_buf += len(xyz)
+        if self.n_buf >= 24_000_000:
+            self._flush()
+
+    def result(self) -> o3d.geometry.PointCloud:
+        self._flush()
+        out = o3d.geometry.PointCloud()
+        if self.acc is not None:
+            out.points = o3d.utility.Vector3dVector(self.acc)
+        return out
+
+
+def _accumulate_voxeled(gen, scale: float, voxel_size: float) -> o3d.geometry.PointCloud:
+    """Kasaa kaistalohkot voxeloiden — koko kaistaa ei pidetä muistissa."""
+    return _accumulate_voxeled_multi(gen, scale, [voxel_size])[0]
+
+
+def _accumulate_voxeled_multi(gen, scale: float, voxel_sizes) -> list[o3d.geometry.PointCloud]:
+    accs = [_VoxelAcc(v) for v in voxel_sizes]
     for xyz in gen:
         if scale != 1.0:
             xyz *= scale
-        buf.append(xyz)
-        n_buf += len(xyz)
-        if n_buf >= 24_000_000:
-            _flush()
-    _flush()
-
-    if acc is None:
-        return o3d.geometry.PointCloud()
-    out = o3d.geometry.PointCloud()
-    out.points = o3d.utility.Vector3dVector(acc)
-    return out
+        for a in accs:
+            a.feed(xyz)
+    return [a.result() for a in accs]
 
 
 def read_workers(n_files: int, want: int = 4) -> int:
@@ -214,6 +228,182 @@ def _slice_one(args):
     if want_sample:
         sample = np.asarray(slice_cloud.voxel_down_sample(100.0).points).copy()
     return np.asarray(slice_cloud.points).copy(), sample, warn
+
+
+def _slice_voxels(args):
+    """Yhden tiedoston sama Z-kaista USEALLA voxelikoolla yhdestä purusta.
+
+    Jokainen tulos on täsmälleen sama kuin `_slice_one` sillä voxelikoolla:
+    lohkopolulla sama lohkovirta syöttää erilliset kertymät, muuten sama
+    purettu pilvi voxeloidaan kullakin koolla. Voxelointi on TIEDOSTOKOHTAINEN
+    kuten varsinaisessa luvussa — globaali voxelointi poistaisi päällekkäisten
+    asemien pisteet ja puolittaisi pilven (mitattu ja peruttu 16.9.2026).
+    """
+    (path, z_lo, z_hi, voxels, n_paths, sample_k) = args
+    path = Path(path)
+    from scan2bim.core.geometry.loader import (
+        load_point_cloud, ply_band_chunks, ply_autoscale_factor,
+        _ply_dtype, _e57_is_chunkable, e57_band_chunks,
+    )
+    suffix = path.suffix.lower()
+    big_ply = False
+    if suffix == ".ply":
+        dt = _ply_dtype(path)
+        big_ply = dt is not None and dt[1] >= 40_000_000
+    big_e57 = suffix == ".e57" and _e57_is_chunkable(path, n_paths)
+    warn = None
+    clouds = None
+    if big_ply or big_e57:
+        try:
+            if big_ply:
+                scale = ply_autoscale_factor(path)
+                gen = ply_band_chunks(path, z_lo / scale, z_hi / scale)
+                clouds = None if gen is None else _accumulate_voxeled_multi(gen, scale, voxels)
+            else:
+                clouds = _accumulate_voxeled_multi(e57_band_chunks(path, z_lo, z_hi), 1.0, voxels)
+        except Exception as e:  # noqa: BLE001
+            warn = f"  VAROITUS: {path.name} kaistaluku epäonnistui — {e}"
+            clouds = None
+        if clouds is not None:
+            outs = [c if len(c.points) >= 50 else None for c in clouds]
+            return _voxels_result(outs, sample_k, warn)
+    try:
+        cloud = load_point_cloud(path)
+    except Exception as e:  # noqa: BLE001
+        return [None] * len(voxels), None, f"  VAROITUS: {path.name} ohitettiin — {e}"
+    cloud.normals = o3d.utility.Vector3dVector()
+    cloud.colors = o3d.utility.Vector3dVector()
+    pts = np.asarray(cloud.points)
+    mask = (pts[:, 2] >= z_lo) & (pts[:, 2] <= z_hi)
+    if int(mask.sum()) < 50:
+        return [None] * len(voxels), None, warn
+    slice_cloud = cloud.select_by_index(np.where(mask)[0])
+    del cloud
+    outs = [slice_cloud.voxel_down_sample(v) if v > 0.0 else slice_cloud for v in voxels]
+    return _voxels_result(outs, sample_k, warn)
+
+
+def _voxels_result(outs, sample_k, warn):
+    sample = None
+    if sample_k is not None and outs[sample_k] is not None:
+        sample = np.asarray(outs[sample_k].voxel_down_sample(100.0).points).copy()
+    arrs = [None if c is None else np.asarray(c.points).copy() for c in outs]
+    return arrs, sample, warn
+
+
+def load_floor_slice_voxels(
+    paths: list[Path], z_lo: float, z_hi: float, voxels: list[float],
+    progress_cb=None, sample_out: list | None = None, sample_voxel: int | None = None,
+) -> list[o3d.geometry.PointCloud]:
+    """Sama kaista usealla voxelikoolla yhdellä läpikäynnillä (ei ICP:tä).
+
+    `sample_out` saa `(tiedosto, 100 mm otos)` voxelikoon `sample_voxel`
+    viipaleista — samat kuin `load_floor_slice(..., sample_out=...)` antaisi.
+    """
+    n = len(paths)
+    k = sample_voxel if sample_out is not None else None
+    jobs = [(str(p), z_lo, z_hi, list(voxels), n, k) for p in paths]
+    merged = [o3d.geometry.PointCloud() for _ in voxels]
+
+    def _use(path: Path, res) -> None:
+        arrs, sample, warn = res
+        if warn and progress_cb:
+            progress_cb(warn)
+        for i, a in enumerate(arrs):
+            if a is None or not len(a):
+                continue
+            c = o3d.geometry.PointCloud()
+            c.points = o3d.utility.Vector3dVector(a)
+            merged[i] += c
+        if sample_out is not None and sample is not None:
+            sample_out.append((path.name, sample))
+
+    workers = read_workers(n)
+    if workers > 1:
+        from concurrent.futures import ProcessPoolExecutor  # noqa: PLC0415
+        with ProcessPoolExecutor(max_workers=workers) as ex:
+            for i, (path, res) in enumerate(zip(paths, ex.map(_slice_voxels, jobs))):
+                if progress_cb:
+                    progress_cb(f"  [{i+1}/{n}] {path.name}")
+                _use(path, res)
+    else:
+        for i, (path, job) in enumerate(zip(paths, jobs)):
+            if progress_cb:
+                progress_cb(f"  [{i+1}/{n}] {path.name}")
+            _use(path, _slice_voxels(job))
+    return merged
+
+
+def _slice_multi(args):
+    """Yhden tiedoston USEAMPI kaista. Lohko-e57:llä yksi purkupari kaikille
+    kaistoille (`read_e57_xyz_bands`); muuten jokainen kaista kuten
+    `_slice_one` erikseen — tulos on molemmissa sama kuin erilliset kutsut."""
+    path, specs, n_paths = args
+    path = Path(path)
+    from scan2bim.core.geometry.loader import _e57_is_chunkable, read_e57_xyz_bands
+
+    mps = [0 if mp <= 0 else max(1, mp // max(n_paths, 1)) for (_, _, _, mp) in specs]
+    raw_only = all(v <= 0.0 or mp > 0 for (_, _, v, _), mp in zip(specs, mps))
+    if (path.suffix.lower() == ".e57" and raw_only and len(set(mps)) == 1
+            and _e57_is_chunkable(path, n_paths)):
+        try:
+            arrs = read_e57_xyz_bands(path, [(lo, hi) for (lo, hi, _, _) in specs], mps[0])
+            return [a if len(a) >= 50 else None for a in arrs], None
+        except Exception:  # noqa: BLE001
+            pass
+    outs, warns = [], []
+    for (lo, hi, v, mp) in specs:
+        pts, _sample, warn = _slice_one((str(path), lo, hi, v, mp, n_paths, False))
+        outs.append(pts)
+        if warn:
+            warns.append(warn)
+    return outs, ("; ".join(warns) or None)
+
+
+def load_floor_slices(
+    paths: list[Path],
+    specs: list[tuple[float, float, float, int]],
+    progress_cb=None,
+    icp_refine: bool = False,
+) -> list[o3d.geometry.PointCloud]:
+    """Monta kaistaa (z_lo, z_hi, voxel, max_points) yhdellä läpikäynnillä.
+
+    Sama tulos kuin `load_floor_slice` kullekin erikseen. ICP:llä ei yhdistetä,
+    koska jokainen kaista kohdistetaan omaan kasvavaan referenssiinsä.
+    """
+    if icp_refine:
+        return [load_floor_slice(paths, lo, hi, voxel_size=v, progress_cb=progress_cb,
+                                 icp_refine=True, max_points=mp)
+                for (lo, hi, v, mp) in specs]
+    n = len(paths)
+    jobs = [(str(p), list(specs), n) for p in paths]
+    merged = [o3d.geometry.PointCloud() for _ in specs]
+
+    def _use(i: int, path: Path, res) -> None:
+        arrs, warn = res
+        if warn and progress_cb:
+            progress_cb(warn)
+        for k, pts in enumerate(arrs):
+            if pts is None or not len(pts):
+                continue
+            c = o3d.geometry.PointCloud()
+            c.points = o3d.utility.Vector3dVector(pts)
+            merged[k] += c
+
+    workers = read_workers(n)
+    if workers > 1:
+        from concurrent.futures import ProcessPoolExecutor  # noqa: PLC0415
+        with ProcessPoolExecutor(max_workers=workers) as ex:
+            for i, (path, res) in enumerate(zip(paths, ex.map(_slice_multi, jobs))):
+                if progress_cb:
+                    progress_cb(f"  [{i+1}/{n}] {path.name}")
+                _use(i, path, res)
+    else:
+        for i, (path, job) in enumerate(zip(paths, jobs)):
+            if progress_cb:
+                progress_cb(f"  [{i+1}/{n}] {path.name}")
+            _use(i, path, _slice_multi(job))
+    return merged
 
 
 def load_floor_slice(
