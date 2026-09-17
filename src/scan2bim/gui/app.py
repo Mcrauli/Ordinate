@@ -52,8 +52,28 @@ def _install_crash_log() -> None:
                                           f"säikeessä {a.thread.name if a.thread else '?'}")
 
 
+def _clean_stale_temp(max_age_h: float = 12.0) -> None:
+    """3D-tarkastuksen välitiedostot (~100 MB kpl) jäävät jos istunto kaatuu.
+
+    Vain vanhat poistetaan: toinen käynnissä oleva ikkuna voi käyttää tuoreita.
+    """
+    import tempfile
+    import time
+    from pathlib import Path
+
+    cutoff = time.time() - max_age_h * 3600.0
+    for pat in ("s2b_view_*.npz", "s2b_model_*.json"):
+        for f in Path(tempfile.gettempdir()).glob(pat):
+            try:
+                if f.stat().st_mtime < cutoff:
+                    f.unlink()
+            except OSError:
+                pass
+
+
 def run() -> None:
     _install_crash_log()
+    _clean_stale_temp()
     _acquire_app_mutex()
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication(sys.argv)
     apply_theme(app)
