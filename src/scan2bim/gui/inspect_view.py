@@ -486,7 +486,13 @@ class InspectView(QtWidgets.QWidget):
         span = float(np.linalg.norm(hi - lo))
         if not np.isfinite(span) or span <= 0:
             span = ext
-        self._view.setCameraPosition(distance=max(span * 0.55, 500.0))
+        # Keskipiste JA katsekulma nollataan, ei vain etäisyyttä: lentotila
+        # siirtää keskipistettä, ja edellisen pilven jäljiltä kamera katsoi
+        # uuden rakennuksen ohi tyhjään (mitattu: 36 m sivussa, 80° ylöspäin).
+        mid = (lo + hi) / 2.0
+        self._view.setCameraPosition(pos=Vector(float(mid[0]), float(mid[1]), float(mid[2])),
+                                     distance=max(span * 0.55, 500.0),
+                                     elevation=30.0, azimuth=-45.0)
         self._mode.setEnabled(True)
         self._size_slider.setEnabled(True)
         self._apply_model()
