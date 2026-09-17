@@ -4,6 +4,22 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 [`Mcrauli/scan2bim-web`](https://github.com/Mcrauli/scan2bim-web/releases):iin;
 sovellus päivittää itsensä sieltä.
 
+## v0.9.31 (17.9.2026) — 3D-tarkastus ei enää kaadu, ajon kesto näkyy
+
+- **3D-tarkastus kaatui yhä pilveä ladatessa — 0.9.30:n korjaus oli väärä.**
+  Loki näytti kolmannen kaatumisen rivillä `res[:, 0] = 0.95`, eli
+  kirjoituksessa taulukkoon joka oli varattu edellisellä rivillä. Sellainen
+  kaatuu vain jos prosessin muisti on jo rikki, joten funktion uudelleen-
+  kirjoitus ei voinut auttaa. Kaikissa kolmessa kaatumisessa 1.5 M pisteen
+  pilvi oli juuri ladattu näytönohjaimelle samalla kun taustasäie laski
+  numpyllä. Nyt ikkunaprosessi ei tee pilvelle mitään laskentaa eikä aja
+  yhtään taustasäiettä: pisteet, värit, residuaali ja "vain puuttuvat"
+  lasketaan valmiiksi aliprosessissa. Seinän poiston jälkeen residuaali
+  lasketaan uudelleen samoista pisteistä lukematta skanneja uudestaan.
+  Mitattu päästä päähän: ikkunan pisin tauko 0.08 s.
+- **Ajon kesto näkyy.** Tilarivillä juokseva kello ja nykyinen vaihe;
+  lopuksi kokonaisaika ja kolme pisintä vaihetta lokiin.
+
 ## v0.9.30 (16.9.2026) — 3D-tarkastuksen kaatuminen korjattu, varoitus hitaasta levystä
 
 - **3D-tarkastus kaatoi sovelluksen.** Loki nimesi sen vihdoin: muistin
