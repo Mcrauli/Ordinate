@@ -66,7 +66,8 @@ def detect_openings(
     for wall in walls:
         new = _wall_openings(wall, pts, floor_z, counter, walls, index)
         if origins:
-            new = [op for op in new if not _is_occlusion_shadow(op, wall, pts, origins, floor_z)]
+            new = [op for op in new
+                   if not _is_occlusion_shadow(op, wall, pts, origins, floor_z, index)]
         openings.extend(new)
         counter += len(new)
     return openings
@@ -95,18 +96,38 @@ def _wall_end_anchors(wall: Wall, walls: list[Wall]) -> tuple[bool, bool]:
 
 def _is_occlusion_shadow(
     opening: Opening, wall: Wall, pts: np.ndarray,
-    origins: list[np.ndarray], floor_z: float,
+    origins: list[np.ndarray], floor_z: float, index=None,
 ) -> bool:
     """True jos aukko on kalusteen okkluusiovarjo: skannerin ja seinän välissä on
     pistejoukko joka projisoituu juuri aukon alueelle. Oikea aukko → näkölinja vapaa."""
-    if len(wall.axis) < 2:
+    counts = _occlusion_counts(opening, wall, pts, origins, floor_z, index, stop_below=True)
+    if counts is None or not counts[0]:
         return False
+    # kaikkien informatiivisten skannerien näkymä on tukossa → aito varjo
+    return min(counts[0]) >= counts[1]
+
+
+def _occlusion_counts(
+    opening: Opening, wall: Wall, pts: np.ndarray,
+    origins: list[np.ndarray], floor_z: float, index=None, stop_below: bool = False,
+):
+    """(osumat per informatiivinen skanneri, kynnys) tai None.
+
+    `index` annettuna laskenta tehdään vain aseman ja aukon välisen kolmion
+    pisteille. Rajaus on TARKKA eikä arvio: jos säde S→P osuu seinätasolla
+    aukkoon ja P on aseman ja seinän välissä (f > 1), P on janalla S→osuma, eli
+    XY:ssä kolmion (S, aukon pää 0, aukon pää 1) sisällä. Kolmion ulkopuolinen
+    piste ei voi koskaan tuottaa osumaa. Mitattu kellarilla: 11 s per ehdokas
+    koko pilven yli, 37 asemaa × 25 M pistettä.
+    """
+    if len(wall.axis) < 2:
+        return None
     p0 = np.array(wall.axis[0], dtype=float)
     p1 = np.array(wall.axis[1], dtype=float)
     d = p1 - p0
     length = float(np.linalg.norm(d))
     if length < 1.0:
-        return False
+        return None
     along = d / length
     normal = np.array([-along[1], along[0]])
     plane_D = float(np.dot(normal, p0))
@@ -120,8 +141,10 @@ def _is_occlusion_shadow(
 
     # Aukon keskipiste (2D) näkökulmakulman arviointiin
     center2d = p0 + along * (0.5 * (a0 + a1))
+    e0 = p0 + along * a0
+    e1 = p0 + along * a1
 
-    pN = pts[:, :2] @ normal
+    pN_all = None if index is not None else pts[:, :2] @ normal
     # Kerää OKKLUUSIO-osumat per skanneri. Aito aukko on JOKIN skanneri näkee
     # sen läpi (matala osumaluku); aito varjo on kaikilta korkea. → hylkää vain
     # jos VÄHITEN peittynytkin (min) ylittää kynnyksen. Sivuttain (grazing)
@@ -140,6 +163,21 @@ def _is_occlusion_shadow(
         cos_inc = abs(float(view @ normal)) / vlen
         if cos_inc < 0.26:
             continue
+        # Varhainen lopetus ei muuta päätöstä: varjo vaatii että VÄHITEN
+        # peittynytkin asema ylittää kynnyksen, joten yksi näkyvä asema riittää.
+        if stop_below and counts and counts[-1] < occ_thr:
+            break
+        if index is None:
+            P, pN = pts, pN_all
+        else:
+            from scan2bim.core.geometry.xy_index import in_box  # noqa: PLC0415
+            xs = (S[0], e0[0], e1[0]); ys = (S[1], e0[1], e1[1])
+            sub = in_box(index, min(xs) - 1.0, min(ys) - 1.0, max(xs) + 1.0, max(ys) + 1.0)
+            if not len(sub):
+                counts.append(0)
+                continue
+            P = pts[sub]
+            pN = P[:, :2] @ normal
         denom = pN - sN
         with np.errstate(divide="ignore", invalid="ignore"):
             f = wall_gap / denom          # skaala jolla säde S→P osuu seinätasolle
@@ -148,16 +186,13 @@ def _is_occlusion_shadow(
         if not front.any():
             counts.append(0)
             continue
-        Pf = pts[front]
+        Pf = P[front]
         ff = f[front][:, None]
         hit = S[None, :] + ff * (Pf - S[None, :])      # osumapiste seinätasolla
         hit_along = (hit[:, :2] - p0) @ along
         inside = (hit_along >= a0) & (hit_along <= a1) & (hit[:, 2] >= z0) & (hit[:, 2] <= z1)
         counts.append(int(inside.sum()))
-    if not counts:
-        return False
-    # kaikkien informatiivisten skannerien näkymä on tukossa → aito varjo
-    return min(counts) >= occ_thr
+    return counts, occ_thr
 
 
 def _wall_openings(

@@ -74,6 +74,21 @@ class XYIndex:
         return idx
 
 
+def in_box(index: "XYIndex", xmin: float, ymin: float, xmax: float, ymax: float) -> np.ndarray:
+    """Pisteindeksit joiden ruutu voi osua laatikkoon (ylijoukko, nouseva järjestys)."""
+    if index._n == 0 or len(index._starts) == 0:
+        return np.empty(0, dtype=np.int64)
+    half = 0.5 * index._cell
+    sel = ((index._cx + half >= xmin) & (index._cx - half <= xmax)
+           & (index._cy + half >= ymin) & (index._cy - half <= ymax))
+    if not sel.any():
+        return np.empty(0, dtype=np.int64)
+    idx = np.concatenate([index._order[a:b] for a, b in
+                          zip(index._starts[sel], index._ends[sel])])
+    idx.sort()
+    return idx
+
+
 def subset(pts: np.ndarray, index: "XYIndex | None", p0, along, normal,
            radius: float, s_lo: float = -np.inf, s_hi: float = np.inf):
     """(osajoukko, indeksit) — ilman indeksiä palautetaan koko taulukko."""
