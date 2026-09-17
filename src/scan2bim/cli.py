@@ -180,56 +180,101 @@ def _view_workers(n_files: int) -> int:
 
 
 @main.command(name="viewcloud", hidden=True)
-@click.argument("inputs", nargs=-1, required=True,
-                type=click.Path(exists=True, path_type=Path))
+@click.argument("inputs", nargs=-1, type=click.Path(exists=True, path_type=Path))
 @click.option("--out", required=True, type=click.Path(path_type=Path))
 @click.option("--max-points", default=1_500_000, show_default=True)
-def viewcloud(inputs: tuple[Path, ...], out: Path, max_points: int) -> None:
-    """Harvennettu pilvi 3D-tarkastukseen (GUI ajaa taman aliprosessina).
+@click.option("--model", "model_json", type=click.Path(exists=True, path_type=Path),
+              default=None, help="Malli jonka residuaali lasketaan valmiiksi")
+@click.option("--reuse", type=click.Path(exists=True, path_type=Path), default=None,
+              help="Aiemman ajon npz: pisteet sieltä, skanneja ei lueta")
+def viewcloud(inputs: tuple[Path, ...], out: Path, max_points: int,
+              model_json: Path | None, reuse: Path | None) -> None:
+    """3D-tarkastuksen pilvi VALMIIKSI laskettuna (GUI ajaa tämän aliprosessina).
 
-    E57-lukija EI vapauta GIL:ia: mitattu yhdella 834 MB tiedostolla, toinen
-    saie seisoi 4.2 s. Taustasaikeessa 36 tiedostoa jaadyttaa koko ikkunan
-    viideksi minuutiksi, joten luku kuuluu omaan prosessiinsa.
+    Ikkunaprosessi ei tee pilvelle mitään numpy-työtä: se kaatui kolme kertaa
+    muistin suojausvirheeseen juuri kun se rakensi 1.5 M pisteen väritaulua
+    näytönohjaimen latauksen jälkeen — viimeksi rivillä joka kirjoitti
+    taulukkoon joka oli varattu edellisellä rivillä. Kaikki taulut lasketaan
+    tässä, ja ikkuna vain lataa ne.
+
+    E57-lukija ei myöskään vapauta GIL:iä (mitattu 4.2 s pysähdys toisessa
+    säikeessä yhdellä tiedostolla), joten luku kuuluu omaan prosessiinsa.
     """
+    import json as _json
+
     import numpy as np
 
-    per = max(1, int(max_points) // max(len(inputs), 1))
-    jobs = [(str(p), per) for p in inputs]
-    workers = _view_workers(len(jobs))
-    chunks, cols = [], []
+    from scan2bim.core.qa.residual import classify_explained
 
-    def _collect(i: int, name: str, res) -> None:
-        click.echo(f"  [{i}/{len(jobs)}] {name}")
-        try:
-            sys.stdout.flush()
-        except Exception:
-            pass
-        pts, rgb = res
-        if pts is not None:
-            chunks.append(pts)
-            cols.append(rgb)
-
-    if workers > 1:
-        # Mitattu 4 tiedostolla: 2 prosessia 1.53x, 4 prosessia 2.24x, 6 ei
-        # enaa parane (levy rajoittaa). Tulos on bitilleen sama.
-        from concurrent.futures import ProcessPoolExecutor  # noqa: PLC0415
-        with ProcessPoolExecutor(max_workers=workers) as ex:
-            for i, (job, res) in enumerate(zip(jobs, ex.map(_view_one, jobs)), 1):
-                _collect(i, Path(job[0]).name, res)
+    if reuse is not None:
+        with np.load(Path(reuse)) as z:
+            pts = np.ascontiguousarray(z["pts"], dtype=np.float32)
+            rgb = np.ascontiguousarray(z["rgb8"], dtype=np.float32) / 255.0
+        click.echo("  pisteet edellisestä latauksesta")
     else:
-        for i, job in enumerate(jobs, 1):
+        if not inputs:
+            raise SystemExit("anna skannit tai --reuse")
+        per = max(1, int(max_points) // max(len(inputs), 1))
+        jobs = [(str(p), per) for p in inputs]
+        workers = _view_workers(len(jobs))
+        chunks, cols = [], []
+
+        def _collect(i: int, name: str, res) -> None:
+            click.echo(f"  [{i}/{len(jobs)}] {name}")
             try:
-                _collect(i, Path(job[0]).name, _view_one(job))
-            except Exception as e:  # noqa: BLE001
-                click.echo(f"  VAROITUS: {Path(job[0]).name} ohitettiin — {e}")
-    if not chunks:
-        raise SystemExit("pilvi on tyhja")
-    pts = np.vstack(chunks)
-    rgb = np.vstack(cols)
-    step = max(1, -(-len(pts) // int(max_points)))
-    pts, rgb = pts[::step], rgb[::step]
-    np.savez(Path(out), pts=np.ascontiguousarray(pts),
-             rgb=np.ascontiguousarray((rgb * 255.0).astype(np.uint8)))
+                sys.stdout.flush()
+            except Exception:
+                pass
+            p_, c_ = res
+            if p_ is not None:
+                chunks.append(p_)
+                cols.append(c_)
+
+        if workers > 1:
+            # Mitattu 4 tiedostolla: 2 prosessia 1.53x, 4 prosessia 2.24x, 6 ei
+            # enaa parane (levy rajoittaa). Tulos on bitilleen sama.
+            from concurrent.futures import ProcessPoolExecutor  # noqa: PLC0415
+            with ProcessPoolExecutor(max_workers=workers) as ex:
+                for i, (job, res) in enumerate(zip(jobs, ex.map(_view_one, jobs)), 1):
+                    _collect(i, Path(job[0]).name, res)
+        else:
+            for i, job in enumerate(jobs, 1):
+                try:
+                    _collect(i, Path(job[0]).name, _view_one(job))
+                except Exception as e:  # noqa: BLE001
+                    click.echo(f"  VAROITUS: {Path(job[0]).name} ohitettiin — {e}")
+        if not chunks:
+            raise SystemExit("pilvi on tyhja")
+        pts = np.vstack(chunks)
+        rgb = np.vstack(cols)
+        n = min(len(pts), len(rgb))
+        pts, rgb = pts[:n], rgb[:n]
+        step = max(1, -(-len(pts) // int(max_points)))
+        pts = np.ascontiguousarray(pts[::step])
+        rgb = np.ascontiguousarray(rgb[::step])
+
+    offset = pts.astype(np.float64).mean(axis=0)
+    pts_c = np.ascontiguousarray(pts - offset.astype(np.float32), dtype=np.float32)
+    rgba = np.empty((len(pts), 4), np.float32)
+    rgba[:, :3] = rgb
+    rgba[:, 3] = 1.0
+    arrays = dict(pts=pts, rgb8=np.clip(rgb * 255.0, 0, 255).astype(np.uint8),
+                  offset=offset, pts_c=pts_c, rgba=rgba)
+
+    if model_json is not None:
+        click.echo("  lasketaan residuaalia…")
+        model = _json.loads(Path(model_json).read_text(encoding="utf-8"))
+        expl = classify_explained(pts, model)
+        res = np.empty((len(pts), 4), np.float32)
+        res[:, 0], res[:, 1], res[:, 2], res[:, 3] = 0.95, 0.12, 0.12, 1.0
+        res[expl, :3] = rgb[expl] * 0.3
+        miss = ~expl
+        arrays.update(res=res,
+                      pts_miss=np.ascontiguousarray(pts_c[miss]),
+                      res_miss=np.ascontiguousarray(res[miss]),
+                      n_miss=np.int64(int(miss.sum())))
+
+    np.savez(Path(out), **arrays)
     click.echo(f"VALMIS pisteita={len(pts)}")
 
 

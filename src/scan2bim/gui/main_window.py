@@ -495,6 +495,10 @@ class MainWindow(QtWidgets.QMainWindow):
             self._worker.stop()
         except Exception:
             pass
+        try:
+            self._inspect_view._drop_npz()
+        except Exception:
+            pass
         super().closeEvent(ev)
 
     @guard

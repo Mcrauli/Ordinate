@@ -7,6 +7,7 @@ Näkymämoodit: Väri / Residuaali (punainen = malli ei kata) / Vain puuttuvat.
 from __future__ import annotations
 
 import codecs
+import json
 import os
 import sys
 import tempfile
@@ -110,36 +111,7 @@ class _FlyView(gl.GLViewWidget):
 
 # --- pisteiden luokittelu: selittääkö malli pisteen -------------------------
 
-def classify_explained(P: np.ndarray, model: dict, tol: float = 200.0) -> np.ndarray:
-    P = np.asarray(P, float)
-    expl = np.zeros(len(P), bool)
-    xy, z = P[:, :2], P[:, 2]
-    for w in model["walls"]:
-        (x0, y0), (x1, y1) = w["axis"][0], w["axis"][1]
-        d = np.array([x1 - x0, y1 - y0]); L = float(np.hypot(*d))
-        if L < 1:
-            continue
-        u = d / L; n = np.array([-u[1], u[0]])
-        rel = xy - np.array([x0, y0]); along = rel @ u; perp = rel @ n
-        z0 = w.get("z_min", 0.0); z1 = z0 + w["height"]; th = w.get("thickness", 100.0)
-        expl |= ((np.abs(perp) < th / 2 + tol) & (along >= -tol) & (along <= L + tol)
-                 & (z >= z0 - tol) & (z <= z1 + tol))
-    for c in model.get("columns", []):
-        cx, cy = c["location"]; z0 = c["base_z"]; z1 = z0 + c["height"]; pr = c["profile"]
-        expl |= ((np.abs(xy[:, 0] - cx) < pr["width"] / 2 + tol)
-                 & (np.abs(xy[:, 1] - cy) < pr["depth"] / 2 + tol)
-                 & (z >= z0 - tol) & (z <= z1 + tol))
-    for b in model.get("beams", []):
-        a, cc = np.array(b["axis"][0], float), np.array(b["axis"][1], float)
-        d = cc - a; L = float(np.linalg.norm(d[:2]))
-        if L < 1:
-            continue
-        u = d[:2] / L; nn = np.array([-u[1], u[0]])
-        rel = xy - a[:2]; along = rel @ u; perp = rel @ nn
-        pr = b["profile"]; zc = (a[2] + cc[2]) / 2
-        expl |= ((np.abs(perp) < pr["width"] / 2 + tol) & (along >= -tol) & (along <= L + tol)
-                 & (np.abs(z - zc) < pr["height"] / 2 + tol))
-    return expl
+from scan2bim.core.qa.residual import classify_explained  # noqa: E402,F401
 
 
 # --- mallin laatikko-mesh (verteksit + kolmiot) -----------------------------
@@ -222,13 +194,18 @@ def _opening_segments(model):
 
 class _CloudJob(QtCore.QObject):
     progress = QtCore.Signal(str)
-    done = QtCore.Signal(object, object)   # pts (Nx3 f32), rgb (Nx3 f32 0..1)
+    done = QtCore.Signal(object)   # dict: valmiiksi lasketut taulut + npz-polku
     failed = QtCore.Signal(str)
 
-    def __init__(self, paths, max_pts: int, parent=None) -> None:
+    def __init__(self, paths, max_pts: int, parent=None, model: dict | None = None,
+                 reuse: Path | None = None) -> None:
         super().__init__(parent)
-        self._paths = [str(p) for p in ([paths] if isinstance(paths, (str, Path)) else paths)]
+        self._paths = ([] if paths is None else
+                       [str(p) for p in ([paths] if isinstance(paths, (str, Path)) else paths)])
         self._max = int(max_pts)
+        self._model = model
+        self._reuse = reuse
+        self._model_file: Path | None = None
         self._proc: QtCore.QProcess | None = None
         self._npz: Path | None = None
         self._buf = ""
@@ -241,7 +218,17 @@ class _CloudJob(QtCore.QObject):
         os.close(fd)
         self._npz = Path(tmp)
         args = cli_command() + ["viewcloud", "--out", str(self._npz),
-                                "--max-points", str(self._max)] + self._paths
+                                "--max-points", str(self._max)]
+        if self._model is not None:
+            fd, mtmp = tempfile.mkstemp(prefix="s2b_model_", suffix=".json")
+            os.close(fd)
+            self._model_file = Path(mtmp)
+            self._model_file.write_text(json.dumps(self._model), encoding="utf-8")
+            args += ["--model", str(self._model_file)]
+        if self._reuse is not None:
+            args += ["--reuse", str(self._reuse)]
+        else:
+            args += self._paths
         proc = QtCore.QProcess(self)
         proc.setProcessChannelMode(QtCore.QProcess.ProcessChannelMode.MergedChannels)
         if sys.platform == "win32" and hasattr(proc, "setCreateProcessArgumentsModifier"):
@@ -287,39 +274,24 @@ class _CloudJob(QtCore.QObject):
             return
         try:
             with np.load(npz) as z:
-                pts = np.ascontiguousarray(z["pts"], dtype=np.float32)
-                rgb = np.ascontiguousarray(z["rgb"], dtype=np.float32) / 255.0
+                data = {k: z[k] for k in z.files}
         except Exception as e:  # noqa: BLE001
+            npz.unlink(missing_ok=True)
             self.failed.emit(str(e))
             return
-        finally:
-            if npz is not None:
-                npz.unlink(missing_ok=True)
-        self.done.emit(pts, rgb)
+        data["_npz"] = npz          # säilytetään: mallin muutos laskee residuaalin tästä
+        self.done.emit(data)
 
     def _cleanup(self, keep_file: bool = False) -> None:
         if self._proc is not None:
             self._proc.deleteLater()
             self._proc = None
+        if self._model_file is not None:
+            self._model_file.unlink(missing_ok=True)
+            self._model_file = None
         if not keep_file and self._npz is not None:
             self._npz.unlink(missing_ok=True)
             self._npz = None
-
-
-class _Classifier(QtCore.QObject):
-    done = QtCore.Signal(object)
-    failed = QtCore.Signal(str)
-
-    def __init__(self, Ps, model):
-        super().__init__()
-        self._Ps = Ps
-        self._model = model
-
-    def run(self) -> None:
-        try:
-            self.done.emit(classify_explained(self._Ps, self._model))
-        except Exception as e:  # noqa: BLE001
-            self.failed.emit(str(e))
 
 
 class InspectView(QtWidgets.QWidget):
@@ -332,11 +304,12 @@ class InspectView(QtWidgets.QWidget):
         self._model: dict | None = None
         self._cloud_path: str | None = None
         self._job = None
-        self._cthread = None
-        self._classifier = None
+        self._res_job = None
+        self._npz: Path | None = None
+        self._pts_miss = None; self._res_miss = None
         # ladattu pilvi (välimuistissa → mallin muutos ei vaadi uudelleenlatausta)
         self._Ps = None; self._rgb = None; self._offset = None; self._pts = None
-        self._rgba = None; self._res = None; self._expl = None
+        self._rgba = None; self._res = None
         self._scatter = None; self._grid = None
         self._model_items: list = []
         # Pistekoko PIKSELEINÄ (pxMode=True): renderöityy luotettavasti joka
@@ -389,13 +362,17 @@ class InspectView(QtWidgets.QWidget):
         cloud_path = (list(cloud_path) if isinstance(cloud_path, (list, tuple))
                       else cloud_path)
         if cloud_path == self._cloud_path and self._Ps is not None:
-            self._apply_model()          # sama pilvi ladattu → päivitä vain malli
+            # Sama pilvi, eri malli: vanha residuaali on väärä (poistettu seinä
+            # jättäisi pisteensä "selitetyiksi"), joten se lasketaan uudelleen.
+            self._res = None; self._pts_miss = None; self._res_miss = None
+            self._apply_model()
             return
         self._cloud_path = cloud_path
         self._stop_job(cancel=True)
-        self._stop_classifier()
+        self._stop_res_job(cancel=True)
+        self._drop_npz()
         self._Ps = None; self._pts = None
-        self._res = None; self._expl = None
+        self._res = None; self._pts_miss = None; self._res_miss = None
         self._view.clear()
         self._scatter = None; self._grid = None; self._model_items = []
         self._mode.setEnabled(False)
@@ -416,7 +393,7 @@ class InspectView(QtWidgets.QWidget):
         self._cancel_btn.setVisible(True)
         n = len(self._cloud_path) if isinstance(self._cloud_path, list) else 1
         self._info.setText(f"Ladataan pistepilveä ({n} skannia)…")
-        self._job = _CloudJob(self._cloud_path, _MAX_VIEW_PTS, self)
+        self._job = _CloudJob(self._cloud_path, _MAX_VIEW_PTS, self, model=self._model)
         self._job.progress.connect(self._on_progress)
         self._job.done.connect(self._on_loaded)
         self._job.failed.connect(self._on_failed)
@@ -448,18 +425,26 @@ class InspectView(QtWidgets.QWidget):
         if not line.startswith("VALMIS"):
             self._info.setText(f"Ladataan pistepilveä… {line.strip()}")
 
-    def _stop_classifier(self) -> None:
-        th, cl = self._cthread, self._classifier
-        self._cthread = None; self._classifier = None
-        if th is not None:
-            try:
-                cl.done.disconnect()
-                cl.failed.disconnect()
-            except (RuntimeError, TypeError):
-                pass
-            th.finished.connect(th.deleteLater)
-            th.finished.connect(cl.deleteLater)
-            th.quit()
+    def _stop_res_job(self, cancel: bool = False) -> None:
+        job, self._res_job = self._res_job, None
+        if job is None:
+            return
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            for sig in (job.done, job.failed):
+                try:
+                    sig.disconnect()
+                except (RuntimeError, TypeError):
+                    pass
+        if cancel:
+            job.cancel()
+        job.deleteLater()
+
+    def _drop_npz(self) -> None:
+        if self._npz is not None:
+            self._npz.unlink(missing_ok=True)
+            self._npz = None
 
     @guard
     def _on_failed(self, msg: str) -> None:
@@ -468,14 +453,17 @@ class InspectView(QtWidgets.QWidget):
         self._load_btn.setEnabled(True)
 
     @guard
-    def _on_loaded(self, Ps, rgb) -> None:
+    def _on_loaded(self, data) -> None:
         self._stop_job()
         self._load_btn.setEnabled(True)
-        offset = Ps.mean(axis=0)
-        self._Ps = Ps; self._offset = offset
-        self._rgb = rgb
-        self._rgba = np.column_stack([rgb, np.ones(len(rgb), np.float32)])
-        self._pts = np.ascontiguousarray(Ps - offset, dtype=np.float32)
+        # EI numpy-työtä tässä prosessissa: taulut tulevat valmiina aliprosessista.
+        self._drop_npz()
+        self._npz = data.get("_npz")
+        self._Ps = data["pts"]
+        self._offset = data["offset"]
+        self._pts = data["pts_c"]
+        self._rgba = data["rgba"]
+        self._take_residual(data)
         # perspektiivikoko (maailmayksikkö mm): lähellä pisteet suurenevat →
         # pinnat täyttyvät valokuvamaisiksi kun navigoi lähelle
         # pxMode=True (PIKSELIkoko): renderöityy luotettavasti joka mittakaavassa
@@ -534,52 +522,40 @@ class InspectView(QtWidgets.QWidget):
                                      color=(1.0, 0.1, 0.1, 1.0), width=3.0, mode="lines")
             line.setGLOptions("opaque")
             self._view.addItem(line); self._model_items.append(line)
-        # Residuaaliluokittelu on 219 seinaa x 1.5 M pistetta — se EI kuulu
-        # UI-saikeelle. Nakyma piirtyy heti ja varitys paivittyy kun laskenta
-        # valmistuu.
-        self._expl = None; self._res = None
-        self._refresh_scatter()
+        # Residuaali lasketaan aliprosessissa. Ensimmäisellä latauksella se
+        # tuli jo pilven mukana; mallin muuttuessa (seinä poistettu) se lasketaan
+        # uudelleen samoista pisteistä lukematta skanneja.
+        if self._res is not None or self._npz is None or self._job is not None:
+            self._refresh_scatter()
+            return
         self._info.setText(f"{len(self._Ps)} pistettä · lasketaan residuaalia…")
-        self._stop_classifier()
-        self._cthread = QtCore.QThread(self)
-        self._classifier = _Classifier(self._Ps, self._model)
-        self._classifier.moveToThread(self._cthread)
-        self._cthread.started.connect(self._classifier.run)
-        self._classifier.done.connect(self._on_classified)
-        self._classifier.failed.connect(self._on_class_failed)
-        self._cthread.start()
+        self._stop_res_job(cancel=True)
+        self._res_job = _CloudJob(None, _MAX_VIEW_PTS, self, model=self._model,
+                                  reuse=self._npz)
+        self._res_job.done.connect(self._on_residual)
+        self._res_job.failed.connect(
+            lambda m: self._info.setText(f"Residuaalia ei voitu laskea: {m}"))
+        self._res_job.start()
 
     @guard
-    def _on_class_failed(self, msg: str) -> None:
-        self._stop_classifier()
-        self._info.setText(f"Residuaalia ei voitu laskea: {msg}")
-
-    @guard
-    def _on_classified(self, expl) -> None:
-        self._stop_classifier()
-        if expl is None or self._Ps is None or len(expl) != len(self._Ps):
-            return
-        rgb = self._rgb
-        if rgb is None or len(rgb) != len(expl):
-            # Pituusero olisi rajojen yli menevä indeksointi. Nimetään se
-            # virheeksi sen sijaan että se kaatuisi C-tasolla.
-            self._info.setText("Residuaalia ei voitu värittää: pilven värit ja "
-                               f"pisteet eri mittaiset ({0 if rgb is None else len(rgb)} "
-                               f"vs {len(expl)}).")
-            return
-        self._expl = expl
-        res = np.empty((len(expl), 4), np.float32)
-        res[:, 0] = 0.95; res[:, 1] = 0.12; res[:, 2] = 0.12; res[:, 3] = 1.0
-        res[expl, :3] = rgb[expl] * 0.3     # selitetty himmeäksi
-        self._res = res
-        miss = int((~expl).sum())
-        self._info.setText(f"{len(expl)} pistettä · kattamatta {miss} "
-                           "· syaani=seinä keltainen=pilari vihreä=palkki punainen=aukko")
-        # Väri-moodissa residuaali ei näy, joten koko pilven lataaminen
-        # näytönohjaimelle uudelleen on turhaa työtä juuri siinä kohdassa
-        # jossa sovellus on kaatunut.
+    def _on_residual(self, data) -> None:
+        self._stop_res_job()
+        new_npz = data.get("_npz")
+        if new_npz is not None and new_npz != self._npz:
+            new_npz.unlink(missing_ok=True)
+        self._take_residual(data)
         if self._mode.currentIndex() != 0:
             self._refresh_scatter()
+
+    def _take_residual(self, data) -> None:
+        if "res" not in data:
+            self._res = None; self._pts_miss = None; self._res_miss = None
+            return
+        self._res = data["res"]
+        self._pts_miss = data["pts_miss"]
+        self._res_miss = data["res_miss"]
+        self._info.setText(f"{len(self._pts)} pistettä · kattamatta {int(data['n_miss'])} "
+                           "· syaani=seinä keltainen=pilari vihreä=palkki punainen=aukko")
 
     @guard
     def _refresh_scatter(self) -> None:
@@ -594,5 +570,5 @@ class InspectView(QtWidgets.QWidget):
         elif mode == 1:                                        # Residuaali (kaikki)
             self._scatter.setData(pos=self._pts, color=self._res, size=s, pxMode=True)
         else:                                                  # Vain puuttuvat
-            m = ~self._expl if self._expl is not None else np.ones(len(self._pts), bool)
-            self._scatter.setData(pos=self._pts[m], color=self._res[m], size=s * 1.6, pxMode=True)
+            self._scatter.setData(pos=self._pts_miss, color=self._res_miss,
+                                  size=s * 1.6, pxMode=True)
