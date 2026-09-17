@@ -100,7 +100,7 @@ def detect_columns(cloud, walls: list[Wall], floor_z: float, ceiling_z: float) -
     band = pts[zmask]
     if len(band) < _MIN_CLUSTER_PTS:
         return []
-    far = _dist_to_walls(band[:, :2], walls) > _WALL_MARGIN
+    far = _far_from_walls(band[:, :2], walls, _WALL_MARGIN)
     free = band[far]
     if len(free) < _MIN_CLUSTER_PTS:
         return []
@@ -321,6 +321,46 @@ def _profile(xy: np.ndarray, cx: float, cy: float, wx: float, wy: float):
         diam = 2.0 * r_mean
         return "circle", diam, diam
     return "rect", wx, wy
+
+
+def _far_from_walls(xy: np.ndarray, walls: list[Wall], margin: float) -> np.ndarray:
+    """Sama tulos kuin `_dist_to_walls(xy, walls) > margin`, murto-osassa ajasta.
+
+    Vanha muoto laski JOKAISEN pisteen etäisyyden JOKAISEEN seinään: kellarin
+    ajossa 259 seinää × pilarikaista = 149 s 167:stä koko pilaridetektiossa.
+    Päätös tarvitsee vain tiedon onko jokin seinä lähempänä kuin `margin`, ja
+    siihen riittävät seinän lähellä olevat pisteet. `XYIndex` palauttaa niistä
+    YLIJOUKON; loput ovat geometrisesti yli `margin + paksuus/2 + 1 mm` päässä
+    jokaisesta janasta, joten niiden tulos on sama. Etäisyys lasketaan samalla
+    lausekkeella kuin ennen.
+    """
+    far = np.ones(len(xy), dtype=bool)
+    if not walls or not len(xy):
+        return far
+    from scan2bim.core.geometry.xy_index import XYIndex  # noqa: PLC0415
+    index = XYIndex(xy)
+    for w in walls:
+        if len(w.axis) < 2:
+            continue
+        p0 = np.array(w.axis[0], dtype=float)
+        p1 = np.array(w.axis[1], dtype=float)
+        seg = p1 - p0
+        L2 = float(seg @ seg)
+        if L2 < 1.0:
+            continue
+        L = L2 ** 0.5
+        u = seg / L
+        n = np.array([-u[1], u[0]])
+        reach = margin + w.thickness / 2.0 + 1.0
+        idx = index.near_segment(p0, u, n, reach, -reach, L + reach)
+        if not len(idx):
+            continue
+        q = xy[idx]
+        t = np.clip(((q - p0) @ seg) / L2, 0.0, 1.0)
+        proj = p0[None, :] + t[:, None] * seg[None, :]
+        d = np.linalg.norm(q - proj, axis=1) - w.thickness / 2.0
+        far[idx[d <= margin]] = False
+    return far
 
 
 def _dist_to_walls(xy: np.ndarray, walls: list[Wall]) -> np.ndarray:
