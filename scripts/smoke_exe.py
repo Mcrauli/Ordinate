@@ -123,15 +123,24 @@ def main() -> int:
         # Click-komennoksi ja kaatuisi — kehityksessä tätä ei näe, koska siellä
         # lapsi on python.exe. Kaksi tiedostoa pakottaa poolin käyttöön.
         shutil.copy(tmp / "scan.ply", tmp / "scan2.ply")
+        # Residuaali lasketaan samassa aliprosessissa (--model): ikkunaprosessi
+        # kaatui kolmesti rakentaessaan väritaulua itse.
         r = subprocess.run([str(exe), "viewcloud", "--out", "view.npz",
-                            "--max-points", "200000", "scan.ply", "scan2.ply"],
+                            "--max-points", "200000", "--model", str(floors[0]),
+                            "scan.ply", "scan2.ply"],
                            cwd=tmp, capture_output=True, text=True,
                            encoding="utf-8", errors="replace")
         if r.returncode != 0 or not (tmp / "view.npz").exists():
             print("KAATUI: viewcloud kahdella tiedostolla (prosessipooli exessä)")
             print(r.stdout[-3000:], r.stderr[-3000:])
             return 1
-        print("  viewcloud ok — 3D-tarkastuksen pilvi kahdesta tiedostosta")
+        import numpy as _np
+        with _np.load(tmp / "view.npz") as z:
+            need = {"pts", "pts_c", "rgba", "res", "pts_miss", "res_miss", "n_miss"}
+            if not need <= set(z.files):
+                print(f"PUUTTUU view.npz:stä: {sorted(need - set(z.files))}")
+                return 1
+        print("  viewcloud ok — pilvi kahdesta tiedostosta + residuaali valmiina")
 
         # Ja loytaako GUI sen komennon TASTA paketista: `cli_command()`:n
         # frozen-haara ei aja kehityksessa koskaan.
