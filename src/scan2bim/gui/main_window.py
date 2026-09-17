@@ -5,6 +5,7 @@ from pathlib import Path
 
 from PySide6 import QtCore, QtGui, QtWidgets
 from scan2bim.gui.safe import guard
+from scan2bim.gui.run_timing import clock, fmt_duration, slowest_steps
 
 from scan2bim._version import __version__
 from scan2bim.core.pipeline import PipelineConfig
@@ -108,6 +109,12 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self._result_models: list = []
         self._learner = CorrectionLearner()
+        self._run_marks: list[tuple[float, str]] = []
+        self._run_last = ""
+        self._run_clock = QtCore.QElapsedTimer()
+        self._run_tick = QtCore.QTimer(self)
+        self._run_tick.setInterval(1000)
+        self._run_tick.timeout.connect(self._tick_status)
         self._result_multi = False
         self._last_cfg: PipelineConfig | None = None
         self._selected: list = []
@@ -265,13 +272,34 @@ class MainWindow(QtWidgets.QMainWindow):
         self._log_panel.info(f"Aloitetaan: {label}")
         self._file_panel.set_busy(True)
         self._progress_bar.setVisible(True)
-        self.statusBar().showMessage("Käsitellään…")
+        self._run_marks = []
+        self._run_last = "Käsitellään…"
+        self._run_clock.start()
+        self._run_tick.start()
+        self._tick_status()
         self._worker.start_job(inputs, out, cfg)
+
+    def _elapsed(self) -> float:
+        return self._run_clock.elapsed() / 1000.0 if self._run_clock.isValid() else 0.0
+
+    def _tick_status(self) -> None:
+        self.statusBar().showMessage(f"{clock(self._elapsed())} · {self._run_last}")
+
+    def _stop_clock(self) -> float:
+        total = self._elapsed()
+        self._run_tick.stop()
+        self._run_clock.invalidate()
+        return total
 
     @guard
     def _on_progress(self, msg: str) -> None:
         self._log_panel.info(msg)
-        self.statusBar().showMessage(msg)
+        if self._run_clock.isValid():
+            self._run_marks.append((self._elapsed(), msg))
+            self._run_last = msg.strip()
+            self._tick_status()
+        else:
+            self.statusBar().showMessage(msg)
         st = stage_for_message(msg)
         if st is not None:
             self._stage.set_active(st)
@@ -281,7 +309,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self._file_panel.set_busy(False)
         self._progress_bar.setVisible(False)
         self._stage.set_done()
-        self._log_panel.success("✓ Valmis!")
+        total = self._stop_clock()
+        self._log_panel.success(f"✓ Valmis — kesto {fmt_duration(total)}")
+        slow = slowest_steps(self._run_marks, total)
+        if slow:
+            self._log_panel.info("Pisimmät vaiheet: " + " · ".join(
+                f"{lbl} {fmt_duration(d)}" for lbl, d in slow))
         models = result if isinstance(result, list) else [result]
         if isinstance(result, list):
             lines = [f"{len(result)} kerrosta käsitelty:"]
@@ -297,7 +330,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._learner = self._load_corrections()
         self._review.set_models(models, self._learner)
         self._show_results(models)
-        self.statusBar().showMessage("Valmis")
+        self.statusBar().showMessage(f"Valmis — kesto {fmt_duration(total)}")
 
     def _corrections_path(self) -> Path | None:
         return None if self._last_out is None else self._last_out / "corrections.json"
@@ -486,6 +519,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._file_panel.set_busy(False)
         self._progress_bar.setVisible(False)
         self._stage.setVisible(False)
-        self._log_panel.error(f"Virhe: {error}")
-        self.statusBar().showMessage("Virhe")
+        total = self._stop_clock()
+        self._log_panel.error(f"Virhe ({fmt_duration(total)} ajon jälkeen): {error}")
+        self.statusBar().showMessage(f"Virhe {fmt_duration(total)} ajon jälkeen")
         QtWidgets.QMessageBox.critical(self, "Virhe", error)
