@@ -4,6 +4,16 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 [`Mcrauli/scan2bim-web`](https://github.com/Mcrauli/scan2bim-web/releases):iin;
 sovellus päivittää itsensä sieltä.
 
+## v0.9.32 (17.9.2026) — 3D-näkymä toimii myös toisen ajon jälkeen
+
+- **3D-tarkastus näytti tyhjää, kun edellä oli tarkasteltu toista kohdetta.**
+  Pilvi latautui oikein, mutta uuden pilven latauksessa asetettiin vain kameran
+  etäisyys. Lentotila siirtää katseen keskipistettä, joten kamera katsoi yhä
+  sinne missä edellinen rakennus oli: toistettuna 36 m sivuun ja 80° ylöspäin.
+  Nyt keskipiste ja katsekulma nollataan jokaiselle uudelle pilvelle.
+- Kaatuneiden istuntojen 3D-välitiedostot (18–108 MB kpl) siivotaan
+  käynnistyksessä.
+
 ## v0.9.31 (17.9.2026) — 3D-tarkastus ei enää kaadu, ajon kesto näkyy
 
 - **3D-tarkastus kaatui yhä pilveä ladatessa — 0.9.30:n korjaus oli väärä.**
