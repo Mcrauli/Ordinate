@@ -4,6 +4,24 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 [`Mcrauli/scan2bim-web`](https://github.com/Mcrauli/scan2bim-web/releases):iin;
 sovellus päivittää itsensä sieltä.
 
+## v0.9.33 (17.9.2026) — kellari 39 → 25 min, malli bitilleen sama
+
+- **Iso kohde valmistuu kolmanneksen nopeammin, eikä tulos muutu.** Mitattu
+  koulun kellarilla (37 skannia koneen NVMe:ltä): **2334 s → 1502 s**, ja
+  seinät, laatat, pilarit, palkit, aukot ja tilat ovat JSONina täsmälleen
+  samat. Matriisi: kaikki 12 aineistoa +0.000, Rohbaun GT-luvut ennallaan.
+  - **Skannit puretaan kolme kertaa, ei kuutta.** Paksuuskaista ja 5 mm
+    -pilvi lukivat samat tiedostot peräkkäin kahdella passilla kumpikin; nyt
+    ne syntyvät samasta purusta. Voxelivalinta ja työpilvi syntyvät nekin
+    samasta purusta, joten isossa kohteessa työpilvi on valmis heti.
+  - **Pilaridetektio 110.7 s → 1.1 s.** Etäisyys laskettiin jokaisesta
+    pisteestä jokaiseen seinään, vaikka päätös tarvitsee vain lähimmät.
+  - **Aukkojen okkluusiotesti 11 s → noin sekunti per ehdokas.** Säde voi
+    osua aukkoon vain aseman ja aukon välisestä kolmiosta, ja ensimmäinen
+    läpi näkevä asema ratkaisee.
+  Jokainen muutos on todistettu samaksi erikseen (SHA1 tai sama päätös joka
+  pisteelle) ennen koko ajoa.
+
 ## v0.9.32 (17.9.2026) — 3D-näkymä toimii myös toisen ajon jälkeen
 
 - **3D-tarkastus näytti tyhjää, kun edellä oli tarkasteltu toista kohdetta.**
