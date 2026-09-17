@@ -210,6 +210,57 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
 
 ## Kovalla työllä opitut asiat — ÄLÄ keksi uudelleen
 
+- **KELLARI 66 MIN → 25 MIN ILMAN YHDENKÄÄN TULOKSEN MUUTOSTA (17.9.2026).**
+  Mitattu samalla 37 skannin kellarilla; malli (seinät, laatat, pilarit,
+  palkit, aukot, tilat) on JSONina bitilleen sama joka vaiheen jälkeen.
+  | vaihe | mitä | todiste |
+  |---|---|---|
+  | 66 → 56 min | tiedostot rinnakkain prosessipoolissa | SHA1 sama, 3 lukutapaa |
+  | 56 → 39 min | skannit USB-tikulta koneen NVMe:lle | sama malli; tikku 82–95 MB/s, NVMe 1884–2019 MB/s |
+  | 39 → 25 min | alla olevat neljä | malli JSONina sama |
+  **Luku purki jokaisen e57:n KUUSI kertaa, ei neljä.** `read_e57_xyz_band`
+  tekee kaksi passia (laskenta + täyttö), ja sitä käyttävät sekä keskikaista
+  että "5 mm" -pilvi. `read_e57_xyz_bands` tekee molemmat kaistat samasta
+  purkuparista: samuus perustuu siihen, että raakalohkot tulevat samassa
+  järjestyksessä, kaistaehto on sama (`>=`, `<=`), ja jokaisella kaistalla on
+  oma `default_rng(0)`, joka kuluttaa tasan kaistaan osuvien pisteiden määrän —
+  lohkojako ei vaikuta valintaan. Samoin voxeliotos (20 mm) ja työpilvi (25 mm)
+  syötetään samasta lohkovirrasta kahteen `_VoxelAcc`-kertymään; kun
+  voxelivalinta osuu kattoon (iso kohde aina), työpilvi on valmis.
+  **ERO PERUTTUUN OIKOTIEHEN:** tämä voxeloi TIEDOSTO KERRALLAAN kuten
+  varsinainen luku. Peruttu versio voxeloi yhdistetyn otoksen globaalisti ja
+  puolitti pilven.
+  **Pilarit 110.7 s → 1.1 s:** `_dist_to_walls` laski jokaisen pisteen
+  etäisyyden jokaiseen seinään, vaikka päätös tarvitsee vain "onko jokin seinä
+  lähempänä kuin marginaali". `_far_from_walls` hakee XYIndexillä vain seinän
+  lähellä olevat pisteet; sama päätös kaikille 6.8 M pisteelle.
+  **Aukkojen okkluusiotesti 11 s per ehdokas:** säde S→P voi osua aukkoon vain
+  jos P on aseman ja aukon välisen KOLMION sisällä — tarkka rajaus, ei arvio.
+  Lisäksi varhainen lopetus: varjo vaatii että kaikki asemat ovat tukossa,
+  joten ensimmäinen läpi näkevä asema ratkaisee. Osumaluvut samat 20
+  satunnaisella ehdokkaalla × 37 asemalla (584 nollasta poikkeavaa).
+  **Menetelmä joka toimi joka kerta:** vanha ja uusi toteutus samalle datalle,
+  SHA1 tai `array_equal`, gitin HEAD-versio moduulina vertailukohtana
+  refaktoroinnille, ja mutaatio joka varmistaa että yksikkötesti puree.
+  **Seuraava iso erä on PointNet (~8.5 min).** Sitä ei nopeuteta ilman
+  kevyempää mallia (säikeet ja INT8 kumottu).
+
+- **GUI-KAATUMISEN KORJAUS OSUI ENSIN VÄÄRÄÄN KOHTAAN (17.9.2026).** Loki
+  näytti muistin suojausvirheen `np.tile`-kutsussa 3D-tarkastuksen
+  väritaulussa. Korvasin sen, ja seuraava kaatuminen tuli rivillä
+  `res[:, 0] = 0.95` — kirjoituksessa taulukkoon joka varattiin EDELLISELLÄ
+  rivillä. Sellainen kaatuu vain jos prosessin muisti on jo rikki, joten
+  funktion uudelleenkirjoitus ei voinut auttaa. **Kun kaatumiskohta siirtyy
+  seuraavaan isoon kirjoitukseen, vika on muistin korruptio, ei rivi.**
+  Kaikissa kolmessa 1.5 M pisteen pilvi oli juuri ladattu näytönohjaimelle
+  samalla kun QThread laski numpyllä. Korjaus oli rakenteellinen: ikkuna-
+  prosessi ei tee pilvelle laskentaa eikä aja taustasäiettä — `viewcloud`-
+  aliprosessi laskee pisteet, värit ja residuaalin valmiiksi.
+  Samassa yhteydessä: **kaatumisista ei jäänyt jälkeä**, koska `sys.stderr`
+  ohjattiin Python-tasolla mutta PySide6:n `abort()` kirjoittaa C-tason
+  stderriin, jota ikkunasovelluksella ei ole. Nyt fd 1/2 → loki `os.dup2`:lla
+  ja `faulthandler` päällä.
+
 - **KUMOTTU: voxeliotoksen uudelleenkäyttö työpilvenä — se puolittaa monen
   skannin pilven (16.9.2026).** Kellarin ajossa voxelikoon valinta lukee
   KAIKKI tiedostot 20 mm:llä (602 s) ja heti perään sama data luetaan
@@ -371,6 +422,11 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   `AGENTS.md`:tä ja `data/`:n koettimia joita se ajo ei käytä — tai pysäytä
   ajo.** Sama laji kuin `.pyc`-ansa ja `pip install onnx`: mittaus ei ole
   pätevä jos ympäristö muuttui mittausten välissä.
+  **ÄLÄ AJA KAHTA PUTKIAJOA RINNAKKAIN (17.9.2026).** Matriisin retail_l ja
+  keilatun myymälän jäljitysajo samaan aikaan: kumpikin vie yksinään yli
+  10 GB (PointNet-suodatin), ja käyttöjärjestelmä tappoi MOLEMMAT muistin
+  loputtua 48 GB:n koneella. Tunti matriisia meni hukkaan. Kevyet koettimet
+  valmiiden mallien päälle ovat turvallisia, putkiajot eivät.
 
 - **KEHITYSTYÖKALUN ASENNUS VOI RIKKOA MITTAUKSEN — AJA TESTIT HETI PERÄÄN.**
   `pip install onnx` (kertaluontoiseen kvantisointikokeeseen) veti mukanaan
