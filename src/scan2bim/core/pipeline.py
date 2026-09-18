@@ -2176,8 +2176,14 @@ class Pipeline:
                                     boundaries=floor_contours)
 
         self._progress(f"  Aukot ({len(model.spaces)} tilaa)…")
-        from scan2bim.core.segmentation.opening_detector import detect_openings, reclassify_interior_windows
-        model.openings = detect_openings(model.walls, cloud, floor_z, scanner_origins=self._scanner_origins)
+        from scan2bim.core.segmentation.opening_detector import (
+            detect_openings, openings_in_wall_gaps, reclassify_interior_windows)
+        model.openings = detect_openings(model.walls, cloud, floor_z,
+                                         scanner_origins=self._scanner_origins,
+                                         refine_cloud=refine_cloud)
+        model.walls, model.openings = openings_in_wall_gaps(
+            model.walls, cloud, floor_z, model.openings,
+            scanner_origins=self._scanner_origins, refine_cloud=refine_cloud)
         # Ikkuna vaatii ulkoseinän: sisäseinän (huone molemmin puolin) leveä aukko → ovi.
         model.openings = reclassify_interior_windows(model.walls, model.spaces, model.openings)
 

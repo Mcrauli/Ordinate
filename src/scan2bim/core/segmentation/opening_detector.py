@@ -45,6 +45,7 @@ _MAX_W = 3000.0          # mm — levein aukko: mitattu Rohbau3D:n GT:tä vasten
                           # (_MAX_FRACTION) hoitaa varsinaisen rajauksen
 _MAX_FRACTION = 0.50      # aukko ei voi olla yli 50 % seinänpituudesta
 _MIN_H = 600.0            # mm — matalin aukko
+_SILL_FOOT_GAP = 100.0    # mm — lattian rajan tyhjä kaista ei katkaise sokkelia
 _DOOR_SILL_MAX = 250.0    # mm — ovi alkaa lattiatasosta; korkeampi sokkeli = ikkuna
                           # (matalasokkeliset ranskalaiset ikkunat ~300-500 eivät ole ovia)
 _DOOR_MAX_W = 1800.0      # mm — ovi max leveys (pari-/liukuovi ~1600-1800; leveämpi
@@ -53,24 +54,143 @@ _DOOR_MAX_W = 1800.0      # mm — ovi max leveys (pari-/liukuovi ~1600-1800; le
 
 def detect_openings(
     walls: list[Wall], cloud, floor_z: float,
-    scanner_origins: list | None = None,
+    scanner_origins: list | None = None, refine_cloud=None,
 ) -> list[Opening]:
+    """`refine_cloud`: raakapilvi reunojen tarkennukseen.
+
+    Ruudukko rakennetaan työpilvestä (25 mm voxel), mutta 5 mm:n reunan-
+    tarkennus kvantisoidulla datalla on mahdoton. Mitattu keilatulla
+    myymälällä: ruudukko antoi ikkunan ylälaidaksi 2991 mm (totuus 3000) ja
+    tarkennus työpilvestä siirsi sen 3127:ään; raakapilvestä sama tarkennus
+    antaa 2992.
+    """
     pts = np.asarray(cloud.points)
     index = None
+    from scan2bim.core.geometry.xy_index import index_for  # noqa: PLC0415
     if len(pts) >= 300_000 and len(walls) >= 3:
-        from scan2bim.core.geometry.xy_index import index_for  # noqa: PLC0415
         index = index_for(cloud, pts)
+    ref_pts = ref_index = None
+    if refine_cloud is not None and len(refine_cloud.points):
+        ref_pts = np.asarray(refine_cloud.points)
+        if len(ref_pts) >= 300_000:
+            ref_index = index_for(refine_cloud, ref_pts)
     origins = [np.asarray(o, dtype=float) for o in (scanner_origins or [])]
     openings: list[Opening] = []
     counter = 0
     for wall in walls:
-        new = _wall_openings(wall, pts, floor_z, counter, walls, index)
+        new = _wall_openings(wall, pts, floor_z, counter, walls, index, ref_pts, ref_index)
         if origins:
             new = [op for op in new
                    if not _is_occlusion_shadow(op, wall, pts, origins, floor_z, index)]
         openings.extend(new)
         counter += len(new)
     return openings
+
+
+_GAP_ANGLE_DEG = 5.0
+_GAP_PERP = 300.0
+_GAP_OVERLAP = 300.0
+_GAP_SLACK = 150.0
+_GAP_LINTEL = 200.0
+_GAP_DOOR_MIN_W = 700.0
+
+
+def _extended(wall, at_end: bool, amount: float):
+    p0 = np.array(wall.axis[0], float)
+    p1 = np.array(wall.axis[1], float)
+    u = (p1 - p0) / float(np.linalg.norm(p1 - p0))
+    if at_end:
+        p1 = p1 + u * amount
+    else:
+        p0 = p0 - u * amount
+    return wall.model_copy(update={"axis": [[round(float(p0[0]), 1), round(float(p0[1]), 1)],
+                                            [round(float(p1[0]), 1), round(float(p1[1]), 1)]]})
+
+
+def _wall_gaps(walls):
+    out = []
+    for a in walls:
+        if len(a.axis) < 2:
+            continue
+        a0 = np.array(a.axis[0], float)
+        a1 = np.array(a.axis[1], float)
+        la = float(np.linalg.norm(a1 - a0))
+        if la < 1.0:
+            continue
+        u = (a1 - a0) / la
+        n = np.array([-u[1], u[0]])
+        for b in walls:
+            if b.id == a.id or len(b.axis) < 2:
+                continue
+            b0 = np.array(b.axis[0], float)
+            b1 = np.array(b.axis[1], float)
+            lb = float(np.linalg.norm(b1 - b0))
+            if lb < 1.0 or lb > la:
+                continue
+            if abs(float(u @ ((b1 - b0) / lb))) < np.cos(np.radians(_GAP_ANGLE_DEG)):
+                continue
+            tb0, tb1 = float((b0 - a0) @ u), float((b1 - a0) @ u)
+            for at_end in (True, False):
+                if at_end:
+                    near, g = (b0, tb0) if tb0 < tb1 else (b1, tb1)
+                    g -= la
+                else:
+                    near, g = (b0, tb0) if tb0 > tb1 else (b1, tb1)
+                    g = -g
+                if 0.0 <= g <= _MAX_W and abs(float((near - a0) @ n)) <= _GAP_PERP:
+                    out.append((a.id, at_end, g))
+    return out
+
+
+def openings_in_wall_gaps(walls, cloud, floor_z, existing, scanner_origins=None, refine_cloud=None):
+    pts = np.asarray(cloud.points)
+    index = None
+    from scan2bim.core.geometry.xy_index import index_for  # noqa: PLC0415
+    if len(pts) >= 300_000 and len(walls) >= 3:
+        index = index_for(cloud, pts)
+    ref_pts = ref_index = None
+    if refine_cloud is not None and len(refine_cloud.points):
+        ref_pts = np.asarray(refine_cloud.points)
+        if len(ref_pts) >= 300_000:
+            ref_index = index_for(refine_cloud, ref_pts)
+    origins = [np.asarray(o, dtype=float) for o in (scanner_origins or [])]
+
+    walls = list(walls)
+    pos = {w.id: i for i, w in enumerate(walls)}
+    ops = list(existing)
+    done = set()
+    for wid, at_end, g in _wall_gaps(walls):
+        if (wid, at_end) in done:
+            continue
+        cur = walls[pos[wid]]
+        la = float(np.linalg.norm(np.array(cur.axis[1], float) - np.array(cur.axis[0], float)))
+        probe = _extended(cur, at_end, g + _GAP_OVERLAP)
+        found = _wall_openings(probe, pts, floor_z, len(ops), walls, index, ref_pts, ref_index)
+        start = 0.0 if at_end else g + _GAP_OVERLAP
+        top = cur.z_min + cur.height - _GAP_LINTEL
+        hits = []
+        for o in found:
+            a0, a1 = o.position_along, o.position_along + o.width
+            if at_end:
+                inside = a1 >= la - 100.0 and a1 <= la + g + _GAP_SLACK
+            else:
+                inside = a0 <= start + 100.0 and a0 >= _GAP_OVERLAP - _GAP_SLACK
+            if (inside and o.opening_type == "door" and o.width >= _GAP_DOOR_MIN_W
+                    and floor_z + o.sill_height + o.opening_height <= top
+                    and not (origins and _is_occlusion_shadow(o, probe, pts, origins, floor_z, index))):
+                hits.append(o)
+        if not hits:
+            continue
+        done.add((wid, at_end))
+        walls[pos[wid]] = _extended(cur, at_end, g)
+        if not at_end:
+            ops = [o.model_copy(update={"position_along": round(o.position_along + g, 1)})
+                   if o.wall_id == wid else o for o in ops]
+        for o in hits:
+            ops.append(o.model_copy(update={
+                "id": f"opening_{len(ops):03d}",
+                "position_along": round(o.position_along - (start - g if not at_end else 0.0), 1)}))
+    return walls, ops
 
 
 def _wall_end_anchors(wall: Wall, walls: list[Wall]) -> tuple[bool, bool]:
@@ -197,7 +317,7 @@ def _occlusion_counts(
 
 def _wall_openings(
     wall: Wall, pts: np.ndarray, floor_z: float, start_idx: int,
-    all_walls: list[Wall], index=None,
+    all_walls: list[Wall], index=None, ref_pts: np.ndarray | None = None, ref_index=None,
 ) -> list[Opening]:
     if len(wall.axis) < 2:
         return []
@@ -253,6 +373,23 @@ def _wall_openings(
     proj = proj_along[mask]
     zvals = pts[mask, 2]
 
+    # Tarkennuksen pisteet raakapilvestä, SAMALTA pinnalta jonka ruudukko valitsi.
+    ref_proj, ref_z = proj, zvals
+    if ref_pts is not None:
+        rp = ref_pts
+        if ref_index is not None:
+            from scan2bim.core.geometry.xy_index import subset  # noqa: PLC0415
+            rp, _ = subset(ref_pts, ref_index, p0, along, normal, half_t + _FACE_TOL)
+        rs = rp[:, :2] @ normal - plane_D
+        r_face = (np.abs(rs - half_t) < _FACE_TOL if pos_face_count >= neg_face_count
+                  else np.abs(rs + half_t) < _FACE_TOL)
+        r_along = (rp[:, :2] - p0) @ along
+        rm = ((r_face | (np.abs(rs) < _FACE_TOL))
+              & (r_along >= -100.0) & (r_along <= length + 100.0)
+              & (rp[:, 2] >= z_lo) & (rp[:, 2] <= z_hi))
+        if int(rm.sum()) >= 50:
+            ref_proj, ref_z = r_along[rm], rp[rm, 2]
+
     n_x = max(int(length / _GRID_MM) + 1, 2)
     n_z = max(int(wall.height / _GRID_MM) + 1, 2)
 
@@ -292,7 +429,7 @@ def _wall_openings(
     # Reunatarkennus raakapisteistä: 30mm-gridi kvantisoi aukon reunat ±15mm +
     # siltaukset. Step-sovitus (tyhjä aukko vs täysi seinäpinta) vie reunat ja
     # sillin/ylityksen mm-tasolle.
-    return [_refine_opening_edges(op, proj, zvals, floor_z, wall) for op in found]
+    return [_refine_opening_edges(op, ref_proj, ref_z, floor_z, wall) for op in found]
 
 
 _RE_WIN = 150.0    # mm — hakuikkuna gridireunasta molempiin suuntiin
@@ -486,6 +623,10 @@ def _find_openings(
         row_occ = inner.mean(axis=0) >= 0.5        # ≥50 % sisäsarakkeista täynnä
         # sill = korkein yhtenäinen pohjalta alkava pinta (esim. ikkunan sokkeli)
         z = 0
+        while z < n_z and not row_occ[z] and float(ze[z + 1]) - z0 <= _SILL_FOOT_GAP:
+            z += 1
+        if z >= n_z or not row_occ[z]:
+            z = 0
         while z < n_z and row_occ[z]:
             z += 1
         sill_row = z

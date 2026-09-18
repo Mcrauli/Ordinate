@@ -59,3 +59,18 @@ def test_wide_rough_opening_is_found():
     ops = detect_openings([w], cloud, floor_z=0.0)
     assert len(ops) == 1, f"aukkoja {len(ops)}"
     assert 2600 < ops[0].width < 3000, f"leveys {ops[0].width:.0f}"
+
+
+def test_empty_floor_strip_does_not_hide_window_sill():
+    """Keilatussa myymalassa ikkunan 0 alla seinan alin 30 mm oli tyhja.
+
+    Sokkelihaku pysahtyi ensimmaiseen tyhjaan riviin, sokkelista tuli aukon
+    "ylalaita" ja aukon korkeudeksi 60 mm -> hylatty liian matalana.
+    """
+    w, cloud = _wall_with_window(1500.0, 2700.0, 400.0, 2400.0)
+    pts = cloud.points
+    cloud.points = pts[pts[:, 2] > 60.0]
+    ops = detect_openings([w], cloud, floor_z=0.0)
+    assert len(ops) == 1, f"aukkoja {len(ops)}"
+    assert ops[0].opening_type == "window"
+    assert abs(ops[0].sill_height - 400.0) < 15.0, ops[0].sill_height

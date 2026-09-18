@@ -210,6 +210,52 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
 
 ## Kovalla työllä opitut asiat — ÄLÄ keksi uudelleen
 
+- **AUKKOJEN SIJOITUS MITATTU ENSIMMÄISTÄ KERTAA — JA KORKEUS OLI VÄÄRIN
+  VÄÄRÄN PILVEN TAKIA (17.9.2026).** Aukkoja oli mitattu vain löytymisenä.
+  `data/_opening_place_qa.py` vertaa keilatun myymälän `gt.json`:iin
+  (keskipiste, leveys, korkeus, alareuna, tyyppi millin tarkkuudella):
+  löytyneet osuivat pituussuunnassa 1 mm ja leveydeltään 13 mm, mutta
+  **korkeus oli +99…+127 mm kolmessa viidestä** — ja aina samaan suuntaan.
+  Jäljitys kolmessa vaiheessa, joista kaksi ensimmäistä kumoutui:
+  1. *Ruudukon kvantisointi?* Ei — `_GRID_MM` on 30 mm.
+  2. *Datassa?* Ei — `data/_opening_store_probe.py`: ylälaita on pilvessä
+     GT:n kohdalla 20 mm:n tarkkuudella joka aukossa.
+  3. *Putken jäljitys* (`_refine_opening_edges` kirjattuna oikeassa ajossa):
+     ruudukko antoi oikein 2991 (GT 3000), ja **tarkennus siirsi sen
+     3127:ään**. Sama tarkennus raakapilvestä antoi 2992.
+  **Juurisyy: 5 mm:n reunantarkennus ajettiin 25 mm:iin voxeloidulle
+  työpilvelle.** Kvantisoidusta datasta porrasta ei voi paikantaa alle
+  voxelin. Tarkennus ottaa nyt pisteensä raakapilvestä (`refine_cloud`),
+  samalta pinnalta jonka ruudukko valitsi. Tulos: korkeuden mediaanivirhe
+  **99 → 13 mm**, ja samalla ikkunan +118 mm leveysvirhe ja +66 mm
+  paikkavirhe katosivat (sama syy). Löytyneiden määrä ennallaan 5/10.
+  **JATKO 18.9.2026 — löytyneet 5 → 8/10 kahdella korjauksella, väärät 1:
+  1.** Kumpikin juurisyy löytyi katsomalla eikä arvaamalla:
+  1. *Ovi kahden seinäpätkän välissä* (`data/_doors_view.png`): seinä katkesi
+     oven kohdalta, ja toisen pätkän akseli oli 155 mm sivussa
+     (yksipuolinen paksuuslukitus asetti akselin pinnan väärälle puolelle,
+     koska vastapinta jäi ±200 mm hakukaistan ulkopuolelle). Aukkohaku
+     kulkee vain seinän omalla janalla, joten ovea ei voinut syntyä.
+     `openings_in_wall_gaps` ajaa haun pätkän jatkeelle raon yli ja
+     hyväksyy vain oven jolla on ylitys, pinta raon molemmin puolin ja
+     leveys ≥ 700 mm (kapein kuljettava ovi); seinä jatketaan raon yli.
+     **Tämä EI ole kumottu "haku ankkuroidun pään yli":** se laajensi hakua
+     jokaisesta päästä, tämä vain kun samalla linjalla jatkuu toinen seinä.
+     Ensimmäinen versio teki Rohbau 07000:aan 532 mm "oven" 511 mm raossa —
+     leveysraja poisti sen.
+  2. *Ikkuna 0* ei kadonnut suodattimessa (epäilin sitä): `OPENING_DEBUG`
+     näytti ehdokkaan `sill=0 h=60 -> too-short`. Seinän alin 30 mm oli sen
+     kohdalla tyhjä, sokkelihaku pysähtyi ensimmäiseen tyhjään riviin ja
+     sokkelista tuli aukon "ylälaita". Alle 100 mm:n tyhjä kaista lattian
+     rajassa ei enää katkaise sokkelia (`_SILL_FOOT_GAP`).
+  Toinen korjaus paransi Rohbauta enemmän kuin myymälää: löytyneet
+  **19 → 25**, tarkkuus nousi tai pysyi joka scenessä (07000 8/10 → 12/14,
+  07001 2/4 → 3/5, 07003 4/6 → 5/7). Matriisi +0.000 kaikilla 12:lla.
+  **Puuttuvat kaksi:** ovi 9:ltä puuttuu isäntäseinä, ovi 4 osuu T-liitokseen
+  jossa isäntä on 147 mm sivussa.
+  **Yleistys: kun tarkennusvaihe on tarkempi kuin syötteensä resoluutio,
+  se ei tarkenna vaan arvaa.** Tarkista mistä pilvestä hienosäätö lukee.
+
 - **KELLARI 66 MIN → 25 MIN ILMAN YHDENKÄÄN TULOKSEN MUUTOSTA (17.9.2026).**
   Mitattu samalla 37 skannin kellarilla; malli (seinät, laatat, pilarit,
   palkit, aukot, tilat) on JSONina bitilleen sama joka vaiheen jälkeen.

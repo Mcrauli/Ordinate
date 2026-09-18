@@ -4,6 +4,19 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 [`Mcrauli/scan2bim-web`](https://github.com/Mcrauli/scan2bim-web/releases):iin;
 sovellus päivittää itsensä sieltä.
 
+## v0.9.34 (18.9.2026) — ovet ja ikkunat löytyvät useammin ja oikeaan kohtaan
+
+- **Aukon korkeus ja reunat mitataan raakapilvestä.** Reunojen hienosäätö
+  luki 25 mm:iin harvennettua pilveä, jolloin ikkunan yläreuna meni
+  keskimäärin 99 mm pieleen. Nyt korkeuden mediaanivirhe on 14 mm.
+- **Ovi löytyy myös kun seinä katkeaa sen kohdalta kahdeksi pätkäksi.**
+  Ovi hyväksytään vain, jos sen päällä on ylitys ja seinä jatkuu raon
+  molemmin puolin; seinä jatketaan raon yli.
+- **Ikkuna ei enää katoa, jos seinän alin reuna on keilautunut vajaasti.**
+- Mitattu: keilattu myymälä 5 → 8 aukkoa kymmenestä (väärät 1 → 1), Rohbau
+  19 → 25 GT-aukkoa ilman tarkkuuden laskua. Seinät ennallaan kaikilla 12
+  vertailuaineistolla.
+
 ## v0.9.33 (17.9.2026) — kellari 39 → 25 min, malli bitilleen sama
 
 - **Iso kohde valmistuu kolmanneksen nopeammin, eikä tulos muutu.** Mitattu
