@@ -19,8 +19,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 
 def main(cloud: str, out: str) -> None:
-    from scan2bim.core import pipeline as PL
-    from scan2bim.core.semantics import residual_walls as RW
+    from ordinate.core import pipeline as PL
+    from ordinate.core.semantics import residual_walls as RW
 
     RW.find_residual_walls = lambda *a, **kw: []
     cfg = PL.PipelineConfig(detector="contour", auto_voxel=True, export_ifc=False,

@@ -20,7 +20,7 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
-from scan2bim.core.qa.coverage import wallish_points  # noqa: E402
+from ordinate.core.qa.coverage import wallish_points  # noqa: E402
 
 _COL = 500.0
 _BAND = 150.0

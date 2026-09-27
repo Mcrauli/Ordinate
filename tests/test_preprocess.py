@@ -3,7 +3,7 @@ import numpy as np
 import open3d as o3d
 import pytest
 
-from scan2bim.core.geometry.preprocess import preprocess
+from ordinate.core.geometry.preprocess import preprocess
 
 
 def _box_room_cloud(seed: int = 0) -> o3d.geometry.PointCloud:

@@ -16,8 +16,8 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import scan2bim.core.qa.deviation as dev  # noqa: E402
-from scan2bim.core.pipeline import Pipeline, PipelineConfig  # noqa: E402
+import ordinate.core.qa.deviation as dev  # noqa: E402
+from ordinate.core.pipeline import Pipeline, PipelineConfig  # noqa: E402
 from _paths import DATA, OUTPUT  # noqa: E402
 
 _NEW = dev._nearest_surface
@@ -32,7 +32,7 @@ def _old_nearest_surface(w, pts_all, index):
     n = np.array([-u[1], u[0]])
     pts = pts_all
     if index is not None:
-        from scan2bim.core.geometry.xy_index import subset
+        from ordinate.core.geometry.xy_index import subset
         pts, _ = subset(pts_all, index, p0, u, n, dev._SUP_SEEK, 0.0, L)
     if len(pts) < dev._SUP_MIN_PTS:
         return None

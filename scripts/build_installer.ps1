@@ -1,8 +1,8 @@
-﻿# Build scan2bim Inno Setup installer.
-#   1. scripts/build_exe.ps1 -> dist/scan2bim.exe (+ dist/scan2bim-<v>.exe)
+﻿# Build ordinate Inno Setup installer.
+#   1. scripts/build_exe.ps1 -> dist/ordinate.exe (+ dist/ordinate-<v>.exe)
 #   2. Ensure dist/LICENSES.md exists (fallback if missing).
 #   3. Locate ISCC.exe (Inno Setup 6).
-#   4. Compile build/installer.iss -> dist/scan2bim-Setup-<v>.exe (+ .sha256)
+#   4. Compile build/installer.iss -> dist/ordinate-Setup-<v>.exe (+ .sha256)
 #
 # Usage:  .\scripts\build_installer.ps1
 
@@ -10,12 +10,12 @@ $ErrorActionPreference = "Stop"
 
 & "$PSScriptRoot\build_exe.ps1"
 
-$version = $env:SCAN2BIM_VERSION
-if (-not $version) { throw "SCAN2BIM_VERSION not set after build_exe.ps1" }
+$version = $env:ORDINATE_VERSION
+if (-not $version) { throw "ORDINATE_VERSION not set after build_exe.ps1" }
 
 $root = (Resolve-Path "$PSScriptRoot\..").Path
 $dist = Join-Path $root "dist"
-$sourceDir = Join-Path $dist "scan2bim"
+$sourceDir = Join-Path $dist "ordinate"
 $licensesFile = Join-Path $dist "LICENSES.md"
 
 if (-not (Test-Path $sourceDir)) { throw "PyInstaller did not produce $sourceDir" }
@@ -44,7 +44,7 @@ if (-not $iscc) {
     throw "ISCC.exe not found. Install Inno Setup 6 (https://jrsoftware.org/isinfo.php) or set `$env:ISCC."
 }
 
-$iconFile = Join-Path $root "assets\scan2bim.ico"
+$iconFile = Join-Path $root "assets\ordinate.ico"
 $hasIcon = Test-Path $iconFile
 
 $numericVersion = $version -replace '[A-Za-z].*$', ''
@@ -68,7 +68,7 @@ Write-Host "Compiling installer with ISCC: $iscc"
 & $iscc @isccArgs
 if ($LASTEXITCODE -ne 0) { throw "ISCC failed (exit $LASTEXITCODE)" }
 
-$installer = Join-Path $dist "scan2bim-Setup-$version.exe"
+$installer = Join-Path $dist "Ordinate-Setup-$version.exe"
 if (-not (Test-Path $installer)) { throw "Installer missing after ISCC: $installer" }
 
 $hash = Get-FileHash -Algorithm SHA256 -Path $installer
@@ -77,9 +77,11 @@ Write-Host "SHA256 : $($hash.Hash)"
 Set-Content -Path "$installer.sha256" -Value "$($hash.Hash)  $(Split-Path -Leaf $installer)"
 
 # VERSIOIMATON KOPIO: nettisivun latausnappi osoittaa kiinteaan nimeen
-# releases/latest/download/scan2bim-Setup.exe. Se puuttui v0.9.17:sta ja
+# releases/latest/download/scan2bim-Setup.exe (sivu) ja Ordinate-Setup.exe. Se puuttui v0.9.17:sta ja
 # v0.9.18:sta -> sivun lataus oli 404. Julkaise TAMA jokaisessa releasessa.
-$plain = Join-Path $dist "scan2bim-Setup.exe"
-Copy-Item -Path $installer -Destination $plain -Force
-Set-Content -Path "$plain.sha256" -Value "$($hash.Hash)  scan2bim-Setup.exe"
-Write-Host "Built  : $plain (nettisivun linkki)"
+foreach ($name in @("Ordinate-Setup.exe", "scan2bim-Setup.exe")) {
+    $plain = Join-Path $dist $name
+    Copy-Item -Path $installer -Destination $plain -Force
+    Set-Content -Path "$plain.sha256" -Value "$($hash.Hash)  $name"
+}
+Write-Host "Built  : Ordinate-Setup.exe + scan2bim-Setup.exe (nettisivun linkki)"

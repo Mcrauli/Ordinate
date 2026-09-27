@@ -11,9 +11,9 @@ from pathlib import Path
 import numpy as np
 from scipy.signal import find_peaks
 
-from scan2bim.core import pipeline as pl
-from scan2bim.core.geometry.loader import ply_z_range, read_ply_xyz_band
-from scan2bim.schemas.model import ElementSource, Wall
+from ordinate.core import pipeline as pl
+from ordinate.core.geometry.loader import ply_z_range, read_ply_xyz_band
+from ordinate.schemas.model import ElementSource, Wall
 
 cloud, out, wid = Path(sys.argv[1]), Path(sys.argv[2]), sys.argv[3]
 m = json.loads(sorted(out.glob("floor_*/model.json"))[0].read_text(encoding="utf-8"))

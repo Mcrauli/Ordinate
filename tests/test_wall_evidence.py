@@ -4,8 +4,8 @@ from __future__ import annotations
 import numpy as np
 import open3d as o3d
 
-from scan2bim.core.qa.wall_evidence import measure_wall_evidence
-from scan2bim.schemas.model import ElementSource, StructuralModel, Wall
+from ordinate.core.qa.wall_evidence import measure_wall_evidence
+from ordinate.schemas.model import ElementSource, StructuralModel, Wall
 
 
 def _cloud(pts: np.ndarray) -> o3d.geometry.PointCloud:

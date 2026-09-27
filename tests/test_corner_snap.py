@@ -5,8 +5,8 @@ Regression: two perpendicular stubs crossing mid-wall paired with BOTH open
 ends of a 2m+ wall -> both ends moved to the same point -> zero-length wall."""
 import numpy as np
 
-from scan2bim.core.semantics.corner_snap import close_open_corners
-from scan2bim.schemas.model import ElementSource, Wall
+from ordinate.core.semantics.corner_snap import close_open_corners
+from ordinate.schemas.model import ElementSource, Wall
 
 
 def _wall(wid, x0, y0, x1, y1):

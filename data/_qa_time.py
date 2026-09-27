@@ -2,8 +2,8 @@
 import sys, time
 from pathlib import Path
 import open3d as o3d
-from scan2bim.core.qa import deviation as dv
-from scan2bim.schemas.model import StructuralModel
+from ordinate.core.qa import deviation as dv
+from ordinate.schemas.model import StructuralModel
 import json
 
 out = Path(sys.argv[1]); cloud_path = Path(sys.argv[2])

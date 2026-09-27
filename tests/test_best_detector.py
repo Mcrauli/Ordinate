@@ -16,7 +16,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from scan2bim.core import pipeline as PL
+from ordinate.core import pipeline as PL
 
 
 class _Cloud:
@@ -50,9 +50,9 @@ def choose(monkeypatch):
             def detect(self, _cloud):
                 return _Model(self._name)
 
-        import scan2bim.core.qa.coverage as COV
-        import scan2bim.core.segmentation.base as BASE
-        import scan2bim.core.segmentation.slab_detector as SD
+        import ordinate.core.qa.coverage as COV
+        import ordinate.core.segmentation.base as BASE
+        import ordinate.core.segmentation.slab_detector as SD
 
         monkeypatch.setattr(BASE.DetectorRegistry, "get",
                             classmethod(lambda cls, n: (lambda _n=n: _Det(_n))))

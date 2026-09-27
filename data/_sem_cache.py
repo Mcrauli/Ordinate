@@ -15,7 +15,7 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
-from scan2bim.core.segmentation.pointnet_filter import (  # noqa: E402
+from ordinate.core.segmentation.pointnet_filter import (  # noqa: E402
     PointNetFilter, SemanticLabels,
 )
 

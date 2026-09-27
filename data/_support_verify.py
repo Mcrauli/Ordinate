@@ -13,8 +13,8 @@ import open3d as o3d
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from scan2bim.core.qa.deviation import flag_low_confidence, measure_wall_support  # noqa: E402
-from scan2bim.schemas.model import StructuralModel  # noqa: E402
+from ordinate.core.qa.deviation import flag_low_confidence, measure_wall_support  # noqa: E402
+from ordinate.schemas.model import StructuralModel  # noqa: E402
 from _evidence_probe import metrics  # noqa: E402
 
 

@@ -1,6 +1,6 @@
 """`measured_thickness` saa olla asetettu VAIN kun kaksi pintaa on mitattu.
 
-Kentta menee IFC:hen `scan2bim_Mittaus`-psetin `MitattuPaksuus_mm`:aan, eli se
+Kentta menee IFC:hen `Ordinate_Mittaus`-psetin `MitattuPaksuus_mm`:aan, eli se
 on mittausvaite. `_snap_delivery_thickness` kirjoitti sen jokaiselle seinalle
 snappia edeltavasta paksuudesta riippumatta siita mista paksuus oli perasin —
 myos silloin kun se oli `_TL_ONE_SIDED_T`-vakio 200 mm.
@@ -16,8 +16,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from scan2bim.core import pipeline as PL
-from scan2bim.schemas.model import ElementSource, Wall
+from ordinate.core import pipeline as PL
+from ordinate.schemas.model import ElementSource, Wall
 
 _H = 2700.0
 
@@ -80,9 +80,9 @@ def test_ifc_jattaa_mittauspsetin_pois_kun_arvoa_ei_ole():
     """Kirjoittaja portittaa psetin `measured_thickness is not None`-ehdolla."""
     import inspect
 
-    from scan2bim.core.ifc import writer
+    from ordinate.core.ifc import writer
     src = inspect.getsource(writer)
-    i = src.index("scan2bim_Mittaus")
+    i = src.index("Ordinate_Mittaus")
     ehto = src[max(0, i - 400):i]
     assert "measured is not None" in ehto, (
         "mittauspsetin portti on kadonnut — yksipuolinen seina paatyisi IFC:hen "

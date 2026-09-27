@@ -3,9 +3,9 @@ import numpy as np
 import open3d as o3d
 import pytest
 
-from scan2bim.core.segmentation.base import DetectorRegistry
-from scan2bim.core.segmentation.wall_ransac import WallDetectorRANSAC
-from scan2bim.schemas.model import StructuralModel
+from ordinate.core.segmentation.base import DetectorRegistry
+from ordinate.core.segmentation.wall_ransac import WallDetectorRANSAC
+from ordinate.schemas.model import StructuralModel
 
 
 def _box_room_cloud(seed: int = 0) -> o3d.geometry.PointCloud:

@@ -4,8 +4,8 @@ from pathlib import Path
 import numpy as np
 from shapely.geometry import LineString
 from shapely.ops import polygonize, unary_union
-from scan2bim.core.semantics import room_detector as rd
-from scan2bim.schemas.model import ElementSource, Wall
+from ordinate.core.semantics import room_detector as rd
+from ordinate.schemas.model import ElementSource, Wall
 
 out = Path(sys.argv[1])
 m = json.loads(sorted(out.glob("floor_*/model.json"))[0].read_text(encoding="utf-8"))

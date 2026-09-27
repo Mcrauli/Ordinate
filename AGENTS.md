@@ -1,6 +1,6 @@
-# scan2bim — kehittäjän ja AI-agentin opas
+# Ordinate — kehittäjän ja AI-agentin opas
 
-`scan2bim` on **laserkeilauspilvi → IFC4-arkkitehtimalli** -konvertteri:
+`Ordinate` (Python-paketti `ordinate`, entinen `scan2bim`) on **laserkeilauspilvi → IFC4-arkkitehtimalli** -konvertteri:
 lukee sisätilan pistepilven, tunnistaa rakenteet (seinät, lattia, katto, ovet,
 ikkunat, pilarit, palkit, tilat), suodattaa kalusteet pois ja kirjoittaa
 älykkään IFC4:n (tyypit + materiaalit + Pset + Qto). Tavoite: inventointimallitaso
@@ -12,7 +12,7 @@ kuvaus on [`README.md`](README.md):ssä.
 
 ## Pikastartti
 
-**Uusi, tuntematon skanni: aja `scan2bim inspect <tiedosto>` ENSIN.** Se lukee
+**Uusi, tuntematon skanni: aja `ordinate inspect <tiedosto>` ENSIN.** Se lukee
 ne oletukset jotka putki tekee — mittakaava, lattia- ja kattotaso, kerrosjako,
 pisteväli — ja varoittaa siitä mikä oikeasti kaataa ajon: liian pieni laajuus
 (mittakaava väärin), iso z-laajuus (monikerros tai rekisteröintivirhe), liian
@@ -28,10 +28,10 @@ py -3.12 -m venv .venv
 .venv\Scripts\activate
 pip install -e ".[gui,dev]"      # riippuvuudet + editable
 pytest tests/                    # testit (8 testitiedostoa)
-python -m scan2bim               # GUI
+python -m ordinate               # GUI
 ```
 
-Windows-build: `.\build.ps1` → `dist\scan2bim.exe` (~3–4 min).
+Windows-build: `.\build.ps1` → `dist\ordinate.exe` (~3–4 min).
 Installeri: `.\scripts\build_installer.ps1` (vaatii Inno Setup 6).
 
 **Tuotantopolku (oikea testaus):** `Pipeline.run_floors([pilvet], out)` — ei
@@ -82,7 +82,7 @@ N x pistepilveä (run_floors yhdistää yhdeksi kerrokseksi)
 ```
 
 `Pipeline.run_floors(paths, out)` on pää-entrypoint. Tarkka vaihejärjestys:
-[`core/pipeline.py`](src/scan2bim/core/pipeline.py) `_detect`-metodi.
+[`core/pipeline.py`](src/ordinate/core/pipeline.py) `_detect`-metodi.
 
 ## Tärkeät tiedostot
 
@@ -410,7 +410,7 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   Pythonissa — ikkuna jäi "ei vastaa" -tilaan minuuteiksi kerrallaan
   (mitattu: `Responding: False`, CPU ~0, muistia 25 GB vapaana → **blokissa,
   ei laskemassa**). Korjaus on rakenteellinen eikä optimointi: GUI käynnistää
-  `scan2bim-cli.exe run` -komennon `QProcess`illa ja lukee stdoutia; mallit
+  `ordinate-cli.exe run` -komennon `QProcess`illa ja lukee stdoutia; mallit
   luetaan levyltä. Mitattu koko putkiajon ajalta: UI-säikeen **pisin tauko
   78 ms**. Sivutuote: GUI on nyt komentorivin ensimmäinen käyttäjä, joten
   `smoke_exe.py` testaa myös sen polun pakatusta tuotteesta.
@@ -431,9 +431,9 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
      saa mitatusti huonomman tuloksen eikä buildissa näy mitään. Nyt build
      **keskeytyy**.
   2. **Paketissa ei ollut komentoriviä lainkaan.** Julkaistava exe rakentuu
-     `gui/__main__.py`:stä ja `console=False`, joten `scan2bim.exe convert …`
+     `gui/__main__.py`:stä ja `console=False`, joten `ordinate.exe convert …`
      vain avaa ikkunan. Asiakas ei voi skriptata tai eräajaa mitään. Nyt
-     samasta `Analysis`:sta rakentuu **`scan2bim-cli.exe`** (console=True) —
+     samasta `Analysis`:sta rakentuu **`ordinate-cli.exe`** (console=True) —
      samat riippuvuudet ja sama malli, ei toista latausta eikä versioeroa.
   3. **`cli.py`:stä puuttui `if __name__ == "__main__"` -vartija.** Se toimi
      kehityksessä vain koska `pip install -e` luo `console_scripts`-
@@ -444,7 +444,7 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
      ajaa `PYTHONIOENCODING=utf-8`. `stdout`/`stderr` pakotetaan nyt UTF-8:aan
      `errors="replace"`.
   **Suoja: `scripts/smoke_exe.py` ajetaan osana `build.ps1`:tä.** Se kopioi
-  `dist/scan2bim`:n repon ULKOPUOLELLE, ajaa `--help`in ja konversion, ja
+  `dist/ordinate`:n repon ULKOPUOLELLE, ajaa `--help`in ja konversion, ja
   vaatii että `model.json`, `model.ifc` ja `model.dxf` syntyvät.
   **Tärkein rivi siinä on `--semantic-filter pointnet`:** ilman pakotusta
   `auto` ohittaa suodattimen pienessä tilassa, jolloin mallin latautumista ei
@@ -733,7 +733,7 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   ehdokaspiikeillä on kate 1.00 joka ikisellä. Paksuus on siis yhä auki, ja
   `qa/reliability.py` RAPORTOI sen (kellari −84 mm) sen sijaan että arvaisi.
 - **`measured_thickness` OLI MITTAUSVÄITE ILMAN MITTAUSTA — korjattu.**
-  Kenttä menee IFC:hen `scan2bim_Mittaus`-psetin `MitattuPaksuus_mm`:ään, eli
+  Kenttä menee IFC:hen `ordinate_Mittaus`-psetin `MitattuPaksuus_mm`:ään, eli
   se on lupaus arkkitehdille. `_snap_delivery_thickness` kirjoitti sen
   JOKAISELLE seinälle snappia edeltävästä paksuudesta riippumatta siitä mistä
   paksuus oli peräisin — myös silloin kun se oli `_TL_ONE_SIDED_T`-vakio
@@ -1620,7 +1620,7 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   ei voxel-välimuistista (12 mm voxel → ~33 mm virhe). Kaksipuoliset seinät → <1 mm.
   Yksipuolisia (ulkoseinät, vain sisäpinta keilattu) EI voi mitata — fyysinen raja.
 - **Toimituspaksuus snäpätään standardiin** [66/92/120/150/200/250/300]; tarkka
-  mitattu arvo → `Wall.measured_thickness` + IFC `scan2bim_Mittaus`-pset. Tämä on
+  mitattu arvo → `Wall.measured_thickness` + IFC `ordinate_Mittaus`-pset. Tämä on
   TUOTEPÄÄTÖS (arkkitehti haluaa muutaman siistin seinätyypin, ei 14 uniikkia).
 - **METRIKKA-ANSA:** `_element_qa.py` lukee mallin SNÄPÄTTYÄ paksuutta → näyttää
   "isolta virheeltä" mutta on snap-by-design. **Todellinen mittaustarkkuus on
@@ -2466,8 +2466,8 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   nopeampi → ei hidastu.
 - **ISO MYYMÄLÄ, mitattu synteettisellä 96×64×8 m myymälällä** (`data/_synth_retail.py
   --sx 96000 --sy 64000 --height 8000`, 57 M pistettä, GT tunnettu). ÄLÄ aja
-  `python -m scan2bim <ply>` — se avaa GUI:n; oikea CLI on `scan2bim convert`
-  (tai `-m scan2bim.cli`). Ajo ~13 min. Löydökset:
+  `python -m ordinate <ply>` — se avaa GUI:n; oikea CLI on `ordinate convert`
+  (tai `-m ordinate.cli`). Ajo ~13 min. Löydökset:
   1. ~~Seinän akseli venyi 9–31 m rakennuksen ULKOPUOLELLE tyhjän lattian yli~~
      **KORJATTU (cb224ba): `_trim_endpoints` sallii >300 mm leikkauksen kun kaista
      on kiistatta aito (span ≥2.5 m + ≥300 pintapistettä).** Seinät 5/9→7/9,
@@ -2532,7 +2532,7 @@ Uusi `SemanticFilter`-esivaihe: pilvi → suodatettu pilvi → nykyinen pipeline
 
 **Testidata — MIKÄÄN EI OLE GITISSÄ** (`.gitignore`: `data/*.ply`, `*.npy`,
 `data/_rohbau/`, `data/_3dses/`), eikä release-asseteissa. Jokainen kone lataa
-omansa; `data/_paths.py` etsii ne `~/Downloads`:sta tai `SCAN2BIM_DOWNLOADS`:sta.
+omansa; `data/_paths.py` etsii ne `~/Downloads`:sta tai `ORDINATE_DOWNLOADS`:sta.
 Kirjaa tähän jokainen uusi setti + sen LÄHDE, muuten kukaan ei tiedä mistä sen saa.
 
 | data | sijainti | lähde / lisenssi |
@@ -2551,13 +2551,13 @@ Kirjaa tähän jokainen uusi setti + sen LÄHDE, muuten kukaan ei tiedä mistä 
 - **Suomi** chatissa ja dokumenteissa, **englanti** commit-viesteissä ja koodikommenteissa.
 - **Suora push masteriin** sallittu (henkilökohtainen repo, ei PR-flowta).
 - Commit-trailer AI-commiteissa: `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`.
-- **Versiopumppi** koskettaa: `src/scan2bim/_version.py`, `build/version_info.py`
+- **Versiopumppi** koskettaa: `src/ordinate/_version.py`, `build/version_info.py`
   (4 kenttää). `v*.*.*`-release julkaistaan **`Mcrauli/scan2bim-web`**-repoon
   → itsepäivitys hakee sen. **Kuusi assettia, ei viittä:**
-  `scan2bim-<v>.zip` + `.sha256` (itsepäivityksen payload),
-  `scan2bim-Setup-<v>.exe` + `.sha256` (uusasennus) ja
-  **`scan2bim-Setup.exe` + `.sha256` (VERSIOIMATON)** — nettisivun
-  `index.html` osoittaa kiinteään nimeen `releases/latest/download/scan2bim-Setup.exe`,
+  `ordinate-<v>.zip` + `.sha256` (itsepäivityksen payload),
+  `ordinate-Setup-<v>.exe` + `.sha256` (uusasennus) ja
+  **`ordinate-Setup.exe` + `.sha256` (VERSIOIMATON)** — nettisivun
+  `index.html` osoittaa kiinteään nimeen `releases/latest/download/ordinate-Setup.exe`,
   ja kun se puuttui v0.9.17:stä ja v0.9.18:sta, sivun latausnappi oli 404
   kymmenen päivää. `scripts/build_installer.ps1` tekee kopion automaattisesti;
   tarkista julkaisun jälkeen `curl -sL -r 0-100 -o /dev/null -w "%{http_code}"`.
@@ -2569,7 +2569,7 @@ Kirjaa tähän jokainen uusi setti + sen LÄHDE, muuten kukaan ei tiedä mistä 
 ## Hakemistorakenne
 
 ```
-src/scan2bim/
+src/ordinate/
   schemas/      StructuralModel (YDIN)
   core/
     geometry/   lataus + esikäsittely + rekisteröinti

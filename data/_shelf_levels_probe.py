@@ -25,7 +25,7 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
-from scan2bim.core.semantics import second_face as SF  # noqa: E402
+from ordinate.core.semantics import second_face as SF  # noqa: E402
 
 _REACH_LO = 100.0     # mm — aloita nain kaukana seinan pinnasta
 _REACH_HI = 1200.0    # mm — seuraa nain kauas sivulle (= _DECK_REACH)

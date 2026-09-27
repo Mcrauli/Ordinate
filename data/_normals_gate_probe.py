@@ -72,7 +72,7 @@ def _score(walls, gt):
 def main(scene_dir: str) -> None:
     import open3d as o3d
 
-    from scan2bim.core.segmentation import wall_normals as WN
+    from ordinate.core.segmentation import wall_normals as WN
 
     scene = Path(scene_dir)
     xyz = np.load(scene / "coord.npy").astype(np.float64)

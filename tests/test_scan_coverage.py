@@ -8,8 +8,8 @@ tuloksesta, ei vasta vertaamalla pilveen.
 import numpy as np
 import open3d as o3d
 
-from scan2bim.core.qa.deviation import scan_coverage
-from scan2bim.schemas.model import ElementSource, Slab, StructuralModel, Wall
+from ordinate.core.qa.deviation import scan_coverage
+from ordinate.schemas.model import ElementSource, Slab, StructuralModel, Wall
 
 
 def _floor_pts(x0, x1, y0, y1, step=200.0, z=0.0, n_per=6):

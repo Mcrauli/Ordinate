@@ -5,8 +5,8 @@ kipsiseinä julkisivun edessä. Erotin on mitattu: Rohbaun GT-seinät 0-2 tasoa,
 myymälän hyllynetupinnat 7-9."""
 import numpy as np
 
-from scan2bim.core.semantics.wall_semantics import remove_shelf_front_walls
-from scan2bim.schemas.model import ElementSource, Wall
+from ordinate.core.semantics.wall_semantics import remove_shelf_front_walls
+from ordinate.schemas.model import ElementSource, Wall
 
 
 def _wall(x0, y0, x1, y1, thickness=200.0):

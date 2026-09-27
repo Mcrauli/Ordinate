@@ -14,7 +14,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from scan2bim.core.geometry.loader import scanner_origins
+from ordinate.core.geometry.loader import scanner_origins
 
 pye57 = pytest.importorskip("pye57")
 
@@ -70,7 +70,7 @@ def test_pilvi_ja_origo_samassa_yksikossa(tmp_path):
     Ilman tata testi voisi menna lapi vaikka origo olisi eri avaruudessa kuin
     pisteet, ja juuri se oli bugi.
     """
-    from scan2bim.core.geometry.loader import load_point_cloud
+    from ordinate.core.geometry.loader import load_point_cloud
 
     f = _write(tmp_path / "yhdessa.e57", _room(1.0), [200.0, 541.0, 7.8])
     pts = np.asarray(load_point_cloud(f).points)

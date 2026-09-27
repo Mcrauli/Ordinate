@@ -24,7 +24,7 @@ ZBAND = ROOT / "data" / "_qa_zband.ply"
 
 
 def _build_zband() -> None:
-    from scan2bim.core.geometry.loader import load_point_cloud
+    from ordinate.core.geometry.loader import load_point_cloud
     scans = sorted(APT.glob("scan_*.ply"))
     c0 = load_point_cloud(scans[0])
     z = np.asarray(c0.points)[:, 2]

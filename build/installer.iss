@@ -1,14 +1,14 @@
-; Inno Setup script for scan2bim.
+; Inno Setup script for ordinate.
 ;
 ; Compiled by `scripts/build_installer.ps1` after PyInstaller has produced
-; `dist/scan2bim.exe`. Paths and version come through /D defines so the
+; `dist/ordinate.exe`. Paths and version come through /D defines so the
 ; .iss hardcodes no absolute path.
 
 #ifndef AppVersion
   #define AppVersion "0.0.0"
 #endif
 #ifndef SourceDir
-  #define SourceDir "..\dist\scan2bim"
+  #define SourceDir "..\dist\ordinate"
 #endif
 #ifndef LicensesFile
   #define LicensesFile "..\dist\LICENSES.md"
@@ -23,29 +23,29 @@
 [Setup]
 ; Stable AppId — required for upgrade/uninstall identity. Do not change.
 AppId={{B7B0F2A1-9D3C-4E8A-9C1F-2E6A4D7F0C55}
-AppName=scan2bim
+AppName=Ordinate
 AppVersion={#AppVersion}
-AppVerName=scan2bim {#AppVersion}
+AppVerName=Ordinate {#AppVersion}
 AppPublisher=Lauri Rekola
 AppPublisherURL=https://github.com/Mcrauli/scan2bim
 AppSupportURL=https://github.com/Mcrauli/scan2bim/issues
 AppUpdatesURL=https://github.com/Mcrauli/scan2bim/releases
-DefaultDirName={autopf}\scan2bim
-DefaultGroupName=scan2bim
+DefaultDirName={autopf}\Ordinate
+DefaultGroupName=Ordinate
 DisableProgramGroupPage=yes
 DisableDirPage=auto
 ; Per-user install by default → no UAC prompt → less SmartScreen friction.
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog commandline
 OutputDir={#OutputDir}
-OutputBaseFilename=scan2bim-Setup-{#AppVersion}
+OutputBaseFilename=Ordinate-Setup-{#AppVersion}
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
-UninstallDisplayName=scan2bim {#AppVersion}
-UninstallDisplayIcon={app}\scan2bim.exe
+UninstallDisplayName=Ordinate {#AppVersion}
+UninstallDisplayIcon={app}\Ordinate.exe
 ; Sulje kaynnissa oleva sovellus ENNEN tiedostojen korvausta → ei Windows-virhe 32
 ; ("tiedosto toisen prosessin kaytossa") kun kayttaja asentaa uuden version appin
 ; ollessa auki. AppMutex-nimi = gui/app.py:n luoma mutex (luotettava tunnistus,
@@ -53,11 +53,11 @@ UninstallDisplayIcon={app}\scan2bim.exe
 ; appia yllattaen kesken asennuksen.
 CloseApplications=yes
 RestartApplications=no
-AppMutex=Scan2BimAppMutex
+AppMutex=OrdinateAppMutex,Scan2BimAppMutex
 VersionInfoVersion={#AppNumericVersion}
 VersionInfoCompany=Lauri Rekola
-VersionInfoDescription=scan2bim point cloud to IFC/DXF installer
-VersionInfoProductName=scan2bim
+VersionInfoDescription=Ordinate point cloud to IFC/DXF installer
+VersionInfoProductName=Ordinate
 VersionInfoProductVersion={#AppNumericVersion}
 VersionInfoProductTextVersion={#AppVersion}
 VersionInfoCopyright=(c) 2026 Lauri Rekola
@@ -80,8 +80,12 @@ Source: "{#LicensesFile}"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedo
 Source: "..\README.md"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 
 [Icons]
-Name: "{autoprograms}\scan2bim"; Filename: "{app}\scan2bim.exe"
-Name: "{autodesktop}\scan2bim"; Filename: "{app}\scan2bim.exe"; Tasks: desktopicon
+Name: "{autoprograms}\Ordinate"; Filename: "{app}\Ordinate.exe"
+Name: "{autodesktop}\Ordinate"; Filename: "{app}\Ordinate.exe"; Tasks: desktopicon
+
+[InstallDelete]
+Type: files; Name: "{autoprograms}\scan2bim.lnk"
+Type: files; Name: "{autodesktop}\scan2bim.lnk"
 
 [Run]
-Filename: "{app}\scan2bim.exe"; Description: "{cm:LaunchProgram,scan2bim}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\Ordinate.exe"; Description: "{cm:LaunchProgram,Ordinate}"; Flags: nowait postinstall skipifsilent

@@ -27,9 +27,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 
 def main(cloud: str, out_dir: str) -> None:
-    from scan2bim.core import pipeline as PL
-    from scan2bim.core.semantics import corner_snap as CS
-    from scan2bim.core.semantics import orthogonal as OR
+    from ordinate.core import pipeline as PL
+    from ordinate.core.semantics import corner_snap as CS
+    from ordinate.core.semantics import orthogonal as OR
 
     src = Path(cloud)
 

@@ -6,7 +6,7 @@ import matplotlib; matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.patches import Polygon
 import open3d as o3d
-from scan2bim.core.pipeline import Pipeline, PipelineConfig
+from ordinate.core.pipeline import Pipeline, PipelineConfig
 from _paths import DATA, OUTPUT  # portable dev-tool paths
 
 D = Path(str(DATA / "_3dses"))

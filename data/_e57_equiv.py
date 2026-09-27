@@ -14,7 +14,7 @@ import psutil
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from scan2bim.core.geometry.loader import (  # noqa: E402
+from ordinate.core.geometry.loader import (  # noqa: E402
     e57_band_chunks, e57_point_count, e57_z_range, load_point_cloud, read_e57_z,
 )
 

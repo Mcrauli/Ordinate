@@ -6,10 +6,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 if "--off" in sys.argv:
-    import scan2bim.core.geometry.loader as _ld
+    import ordinate.core.geometry.loader as _ld
     _ld._e57_is_chunkable = lambda p: False
-    import scan2bim.core.geometry.streaming as _st
-    import scan2bim.core.geometry.floor_splitter as _fs
+    import ordinate.core.geometry.streaming as _st
+    import ordinate.core.geometry.floor_splitter as _fs
     tag = "off"
 else:
     tag = "on"

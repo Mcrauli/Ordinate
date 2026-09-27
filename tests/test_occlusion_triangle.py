@@ -8,9 +8,9 @@ from __future__ import annotations
 
 import numpy as np
 
-from scan2bim.core.geometry.xy_index import XYIndex
-from scan2bim.core.segmentation.opening_detector import _occlusion_counts
-from scan2bim.schemas.model import ElementSource, Opening, Wall
+from ordinate.core.geometry.xy_index import XYIndex
+from ordinate.core.segmentation.opening_detector import _occlusion_counts
+from ordinate.schemas.model import ElementSource, Opening, Wall
 
 
 def test_triangle_prefilter_gives_identical_counts() -> None:
@@ -46,7 +46,7 @@ def test_triangle_prefilter_gives_identical_counts() -> None:
 
 
 def test_early_stop_gives_the_same_decision() -> None:
-    from scan2bim.core.segmentation.opening_detector import _is_occlusion_shadow
+    from ordinate.core.segmentation.opening_detector import _is_occlusion_shadow
 
     rng = np.random.default_rng(5)
     wall = Wall(id="w", confidence=0.9, source=ElementSource(method="contour"),

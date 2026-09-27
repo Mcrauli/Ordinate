@@ -1,4 +1,4 @@
-# Nimibrief — scan2bimin uudelleenbrändäys
+# Nimibrief — ordinatein uudelleenbrändäys
 
 **Päivä:** 2026-07-15
 **Tila:** ✅ Nimi valittu — **Ordinate**. Lukitusportti (muodollinen tavaramerkki +
@@ -6,7 +6,7 @@ domain) kesken ennen varsinaista rollouttia.
 
 ## Miksi
 
-`scan2bim` on **täysin geneerinen** ja alalla laajassa käytössä. Sitä **ei voi
+`ordinate` on **täysin geneerinen** ja alalla laajassa käytössä. Sitä **ei voi
 suojata tavaramerkkinä** eikä sillä erotu. Rebrändäys on halvin nyt — ennen
 pilotin ulkopuolista myyntiä, ennen kuin nimi on kiinni asiakassuhteissa,
 domainissa, exe-nimessä ja dokumenteissa. Nimi on myös osa IP-tarinaa (oma koodi,
@@ -67,7 +67,7 @@ Järjestys, pienimmästä riskistä suurimpaan — **ei aloiteta ennen kuin nimi
 
 1. **Domain + tavaramerkki** kuntoon (yllä).
 2. **Sisäinen/koodi:** paketin/exe:n nimi, `_version.py`-metatiedot, GUI-otsikko,
-   README/AGENTS/CHANGELOG. Pipeline-koodi (`scan2bim`-paketti) voi säilyä
+   README/AGENTS/CHANGELOG. Pipeline-koodi (`ordinate`-paketti) voi säilyä
    sisäisenä nimenä tai vaihtua — päätettävä (iso mekaaninen muutos).
    - **Semanttinen suodatin / koulutettu malli uudelleennimettävä** (nyk.
      `s3dis_pointnet` on harhaanjohtava — ei S3DIS-dataa, ja "pointnet" sitoo
@@ -75,7 +75,7 @@ Järjestys, pienimmästä riskistä suurimpaan — **ei aloiteta ennen kuin nimi
      `SemanticFilter` → brändätty), sisäinen kommentti: pohjalla DGCNN/PointNet.
      Ei väitetä keksityksi arkkitehtuuriksi. Nimiehdotukset: Ordinate Filter/
      Clean, tai koodinimi (Sieve/seula).
-3. **Julkinen ilme:** nettisivu (scan2bim-web → uusi domain/otsikko/logo),
+3. **Julkinen ilme:** nettisivu (ordinate-web → uusi domain/otsikko/logo),
    release-repo, GitHub-organisaatio/repo-nimet.
 4. **Sisartuote:** päätä pysyykö dwg2ifc erillään vai tuleeko kattobrändi.
 

@@ -14,8 +14,8 @@ from pathlib import Path
 
 import numpy as np
 
-from scan2bim.core.geometry.floor_splitter import detect_floors_from_files
-from scan2bim.core.geometry.streaming import load_floor_slice
+from ordinate.core.geometry.floor_splitter import detect_floors_from_files
+from ordinate.core.geometry.streaming import load_floor_slice
 
 
 def main() -> None:

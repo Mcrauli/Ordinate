@@ -12,8 +12,8 @@ import numpy as np
 import open3d as o3d
 from shapely.geometry import Polygon
 
-from scan2bim.core.segmentation.slab_detector import detect_floor_contours
-from scan2bim.schemas.model import ElementSource, Wall
+from ordinate.core.segmentation.slab_detector import detect_floor_contours
+from ordinate.schemas.model import ElementSource, Wall
 
 cloud_path, out = Path(sys.argv[1]), Path(sys.argv[2])
 m = json.loads(sorted(out.glob("floor_*/model.json"))[0].read_text(encoding="utf-8"))

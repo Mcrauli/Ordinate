@@ -4,8 +4,8 @@ varaan → 2-4mm pintavirhe)."""
 import numpy as np
 import open3d as o3d
 
-from scan2bim.core.pipeline import _thickness_lock_walls
-from scan2bim.schemas.model import ElementSource, Wall
+from ordinate.core.pipeline import _thickness_lock_walls
+from ordinate.schemas.model import ElementSource, Wall
 
 _RNG = np.random.RandomState(3)
 
@@ -138,7 +138,7 @@ def test_junk_band_wall_flagged_low_confidence():
     """Rohbau wall_ext_000: perimetriseinan kaistassa vain tasaista massoa
     (rakennustelineet/tavara), ei pintaa → mediaanilinjaus on fiktiota.
     Confidence puolitettava jotta QA nostaa seinan tarkistettavaksi."""
-    from scan2bim.core.pipeline import _align_faces_to_surface_median
+    from ordinate.core.pipeline import _align_faces_to_surface_median
 
     w = _wall(x_axis=0.0, th=66.0).model_copy(update={"confidence": 0.5})
     n = 20000
@@ -154,7 +154,7 @@ def test_junk_band_wall_flagged_low_confidence():
 
 
 def test_clean_surface_confidence_unchanged():
-    from scan2bim.core.pipeline import _align_faces_to_surface_median
+    from ordinate.core.pipeline import _align_faces_to_surface_median
 
     w = _wall(x_axis=75.0 + 3.0, th=150.0)
     cloud = _cloud_one_face(0.0)
@@ -214,7 +214,7 @@ def test_one_sided_wall_corrected_beyond_25mm_cap():
     _align_faces_to_surface_median MITTASI virheen oikein mutta 25 mm cap esti
     korjauksen. Cap oletti etta akseli on jo ~oikein - se pitaa kaksipuoliselle
     (pinnat kiinnittavat sen), ei yksipuoliselle."""
-    from scan2bim.core.pipeline import _align_faces_to_surface_median
+    from ordinate.core.pipeline import _align_faces_to_surface_median
 
     th = 92.0
     w = _wall(x_axis=-57.0, th=th)          # ainoa pinta x=0, mallipinta x=-11
@@ -227,7 +227,7 @@ def test_one_sided_wall_corrected_beyond_25mm_cap():
 def test_two_sided_wall_keeps_the_25mm_cap():
     """Kaksipuolisella seinalla iso siirto tarkoittaa VAARAA pintaa - cappia ei
     saa loysata silla akselin kiinnittaa kaksi pintaa."""
-    from scan2bim.core.pipeline import _align_faces_to_surface_median
+    from ordinate.core.pipeline import _align_faces_to_surface_median
 
     th = 200.0
     w = _wall(x_axis=th / 2.0 + 60.0, th=th)   # akseli 60 mm pielessa

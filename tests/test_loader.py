@@ -6,7 +6,7 @@ import numpy as np
 import open3d as o3d
 import pytest
 
-from scan2bim.core.geometry.loader import load_point_cloud
+from ordinate.core.geometry.loader import load_point_cloud
 
 
 def _make_pts_file(tmp_path: Path, n: int = 100) -> Path:
@@ -71,7 +71,7 @@ def _write_binary_ply(path: Path, xyz: np.ndarray) -> None:
 
 def test_read_ply_xyz_band_matches_full(tmp_path):
     """Lohkoluku antaa saman Z-kaistan kuin koko tiedoston luku + suodatus."""
-    from scan2bim.core.geometry.loader import read_ply_xyz_band
+    from ordinate.core.geometry.loader import read_ply_xyz_band
     rng = np.random.default_rng(3)
     xyz = rng.uniform(0, 10000, (50000, 3))
     p = tmp_path / "b.ply"
@@ -92,7 +92,7 @@ def test_read_ply_xyz_band_matches_full(tmp_path):
 
 def test_read_ply_xyz_band_max_points(tmp_path):
     """max_points ohentaa kaistan kattoon satunnaisesti muttei siirrä jakaumaa."""
-    from scan2bim.core.geometry.loader import read_ply_xyz_band
+    from ordinate.core.geometry.loader import read_ply_xyz_band
     rng = np.random.default_rng(7)
     xyz = rng.uniform(0, 10000, (60000, 3))
     p = tmp_path / "m.ply"
@@ -109,7 +109,7 @@ def test_read_ply_xyz_band_max_points(tmp_path):
 
 def test_read_ply_xyz_band_truncated(tmp_path):
     """Katkennut PLY: lohkoluku lukee roskattoman osan eikä kaadu."""
-    from scan2bim.core.geometry.loader import read_ply_xyz_band
+    from ordinate.core.geometry.loader import read_ply_xyz_band
     rng = np.random.default_rng(4)
     xyz = rng.uniform(0, 10000, (40000, 3))
     full = tmp_path / "f.ply"
@@ -123,7 +123,7 @@ def test_read_ply_xyz_band_truncated(tmp_path):
 
 
 def test_ply_z_range_and_z(tmp_path):
-    from scan2bim.core.geometry.loader import ply_z_range, read_ply_z
+    from ordinate.core.geometry.loader import ply_z_range, read_ply_z
     rng = np.random.default_rng(5)
     xyz = rng.uniform(-2000, 8000, (30000, 3))
     p = tmp_path / "z.ply"
@@ -138,7 +138,7 @@ def test_ply_z_range_and_z(tmp_path):
 
 def test_ply_autoscale_factor_metres(tmp_path):
     """Metreissä oleva pilvi (laajuus < 200) → kerroin 1000."""
-    from scan2bim.core.geometry.loader import ply_autoscale_factor
+    from ordinate.core.geometry.loader import ply_autoscale_factor
     rng = np.random.default_rng(6)
     xyz_m = rng.uniform(0, 30, (5000, 3))   # metrit
     pm = tmp_path / "m.ply"
@@ -193,7 +193,7 @@ def test_truncated_ply_warns_or_raises(tmp_path, caplog):
     import logging
     import numpy as np
     import open3d as o3d
-    from scan2bim.core.geometry.loader import load_point_cloud
+    from ordinate.core.geometry.loader import load_point_cloud
 
     pts = np.random.RandomState(0).uniform(0, 5000, (10000, 3))
     pc = o3d.geometry.PointCloud()
@@ -230,7 +230,7 @@ def test_long_building_in_metres_is_still_scaled(tmp_path):
     tämän skaalaamatta — putki näkisi 250 mm rakennuksen eikä valittaisi.
     Pisteväli (0.1) erottaa yksiköt koosta riippumatta.
     """
-    from scan2bim.core.geometry.loader import metre_scale, ply_autoscale_factor
+    from ordinate.core.geometry.loader import metre_scale, ply_autoscale_factor
     xyz = _floor_grid(250.0, 3.0, 0.1)
     assert np.ptp(xyz, axis=0).max() > 200.0
     assert metre_scale(xyz) == 1000.0
@@ -241,13 +241,13 @@ def test_long_building_in_metres_is_still_scaled(tmp_path):
 
 def test_large_building_in_millimetres_is_not_scaled(tmp_path):
     """Sama halli millimetreinä pysyy millimetreinä — pisteväli 100 mm."""
-    from scan2bim.core.geometry.loader import metre_scale
+    from ordinate.core.geometry.loader import metre_scale
     assert metre_scale(_floor_grid(250_000.0, 3000.0, 100.0)) == 1.0
 
 
 def test_duplicate_points_do_not_force_metres():
     """Kaksoiskappaleiden nollaetäisyys vetäisi mediaanin nollaan ja väittäisi
     jokaista pilveä metreiksi."""
-    from scan2bim.core.geometry.loader import metre_scale
+    from ordinate.core.geometry.loader import metre_scale
     xyz = np.repeat(_floor_grid(250_000.0, 3000.0, 100.0), 3, axis=0)
     assert metre_scale(xyz) == 1.0

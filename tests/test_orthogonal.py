@@ -2,8 +2,8 @@
 vahva (kaksi siistia pintaa, yhteneva kulma); sotkuinen kaista ei kierra yli 2.5°."""
 import numpy as np
 
-from scan2bim.core.semantics.orthogonal import fine_rotate_walls
-from scan2bim.schemas.model import ElementSource, Wall
+from ordinate.core.semantics.orthogonal import fine_rotate_walls
+from ordinate.schemas.model import ElementSource, Wall
 
 _RNG = np.random.RandomState(7)
 

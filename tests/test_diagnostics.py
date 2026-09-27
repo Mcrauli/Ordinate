@@ -1,5 +1,5 @@
 """Diagnostiikan on kerrottava MIKSI ajo kaatui, ei vain missä vaiheessa."""
-from scan2bim.core.qa.diagnostics import DiagnosticsLog, _is_memory_error
+from ordinate.core.qa.diagnostics import DiagnosticsLog, _is_memory_error
 
 
 def test_memory_errors_are_recognised():

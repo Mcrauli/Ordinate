@@ -6,7 +6,7 @@ Mitattu koulun kellarilla: 31.7 GB USB-tikulta 95 MB/s, neljä lukukierrosta
 """
 from __future__ import annotations
 
-from scan2bim.core.pipeline import slow_input_warning
+from ordinate.core.pipeline import slow_input_warning
 
 
 def test_usb_stick_is_reported_with_the_wait_it_causes() -> None:

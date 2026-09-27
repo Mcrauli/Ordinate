@@ -8,8 +8,8 @@ ja vei lopputuloksen 0.366 → 0.203 (240 → 123 seinää), retail_l:n 37 → 1
 import numpy as np
 import pytest
 
-from scan2bim.core.qa.coverage import wall_coverage, wall_scores
-from scan2bim.schemas.model import ElementSource, Wall
+from ordinate.core.qa.coverage import wall_coverage, wall_scores
+from ordinate.schemas.model import ElementSource, Wall
 
 _H = 2700.0
 
@@ -97,7 +97,7 @@ def test_an_empty_model_scores_zero(scene):
 
 
 def test_detector_score_is_the_harmonic_mean():
-    from scan2bim.core.qa.coverage import detector_score
+    from ordinate.core.qa.coverage import detector_score
 
     assert detector_score(0.0, 0.0) == 0.0
     assert detector_score(1.0, 1.0) == 1.0

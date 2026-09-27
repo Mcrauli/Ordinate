@@ -8,9 +8,9 @@ pistetaulukon skannaus, muuten kyseessä ei ole nopeutus vaan muutos.
 import numpy as np
 import pytest
 
-from scan2bim.core.geometry.xy_index import XYIndex, clear_index_cache, index_for
-from scan2bim.core.semantics.orthogonal import fine_rotate_walls, refine_skew_walls
-from scan2bim.schemas.model import ElementSource, Wall
+from ordinate.core.geometry.xy_index import XYIndex, clear_index_cache, index_for
+from ordinate.core.semantics.orthogonal import fine_rotate_walls, refine_skew_walls
+from ordinate.schemas.model import ElementSource, Wall
 
 _H = 2700.0
 
@@ -135,7 +135,7 @@ def holed():
 
 
 def test_openings_are_bit_identical_with_an_index(holed):
-    from scan2bim.core.segmentation.opening_detector import _wall_openings
+    from ordinate.core.segmentation.opening_detector import _wall_openings
 
     w = _wall("seina", (0.0, 100.0), (14000.0, 100.0))
     walls = [w, _wall("pysty", (100.0, 0.0), (100.0, 9000.0))]
@@ -146,7 +146,7 @@ def test_openings_are_bit_identical_with_an_index(holed):
 
 
 def test_split_at_gaps_is_bit_identical_with_an_index(holed):
-    from scan2bim.core.semantics.split_gaps import split_walls_at_gaps
+    from ordinate.core.semantics.split_gaps import split_walls_at_gaps
 
     pts = np.vstack([holed, _face((20000.0, 0.0), (28000.0, 0.0))])
     walls = [_wall("pitka", (0.0, 100.0), (28000.0, 100.0))]
@@ -158,7 +158,7 @@ def test_split_at_gaps_is_bit_identical_with_an_index(holed):
 
 
 def test_overstretch_coverage_is_bit_identical_with_an_index(holed):
-    from scan2bim.core.semantics.overstretch import _coverage
+    from ordinate.core.semantics.overstretch import _coverage
 
     xy = holed[:, :2]
     w = _wall("seina", (0.0, 100.0), (14000.0, 100.0))
@@ -170,7 +170,7 @@ def test_overstretch_coverage_is_bit_identical_with_an_index(holed):
 
 def test_claimed_matches_the_plain_scan(holed):
     """Indeksoitu lunastus vs. suora koko taulukon skannaus."""
-    from scan2bim.core.semantics.residual_walls import (
+    from ordinate.core.semantics.residual_walls import (
         _CLAIM_BAND, _CLAIM_END, _claimed,
     )
 
@@ -207,7 +207,7 @@ def test_split_uses_the_whole_cloud_for_the_thin_band_rule(holed):
     seinän omat pisteet ovat z-kaistan ULKOPUOLELLA ja kaukana on möykky
     sen SISÄLLÄ → koko pilvi ylittää 50:n, kaista ei.
     """
-    from scan2bim.core.semantics.split_gaps import split_walls_at_gaps
+    from ordinate.core.semantics.split_gaps import split_walls_at_gaps
 
     def _low_face(a, b):
         pts = _face(a, b)
@@ -224,7 +224,7 @@ def test_split_uses_the_whole_cloud_for_the_thin_band_rule(holed):
                      _low_face((20000.0, 0.0), (28000.0, 0.0)),
                      _low_face((20000.0, 200.0), (28000.0, 200.0)),
                      far])
-    from scan2bim.core.semantics.split_gaps import _split_one
+    from ordinate.core.semantics.split_gaps import _split_one
 
     w = _wall("pitka", (0.0, 100.0), (28000.0, 100.0))
     index = XYIndex(pts, 20.0)
@@ -246,7 +246,7 @@ def test_openings_pick_the_face_from_the_whole_plane_strip():
     voittaa toinen pinta ja koko kaistalla toinen: jos rajaus tehtäisiin,
     aukot luettaisiin väärältä pinnalta.
     """
-    from scan2bim.core.segmentation.opening_detector import _FACE_TOL, _wall_openings
+    from ordinate.core.segmentation.opening_detector import _FACE_TOL, _wall_openings
 
     L = 14000.0
     near = _holed_face((0.0, 0.0), (L, 0.0))            # tiheä, reikä
@@ -294,7 +294,7 @@ def _lopsided_wall_cloud():
 
 def test_delivery_thickness_snap_is_bit_identical_with_an_index():
     """Akselin ankkurointi dominanttiin pintaan ei saa muuttua indeksoinnista."""
-    from scan2bim.core.pipeline import _snap_delivery_thickness, _xy_index
+    from ordinate.core.pipeline import _snap_delivery_thickness, _xy_index
 
     pts = _lopsided_wall_cloud()
     assert len(pts) > 300_000, len(pts)
@@ -331,7 +331,7 @@ def test_nn_spacing_is_unchanged_by_the_faster_tree():
     """Nopea puunrakennus ei muuta etäisyyksiä — vain rakennusaikaa."""
     from scipy.spatial import cKDTree
 
-    from scan2bim.core.geometry.loader import _nn_spacing
+    from ordinate.core.geometry.loader import _nn_spacing
 
     rng = np.random.default_rng(11)
     xyz = rng.normal(0.0, 5000.0, (200_000, 3))

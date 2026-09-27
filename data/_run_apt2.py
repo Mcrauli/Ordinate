@@ -6,8 +6,8 @@ import matplotlib; matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.patches import Polygon
 import open3d as o3d
-from scan2bim.core.pipeline import Pipeline, PipelineConfig
-from scan2bim.core.geometry.loader import load_point_cloud
+from ordinate.core.pipeline import Pipeline, PipelineConfig
+from ordinate.core.geometry.loader import load_point_cloud
 from _paths import DATA, DOWNLOADS, OUTPUT  # portable dev-tool paths
 
 SRC = Path(str(DOWNLOADS / "aligned_low_apartment/apt.ply"))

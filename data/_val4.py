@@ -5,7 +5,7 @@ from pathlib import Path
 import numpy as np
 from shapely.geometry import Polygon
 
-from scan2bim.core.pipeline import Pipeline, PipelineConfig
+from ordinate.core.pipeline import Pipeline, PipelineConfig
 from _paths import DATA, DOWNLOADS, OUTPUT  # portable dev-tool paths
 
 SETS = {

@@ -8,8 +8,8 @@ ja on GT:ssa omia Drywall-instanssejaan.
 import numpy as np
 import open3d as o3d
 
-from scan2bim.core.semantics.second_face import find_hidden_walls
-from scan2bim.schemas.model import ElementSource, Wall
+from ordinate.core.semantics.second_face import find_hidden_walls
+from ordinate.schemas.model import ElementSource, Wall
 
 _H = 3000.0
 _T = 200.0

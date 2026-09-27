@@ -19,7 +19,7 @@ from pathlib import Path
 import numpy as np
 import open3d as o3d
 
-from scan2bim.core.geometry.loader import load_point_cloud
+from ordinate.core.geometry.loader import load_point_cloud
 
 
 def classify_explained(P, model, tol=200.0):
@@ -183,7 +183,7 @@ def main():
         geoms.append(op)
     print(f"malli: {len(model['walls'])} seinaa, {len(model.get('openings', []))} aukkoa, "
           f"{len(model.get('columns', []))} pilaria, {len(model.get('beams', []))} palkkia")
-    o3d.visualization.draw_geometries(geoms, window_name="scan2bim navigointi", width=1600, height=1000)
+    o3d.visualization.draw_geometries(geoms, window_name="ordinate navigointi", width=1600, height=1000)
 
 
 if __name__ == "__main__":

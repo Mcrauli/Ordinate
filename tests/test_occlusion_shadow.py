@@ -5,8 +5,8 @@ Aito kalustevarjo: kaikki skannerit tukossa → hylätään.
 """
 import numpy as np
 
-from scan2bim.core.segmentation.opening_detector import _is_occlusion_shadow
-from scan2bim.schemas.model import ElementSource, Opening, Wall
+from ordinate.core.segmentation.opening_detector import _is_occlusion_shadow
+from ordinate.schemas.model import ElementSource, Opening, Wall
 
 _SRC = ElementSource(method="histogram")
 _OSRC = ElementSource(method="opening")

@@ -2,7 +2,7 @@
 import numpy as np
 import pytest
 
-from scan2bim.core.segmentation.pointnet_filter import PointNetFilter
+from ordinate.core.segmentation.pointnet_filter import PointNetFilter
 
 
 def _pts(n=5000):
@@ -11,12 +11,12 @@ def _pts(n=5000):
 
 
 def test_cache_is_off_without_the_env_var(monkeypatch):
-    monkeypatch.delenv("SCAN2BIM_SEM_CACHE_DIR", raising=False)
+    monkeypatch.delenv("ORDINATE_SEM_CACHE_DIR", raising=False)
     assert PointNetFilter._cache_path(_pts()) is None
 
 
 def test_second_call_reads_the_cache_instead_of_inferring(monkeypatch, tmp_path):
-    monkeypatch.setenv("SCAN2BIM_SEM_CACHE_DIR", str(tmp_path))
+    monkeypatch.setenv("ORDINATE_SEM_CACHE_DIR", str(tmp_path))
     f = PointNetFilter()
     pts = _pts()
     calls = []
@@ -37,6 +37,6 @@ def test_second_call_reads_the_cache_instead_of_inferring(monkeypatch, tmp_path)
 
 
 def test_a_different_cloud_does_not_hit_the_same_entry(monkeypatch, tmp_path):
-    monkeypatch.setenv("SCAN2BIM_SEM_CACHE_DIR", str(tmp_path))
+    monkeypatch.setenv("ORDINATE_SEM_CACHE_DIR", str(tmp_path))
     p1, p2 = _pts(), _pts() + 10.0
     assert PointNetFilter._cache_path(p1) != PointNetFilter._cache_path(p2)

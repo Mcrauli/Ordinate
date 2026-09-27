@@ -5,8 +5,8 @@ points of a CROSSING perpendicular wall (within the +-30mm face band at the
 intersection) -> 2%/98% percentiles collapsed a 4m wall to 79mm."""
 import numpy as np
 
-from scan2bim.core.pipeline import _trim_endpoints
-from scan2bim.schemas.model import ElementSource, Wall
+from ordinate.core.pipeline import _trim_endpoints
+from ordinate.schemas.model import ElementSource, Wall
 
 
 def _wall(x0, y0, x1, y1, method="floorplan"):

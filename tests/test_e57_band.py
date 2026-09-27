@@ -10,7 +10,7 @@ import pytest
 
 pye57 = pytest.importorskip("pye57")
 
-from scan2bim.core.geometry.loader import (  # noqa: E402
+from ordinate.core.geometry.loader import (  # noqa: E402
     _e57_is_chunkable, e57_band_chunks, e57_point_count, e57_z_range,
     read_e57_xyz_band, read_e57_z,
 )

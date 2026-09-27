@@ -7,8 +7,8 @@ from pathlib import Path
 import numpy as np
 from shapely.geometry import Polygon
 
-import scan2bim.core.segmentation.slab_detector as SD
-import scan2bim.core.semantics.perimeter as PM
+import ordinate.core.segmentation.slab_detector as SD
+import ordinate.core.semantics.perimeter as PM
 
 variant = sys.argv[1]
 if variant in ("nocut", "nocut_noadopt"):
@@ -16,7 +16,7 @@ if variant in ("nocut", "nocut_noadopt"):
 if variant in ("noadopt", "nocut_noadopt"):
     PM._adopt_measured_line = lambda *a, **k: None
 
-from scan2bim.core.pipeline import Pipeline, PipelineConfig  # noqa: E402
+from ordinate.core.pipeline import Pipeline, PipelineConfig  # noqa: E402
 from _paths import DOWNLOADS, OUTPUT  # portable dev-tool paths
 
 SETS = {

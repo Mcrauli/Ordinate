@@ -2,8 +2,8 @@
 import numpy as np
 import pytest
 
-from scan2bim.core.semantics.semantic_prune import prune_non_wall_surfaces
-from scan2bim.schemas.model import ElementSource, StructuralModel, Wall
+from ordinate.core.semantics.semantic_prune import prune_non_wall_surfaces
+from ordinate.schemas.model import ElementSource, StructuralModel, Wall
 
 _WALL, _CLUTTER = 2, 12
 

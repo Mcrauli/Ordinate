@@ -1,4 +1,4 @@
-# scan2bim
+# Ordinate
 
 Tämän projektin kehittäjä- ja agenttiohjeet ovat yhteisessä
 **[`AGENTS.md`](AGENTS.md)**-tiedostossa (sama ohje kaikille AI-agenteille

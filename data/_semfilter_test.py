@@ -5,8 +5,8 @@ import numpy as np
 import matplotlib; matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import open3d as o3d
-from scan2bim.core.geometry.loader import load_point_cloud
-from scan2bim.core.segmentation.semantic_filter import SemanticFilter
+from ordinate.core.geometry.loader import load_point_cloud
+from ordinate.core.segmentation.semantic_filter import SemanticFilter
 
 SRC = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(str(DOWNLOADS / "aligned_low_bedroom/bedroom.ply"))
 c = load_point_cloud(SRC)

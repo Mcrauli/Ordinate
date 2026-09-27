@@ -3,8 +3,8 @@ ole palkki (seinaeksluusio ennen klusterointia)."""
 import numpy as np
 import open3d as o3d
 
-from scan2bim.core.segmentation.beam_detector import detect_beams
-from scan2bim.schemas.model import ElementSource, Wall
+from ordinate.core.segmentation.beam_detector import detect_beams
+from ordinate.schemas.model import ElementSource, Wall
 
 _RNG = np.random.RandomState(11)
 

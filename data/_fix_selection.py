@@ -38,7 +38,7 @@ def patch(path, pairs):
 
 
 # --- 1. coverage.py: yksi laskenta, molemmat luvut ---------------------------
-patch("src/scan2bim/core/qa/coverage.py", [
+patch("src/ordinate/core/qa/coverage.py", [
     (
         'def wall_coverage(pts: np.ndarray, walls, floor_z: float, ceiling_z: float,\n'
         '                  voxel: float = _VOXEL) -> float:\n'
@@ -100,10 +100,10 @@ patch("src/scan2bim/core/qa/coverage.py", [
 ])
 
 # --- 2. pipeline.py: valinta F1:lla -----------------------------------------
-patch("src/scan2bim/core/pipeline.py", [
+patch("src/ordinate/core/pipeline.py", [
     (
-        "        from scan2bim.core.qa.coverage import wall_coverage  # noqa: PLC0415",
-        "        from scan2bim.core.qa.coverage import wall_scores  # noqa: PLC0415",
+        "        from ordinate.core.qa.coverage import wall_coverage  # noqa: PLC0415",
+        "        from ordinate.core.qa.coverage import wall_scores  # noqa: PLC0415",
     ),
     (
         "            if floor is None or ceiling is None:\n"

@@ -8,8 +8,8 @@ ovat pilvessa yhtenaisina pintoina - eivat sirontana.
 import numpy as np
 import open3d as o3d
 
-from scan2bim.core.semantics.residual_walls import find_residual_walls
-from scan2bim.schemas.model import ElementSource, Wall
+from ordinate.core.semantics.residual_walls import find_residual_walls
+from ordinate.schemas.model import ElementSource, Wall
 
 _H = 3000.0
 _RNG = np.random.RandomState(5)

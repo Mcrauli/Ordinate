@@ -1,0 +1,740 @@
+"""Oviaukkojen ja ikkunoiden detektio seinäpinnoilta.
+
+Algoritmi (sarakepohjainen):
+  1. Projisoidaan pisteet seinätasolle (along-wall × Z), rakennetaan 2D-miehitysruudukko.
+  2. Sarake on "seinäinen" jos sen alakaista (~150–1400 mm) on TÄYNNÄ riittävän
+     korkealta (osuus täysiä rivejä ≥ 0.45). Kalustepiste osuu vain ohueen
+     viipaleeseen eikä tee sarakkeesta seinäistä → oviaukot eivät pirstoudu.
+  3. Aukko = peräkkäisten EI-seinäisten sarakkeiden jakso seinän sisällä.
+     Ohuet (≤2 solua) yksittäiset solidijaksot aukon sisällä silloitetaan.
+  4. Sill ja korkeus aukon sisäsarakkeiden Z-profiilista (≥50 % sarakkeista
+     täynnä → oikea sokkeli/lintel; yksittäinen kaluste ei).
+  5. Reunaehto: seinämateriaalia molemmin puolin TAI seinän pää on ankkuroitu
+     toiseen seinään (nurkka/T-liitos → uskottava oviaukko nurkan vieressä).
+  6. Luokitellaan ovi/ikkuna sill-korkeuden mukaan.
+"""
+from __future__ import annotations
+
+import os
+
+import numpy as np
+
+from ordinate.schemas.model import ElementSource, Opening, Wall
+
+_DEBUG = os.environ.get("OPENING_DEBUG") == "1"
+
+
+def _dbg(wall, width, height, z_start, floor_z, reason: str) -> None:
+    if _DEBUG:
+        print(f"[op] {wall.id} L={_wlen(wall):.0f} cand w={width:.0f} h={height:.0f} "
+              f"sill={max(z_start - floor_z, 0.0):.0f} -> {reason}")
+
+
+def _wlen(wall) -> float:
+    p0 = np.asarray(wall.axis[0], float)
+    p1 = np.asarray(wall.axis[1], float)
+    return float(np.linalg.norm(p1 - p0))
+
+_FACE_TOL = 20.0          # mm — toleranssi seinän pintaa vasten
+_GRID_MM = 30.0           # mm/solu (pienempi → erottaa yksittäiset ikkunat)
+_NEIGHBOR_COLS = 3        # kuinka monta naapurisaraketta katsotaan reunaehtoon
+_MIN_PTS_BASELINE = 30    # min pisteitä per kolonni jotta seinä on "datallinen"
+_MIN_W = 500.0            # mm — kapein aukko (realistisin pienin ikkuna)
+_MAX_W = 3000.0          # mm — levein aukko: mitattu Rohbau3D:n GT:tä vasten,
+                          # runkovaiheen oviaukot ovat 2.5-3.0 m. Suhteellinen katto
+                          # (_MAX_FRACTION) hoitaa varsinaisen rajauksen
+_MAX_FRACTION = 0.50      # aukko ei voi olla yli 50 % seinänpituudesta
+_MIN_H = 600.0            # mm — matalin aukko
+_SILL_FOOT_GAP = 100.0    # mm — lattian rajan tyhjä kaista ei katkaise sokkelia
+_DOOR_SILL_MAX = 250.0    # mm — ovi alkaa lattiatasosta; korkeampi sokkeli = ikkuna
+                          # (matalasokkeliset ranskalaiset ikkunat ~300-500 eivät ole ovia)
+_DOOR_MAX_W = 1800.0      # mm — ovi max leveys (pari-/liukuovi ~1600-1800; leveämpi
+                          # lattiatason aukko = lasiseinä/ikkuna)
+
+
+def detect_openings(
+    walls: list[Wall], cloud, floor_z: float,
+    scanner_origins: list | None = None, refine_cloud=None,
+) -> list[Opening]:
+    """`refine_cloud`: raakapilvi reunojen tarkennukseen.
+
+    Ruudukko rakennetaan työpilvestä (25 mm voxel), mutta 5 mm:n reunan-
+    tarkennus kvantisoidulla datalla on mahdoton. Mitattu keilatulla
+    myymälällä: ruudukko antoi ikkunan ylälaidaksi 2991 mm (totuus 3000) ja
+    tarkennus työpilvestä siirsi sen 3127:ään; raakapilvestä sama tarkennus
+    antaa 2992.
+    """
+    pts = np.asarray(cloud.points)
+    index = None
+    from ordinate.core.geometry.xy_index import index_for  # noqa: PLC0415
+    if len(pts) >= 300_000 and len(walls) >= 3:
+        index = index_for(cloud, pts)
+    ref_pts = ref_index = None
+    if refine_cloud is not None and len(refine_cloud.points):
+        ref_pts = np.asarray(refine_cloud.points)
+        if len(ref_pts) >= 300_000:
+            ref_index = index_for(refine_cloud, ref_pts)
+    origins = [np.asarray(o, dtype=float) for o in (scanner_origins or [])]
+    openings: list[Opening] = []
+    counter = 0
+    for wall in walls:
+        new = _wall_openings(wall, pts, floor_z, counter, walls, index, ref_pts, ref_index)
+        if origins:
+            new = [op for op in new
+                   if not _is_occlusion_shadow(op, wall, pts, origins, floor_z, index)]
+        openings.extend(new)
+        counter += len(new)
+    return openings
+
+
+_GAP_ANGLE_DEG = 5.0
+_GAP_PERP = 300.0
+_GAP_OVERLAP = 300.0
+_GAP_SLACK = 150.0
+_GAP_LINTEL = 200.0
+_GAP_DOOR_MIN_W = 700.0
+
+
+def _extended(wall, at_end: bool, amount: float):
+    p0 = np.array(wall.axis[0], float)
+    p1 = np.array(wall.axis[1], float)
+    u = (p1 - p0) / float(np.linalg.norm(p1 - p0))
+    if at_end:
+        p1 = p1 + u * amount
+    else:
+        p0 = p0 - u * amount
+    return wall.model_copy(update={"axis": [[round(float(p0[0]), 1), round(float(p0[1]), 1)],
+                                            [round(float(p1[0]), 1), round(float(p1[1]), 1)]]})
+
+
+def _wall_gaps(walls):
+    out = []
+    for a in walls:
+        if len(a.axis) < 2:
+            continue
+        a0 = np.array(a.axis[0], float)
+        a1 = np.array(a.axis[1], float)
+        la = float(np.linalg.norm(a1 - a0))
+        if la < 1.0:
+            continue
+        u = (a1 - a0) / la
+        n = np.array([-u[1], u[0]])
+        for b in walls:
+            if b.id == a.id or len(b.axis) < 2:
+                continue
+            b0 = np.array(b.axis[0], float)
+            b1 = np.array(b.axis[1], float)
+            lb = float(np.linalg.norm(b1 - b0))
+            if lb < 1.0 or lb > la:
+                continue
+            if abs(float(u @ ((b1 - b0) / lb))) < np.cos(np.radians(_GAP_ANGLE_DEG)):
+                continue
+            tb0, tb1 = float((b0 - a0) @ u), float((b1 - a0) @ u)
+            for at_end in (True, False):
+                if at_end:
+                    near, g = (b0, tb0) if tb0 < tb1 else (b1, tb1)
+                    g -= la
+                else:
+                    near, g = (b0, tb0) if tb0 > tb1 else (b1, tb1)
+                    g = -g
+                if 0.0 <= g <= _MAX_W and abs(float((near - a0) @ n)) <= _GAP_PERP:
+                    out.append((a.id, at_end, g))
+    return out
+
+
+def openings_in_wall_gaps(walls, cloud, floor_z, existing, scanner_origins=None, refine_cloud=None):
+    pts = np.asarray(cloud.points)
+    index = None
+    from ordinate.core.geometry.xy_index import index_for  # noqa: PLC0415
+    if len(pts) >= 300_000 and len(walls) >= 3:
+        index = index_for(cloud, pts)
+    ref_pts = ref_index = None
+    if refine_cloud is not None and len(refine_cloud.points):
+        ref_pts = np.asarray(refine_cloud.points)
+        if len(ref_pts) >= 300_000:
+            ref_index = index_for(refine_cloud, ref_pts)
+    origins = [np.asarray(o, dtype=float) for o in (scanner_origins or [])]
+
+    walls = list(walls)
+    pos = {w.id: i for i, w in enumerate(walls)}
+    ops = list(existing)
+    done = set()
+    for wid, at_end, g in _wall_gaps(walls):
+        if (wid, at_end) in done:
+            continue
+        cur = walls[pos[wid]]
+        la = float(np.linalg.norm(np.array(cur.axis[1], float) - np.array(cur.axis[0], float)))
+        probe = _extended(cur, at_end, g + _GAP_OVERLAP)
+        found = _wall_openings(probe, pts, floor_z, len(ops), walls, index, ref_pts, ref_index)
+        start = 0.0 if at_end else g + _GAP_OVERLAP
+        top = cur.z_min + cur.height - _GAP_LINTEL
+        hits = []
+        for o in found:
+            a0, a1 = o.position_along, o.position_along + o.width
+            if at_end:
+                inside = a1 >= la - 100.0 and a1 <= la + g + _GAP_SLACK
+            else:
+                inside = a0 <= start + 100.0 and a0 >= _GAP_OVERLAP - _GAP_SLACK
+            if (inside and o.opening_type == "door" and o.width >= _GAP_DOOR_MIN_W
+                    and floor_z + o.sill_height + o.opening_height <= top
+                    and not (origins and _is_occlusion_shadow(o, probe, pts, origins, floor_z, index))):
+                hits.append(o)
+        if not hits:
+            continue
+        done.add((wid, at_end))
+        walls[pos[wid]] = _extended(cur, at_end, g)
+        if not at_end:
+            ops = [o.model_copy(update={"position_along": round(o.position_along + g, 1)})
+                   if o.wall_id == wid else o for o in ops]
+        for o in hits:
+            ops.append(o.model_copy(update={
+                "id": f"opening_{len(ops):03d}",
+                "position_along": round(o.position_along - (start - g if not at_end else 0.0), 1)}))
+    return walls, ops
+
+
+def _wall_end_anchors(wall: Wall, walls: list[Wall]) -> tuple[bool, bool]:
+    """Onko seinän alku-/loppupäässä toinen seinä (nurkka/T-liitos)?
+    Jos on, päässä oleva aukko on uskottava (oviaukko nurkan vieressä)."""
+    if len(wall.axis) < 2:
+        return False, False
+    p0 = np.array(wall.axis[0], float)
+    p1 = np.array(wall.axis[1], float)
+    _REACH = 500.0  # mm — kuinka lähellä toisen seinän on oltava
+    start_anchor = False
+    end_anchor = False
+    for other in walls:
+        if other.id == wall.id or len(other.axis) < 2:
+            continue
+        for q in (np.array(other.axis[0], float), np.array(other.axis[1], float)):
+            if np.linalg.norm(q - p0) < _REACH:
+                start_anchor = True
+            if np.linalg.norm(q - p1) < _REACH:
+                end_anchor = True
+    return start_anchor, end_anchor
+
+
+def _is_occlusion_shadow(
+    opening: Opening, wall: Wall, pts: np.ndarray,
+    origins: list[np.ndarray], floor_z: float, index=None,
+) -> bool:
+    """True jos aukko on kalusteen okkluusiovarjo: skannerin ja seinän välissä on
+    pistejoukko joka projisoituu juuri aukon alueelle. Oikea aukko → näkölinja vapaa."""
+    counts = _occlusion_counts(opening, wall, pts, origins, floor_z, index, stop_below=True)
+    if counts is None or not counts[0]:
+        return False
+    # kaikkien informatiivisten skannerien näkymä on tukossa → aito varjo
+    return min(counts[0]) >= counts[1]
+
+
+def _occlusion_counts(
+    opening: Opening, wall: Wall, pts: np.ndarray,
+    origins: list[np.ndarray], floor_z: float, index=None, stop_below: bool = False,
+):
+    """(osumat per informatiivinen skanneri, kynnys) tai None.
+
+    `index` annettuna laskenta tehdään vain aseman ja aukon välisen kolmion
+    pisteille. Rajaus on TARKKA eikä arvio: jos säde S→P osuu seinätasolla
+    aukkoon ja P on aseman ja seinän välissä (f > 1), P on janalla S→osuma, eli
+    XY:ssä kolmion (S, aukon pää 0, aukon pää 1) sisällä. Kolmion ulkopuolinen
+    piste ei voi koskaan tuottaa osumaa. Mitattu kellarilla: 11 s per ehdokas
+    koko pilven yli, 37 asemaa × 25 M pistettä.
+    """
+    if len(wall.axis) < 2:
+        return None
+    p0 = np.array(wall.axis[0], dtype=float)
+    p1 = np.array(wall.axis[1], dtype=float)
+    d = p1 - p0
+    length = float(np.linalg.norm(d))
+    if length < 1.0:
+        return None
+    along = d / length
+    normal = np.array([-along[1], along[0]])
+    plane_D = float(np.dot(normal, p0))
+
+    a0 = opening.position_along
+    a1 = a0 + opening.width
+    z0 = floor_z + opening.sill_height
+    z1 = z0 + opening.opening_height
+    patch_area = max(opening.width * opening.opening_height, 1.0)
+    occ_thr = max(int(patch_area / (40.0 * 40.0) * 0.25), 80)  # ~25 % katepeitto
+
+    # Aukon keskipiste (2D) näkökulmakulman arviointiin
+    center2d = p0 + along * (0.5 * (a0 + a1))
+    e0 = p0 + along * a0
+    e1 = p0 + along * a1
+
+    pN_all = None if index is not None else pts[:, :2] @ normal
+    # Kerää OKKLUUSIO-osumat per skanneri. Aito aukko on JOKIN skanneri näkee
+    # sen läpi (matala osumaluku); aito varjo on kaikilta korkea. → hylkää vain
+    # jos VÄHITEN peittynytkin (min) ylittää kynnyksen. Sivuttain (grazing)
+    # aukkoa katsova skanneri antaa keinotekoisen matalan luvun → ohitetaan.
+    counts: list[int] = []
+    for S in origins:
+        sN = float(S[:2] @ normal)
+        wall_gap = plane_D - sN           # etäisyys skannerista seinätasolle (normaalin suunnassa)
+        if abs(wall_gap) < 100.0:
+            continue
+        # näkökulmakulma seinän normaaliin nähden — grazing (>75°) ei ole informatiivinen
+        view = center2d - S[:2]
+        vlen = float(np.linalg.norm(view))
+        if vlen < 1.0:
+            continue
+        cos_inc = abs(float(view @ normal)) / vlen
+        if cos_inc < 0.26:
+            continue
+        # Varhainen lopetus ei muuta päätöstä: varjo vaatii että VÄHITEN
+        # peittynytkin asema ylittää kynnyksen, joten yksi näkyvä asema riittää.
+        if stop_below and counts and counts[-1] < occ_thr:
+            break
+        if index is None:
+            P, pN = pts, pN_all
+        else:
+            from ordinate.core.geometry.xy_index import in_box  # noqa: PLC0415
+            xs = (S[0], e0[0], e1[0]); ys = (S[1], e0[1], e1[1])
+            sub = in_box(index, min(xs) - 1.0, min(ys) - 1.0, max(xs) + 1.0, max(ys) + 1.0)
+            if not len(sub):
+                counts.append(0)
+                continue
+            P = pts[sub]
+            pN = P[:, :2] @ normal
+        denom = pN - sN
+        with np.errstate(divide="ignore", invalid="ignore"):
+            f = wall_gap / denom          # skaala jolla säde S→P osuu seinätasolle
+        # P on skannerin ja seinän VÄLISSÄ (f>1) ja selvästi seinän edessä
+        front = np.isfinite(f) & (f > 1.05) & (np.abs(denom) < abs(wall_gap) - 50.0) & (np.sign(denom) == np.sign(wall_gap))
+        if not front.any():
+            counts.append(0)
+            continue
+        Pf = P[front]
+        ff = f[front][:, None]
+        hit = S[None, :] + ff * (Pf - S[None, :])      # osumapiste seinätasolla
+        hit_along = (hit[:, :2] - p0) @ along
+        inside = (hit_along >= a0) & (hit_along <= a1) & (hit[:, 2] >= z0) & (hit[:, 2] <= z1)
+        counts.append(int(inside.sum()))
+    return counts, occ_thr
+
+
+def _wall_openings(
+    wall: Wall, pts: np.ndarray, floor_z: float, start_idx: int,
+    all_walls: list[Wall], index=None, ref_pts: np.ndarray | None = None, ref_index=None,
+) -> list[Opening]:
+    if len(wall.axis) < 2:
+        return []
+
+    p0 = np.array(wall.axis[0], dtype=float)
+    p1 = np.array(wall.axis[1], dtype=float)
+    d = p1 - p0
+    length = float(np.linalg.norm(d))
+    if length < 1.0:
+        return []
+
+    along = d / length
+    normal = np.array([-along[1], along[0]])
+    plane_D = float(np.dot(normal, p0))
+
+    if index is not None:
+        # Säde kattaa MOLEMMAT pinnat (±th/2 ± _FACE_TOL) ja keskilinjan.
+        # Akselin suuntaista rajausta EI saa tehdä: pinnanvalinta (pos/neg)
+        # lasketaan koko tasokaistalta, ja rajaus muuttaisi sen laskennan.
+        from ordinate.core.geometry.xy_index import subset  # noqa: PLC0415
+        pts, _ = subset(pts, index, p0, along, normal,
+                        wall.thickness / 2.0 + _FACE_TOL)
+
+    signed_dist = pts[:, :2] @ normal - plane_D   # negatiivinen tai positiivinen
+    dist_to_plane = np.abs(signed_dist)
+    proj_along = (pts[:, :2] - p0) @ along
+    z_lo = wall.z_min - 100.0
+    z_hi = wall.z_min + wall.height + 100.0
+
+    # Käytetään vain YHTÄ seinäpintaa (sisäpinta = se jolla on enemmän pisteitä).
+    # Kahden pinnan käyttö täyttää aukot ulkopuolelta läpi näkyvillä pisteillä
+    # (esim. ulkoseinässä ikkunan läpi näkyy ulkopinta) → ikkunat katoavat.
+    half_t = wall.thickness / 2.0
+    pos_face_count = int((np.abs(signed_dist - half_t) < _FACE_TOL).sum())
+    neg_face_count = int((np.abs(signed_dist + half_t) < _FACE_TOL).sum())
+    if pos_face_count >= neg_face_count:
+        near_face = np.abs(signed_dist - half_t) < _FACE_TOL
+    else:
+        near_face = np.abs(signed_dist + half_t) < _FACE_TOL
+    near_center = dist_to_plane < _FACE_TOL
+    on_wall_plane = near_face | near_center
+
+    mask = (
+        on_wall_plane
+        & (proj_along >= -100.0)
+        & (proj_along <= length + 100.0)
+        & (pts[:, 2] >= z_lo)
+        & (pts[:, 2] <= z_hi)
+    )
+    if mask.sum() < 50:
+        return []
+
+    proj = proj_along[mask]
+    zvals = pts[mask, 2]
+
+    # Tarkennuksen pisteet raakapilvestä, SAMALTA pinnalta jonka ruudukko valitsi.
+    ref_proj, ref_z = proj, zvals
+    if ref_pts is not None:
+        rp = ref_pts
+        if ref_index is not None:
+            from ordinate.core.geometry.xy_index import subset  # noqa: PLC0415
+            rp, _ = subset(ref_pts, ref_index, p0, along, normal, half_t + _FACE_TOL)
+        rs = rp[:, :2] @ normal - plane_D
+        r_face = (np.abs(rs - half_t) < _FACE_TOL if pos_face_count >= neg_face_count
+                  else np.abs(rs + half_t) < _FACE_TOL)
+        r_along = (rp[:, :2] - p0) @ along
+        rm = ((r_face | (np.abs(rs) < _FACE_TOL))
+              & (r_along >= -100.0) & (r_along <= length + 100.0)
+              & (rp[:, 2] >= z_lo) & (rp[:, 2] <= z_hi))
+        if int(rm.sum()) >= 50:
+            ref_proj, ref_z = r_along[rm], rp[rm, 2]
+
+    n_x = max(int(length / _GRID_MM) + 1, 2)
+    n_z = max(int(wall.height / _GRID_MM) + 1, 2)
+
+    grid, xe, ze = np.histogram2d(
+        proj, zvals,
+        bins=[n_x, n_z],
+        range=[[0.0, length], [wall.z_min, wall.z_min + wall.height]],
+    )
+    # Tiheystasoitus: yksittäinen harva rasteri ei jätä valeaukkoja soluvälistä
+    from scipy.ndimage import uniform_filter
+    dens = uniform_filter(grid.astype(float), size=2)
+    occ_cells = dens[dens > 0]
+    if len(occ_cells) < 10:
+        return []
+    cell_base = float(np.median(occ_cells))
+    occ = dens > 0.25 * cell_base  # bool (n_x, n_z)
+
+    col_pts = grid.sum(axis=1)
+    pos_cols = col_pts[col_pts > 0]
+    if len(pos_cols) < 5:
+        return []
+    baseline = float(np.median(pos_cols))
+    if baseline < _MIN_PTS_BASELINE:
+        if _DEBUG:
+            print(f"[op] {wall.id} L={length:.0f} REJECT baseline={baseline:.1f} < {_MIN_PTS_BASELINE}")
+        return []
+
+    start_anchor, end_anchor = _wall_end_anchors(wall, all_walls)
+    if _DEBUG:
+        print(f"[op] {wall.id} L={length:.0f} baseline={baseline:.0f} "
+              f"maskpts={int(mask.sum())} anchors={start_anchor},{end_anchor}")
+
+    found = _find_openings(
+        occ, col_pts, xe, ze, n_x, n_z,
+        length, wall, floor_z, start_idx, start_anchor, end_anchor,
+    )
+    # Reunatarkennus raakapisteistä: 30mm-gridi kvantisoi aukon reunat ±15mm +
+    # siltaukset. Step-sovitus (tyhjä aukko vs täysi seinäpinta) vie reunat ja
+    # sillin/ylityksen mm-tasolle.
+    return [_refine_opening_edges(op, ref_proj, ref_z, floor_z, wall) for op in found]
+
+
+_RE_WIN = 150.0    # mm — hakuikkuna gridireunasta molempiin suuntiin
+_RE_BIN = 5.0      # mm — step-sovituksen resoluutio
+_RE_MARGIN = 60.0  # mm — z/along-marginaali profiilipisteitä valittaessa
+
+
+def _step_edge(vals: np.ndarray, e0: float, sign: float) -> float | None:
+    """Reunan paikka: maksimoi tiheyskontrasti (tyhjä aukon puoli vs täysi seinä).
+
+    sign=+1: seinä reunan oikealla (aukko vasemmalla); sign=-1: peilikuva."""
+    sel = vals[(vals >= e0 - _RE_WIN) & (vals <= e0 + _RE_WIN)]
+    if len(sel) < 30:
+        return None
+    edges = np.arange(e0 - _RE_WIN, e0 + _RE_WIN + _RE_BIN, _RE_BIN)
+    hist, edges = np.histogram(sel, bins=edges)
+    c = np.cumsum(hist)
+    total = float(c[-1])
+    n = len(hist)
+    best, best_k = -1.0, None
+    for k in range(2, n - 2):
+        left = float(c[k]) / (k + 1)              # keskitiheys reunan vasemmalla
+        right = (total - float(c[k])) / (n - k - 1)
+        contrast = (right - left) * sign
+        if contrast > best:
+            best, best_k = contrast, k
+    if best_k is None or best <= 0:
+        return None
+    return float(edges[best_k + 1])
+
+
+def _refine_opening_edges(op: Opening, proj: np.ndarray, zvals: np.ndarray,
+                          floor_z: float, wall: Wall) -> Opening:
+    a0 = op.position_along
+    a1 = a0 + op.width
+    z0 = floor_z + op.sill_height
+    z1 = z0 + op.opening_height
+
+    # Reunat: pisteet aukon z-alueelta (marginaalilla) → along-step
+    zm = (zvals >= z0 + _RE_MARGIN) & (zvals <= z1 - _RE_MARGIN)
+    new_a0 = _step_edge(proj[zm], a0, -1.0) if zm.sum() >= 30 else None
+    new_a1 = _step_edge(proj[zm], a1, +1.0) if zm.sum() >= 30 else None
+    r0 = new_a0 if new_a0 is not None else a0
+    r1 = new_a1 if new_a1 is not None else a1
+    if r1 - r0 < _MIN_W * 0.8:
+        r0, r1 = a0, a1
+
+    # Silli ja ylitys: pisteet aukon along-alueelta → z-step
+    am = (proj >= r0 + _RE_MARGIN) & (proj <= r1 - _RE_MARGIN)
+    new_z0 = _step_edge(zvals[am], z0, -1.0) if am.sum() >= 30 else None
+    new_z1 = _step_edge(zvals[am], z1, +1.0) if am.sum() >= 30 else None
+    rz0 = new_z0 if new_z0 is not None and op.sill_height > 50.0 else z0
+    rz1 = new_z1 if new_z1 is not None else z1
+    if rz1 - rz0 < _MIN_H * 0.8:
+        rz0, rz1 = z0, z1
+
+    return op.model_copy(update={
+        "position_along": round(r0, 1),
+        "width": round(r1 - r0, 1),
+        "sill_height": round(max(rz0 - floor_z, 0.0), 1),
+        "opening_height": round(min(rz1 - rz0, wall.height), 1),
+    })
+
+
+def _runs(mask: np.ndarray) -> list[tuple[int, int]]:
+    """Palauta True-jaksot (alku, loppu_inclusive) boolean-vektorista."""
+    out: list[tuple[int, int]] = []
+    i = 0
+    n = len(mask)
+    while i < n:
+        if mask[i]:
+            j = i
+            while j + 1 < n and mask[j + 1]:
+                j += 1
+            out.append((i, j))
+            i = j + 1
+        else:
+            i += 1
+    return out
+
+
+def _find_openings(
+    occ: np.ndarray,
+    col_pts: np.ndarray,
+    xe: np.ndarray,
+    ze: np.ndarray,
+    n_x: int,
+    n_z: int,
+    length: float,
+    wall: Wall,
+    floor_z: float,
+    start_idx: int,
+    start_anchor: bool,
+    end_anchor: bool,
+) -> list[Opening]:
+    """Sarakepohjainen aukkohaku.
+
+    Aukko = pystysuora kaista sarakkeita joissa seinämassa puuttuu LATTIAKAISTALTA
+    (oviaukot ja ikkunat näkyvät pistepilvessä lattiasta-ylös -rakoina; lintel jää
+    usein skannaamatta → rako ulottuu kattoon). Sill/korkeus mitataan sarakkeen
+    Z-profiilista. Reunaehto: seinämateriaalia molemmin puolin TAI seinän pää on
+    ankkuroitu toiseen seinään (nurkka/T-liitos → oviaukko nurkassa).
+    """
+    z0 = float(ze[0])
+
+    # Rivivälit Z-arvoina
+    z_centers = 0.5 * (ze[:-1] + ze[1:])
+
+    # Alakaista ~150–1400 mm lattiasta. Solidi seinä täyttää kaistan koko
+    # korkeudelta; kaluste/clutter osuu vain ohueen viipaleeseen. Siksi vaadi
+    # että RIITTÄVÄ OSUUS kaistan riveistä on täynnä — yksittäinen kalustepiste
+    # ei tee sarakkeesta "seinäistä" (muuten oviaukot pirstoutuvat).
+    floor_band_lo = z0 + 150.0
+    floor_band_hi = z0 + 1400.0
+    fb_rows = np.where((z_centers >= floor_band_lo) & (z_centers <= floor_band_hi))[0]
+    if len(fb_rows) < 2:
+        return []
+
+    fb_frac = occ[:, fb_rows].mean(axis=1)   # osuus täysiä rivejä per sarake
+    col_floor_solid = fb_frac >= 0.45
+    # Sarakkeessa on lainkaan dataa (erottaa skannaamattoman seinän aukosta)
+    col_has_data = col_pts > 0
+
+    # Seinän todellinen X-laajuus = lattialla solidien sarakkeiden väli
+    solid_idx = np.flatnonzero(col_floor_solid)
+    if len(solid_idx) < 2:
+        return []
+    x_lo, x_hi = int(solid_idx.min()), int(solid_idx.max())
+
+    # Aukkosarake = seinän sisällä, ei lattiasolidia
+    gap_col = ~col_floor_solid
+    gap_col[:x_lo] = False
+    gap_col[x_hi + 1:] = False
+    # Silloita ohuet yksittäiset solidisarakkeet (kaluste/karmin reuna aukon sisällä):
+    # ≤2 solua leveä solidijakso aukon sisällä → osa samaa aukkoa.
+    for (s, e) in _runs(col_floor_solid & (np.arange(n_x) > x_lo) & (np.arange(n_x) < x_hi)):
+        if e - s + 1 <= 2:
+            gap_col[s:e + 1] = True
+
+    # Seinän tyypillinen yläreuna (lintel-taso) solideista sarakkeista
+    solid_top_rows = []
+    for k in solid_idx:
+        rows = np.flatnonzero(occ[k])
+        if len(rows):
+            solid_top_rows.append(int(rows.max()))
+    wall_top_row = int(np.median(solid_top_rows)) if solid_top_rows else n_z - 1
+    wall_top_z = float(ze[min(wall_top_row + 1, n_z)])
+
+    openings: list[Opening] = []
+    for (xi0, xi1) in _runs(gap_col):
+        width = float(xe[xi1 + 1] - xe[xi0])
+
+        # Onko aukon sisällä lainkaan dataa? (skannaamaton seinänpätkä ≠ aukko,
+        # paitsi jos pää on ankkuroitu nurkkaan jolloin sekin on uskottava oviaukko)
+        run_has_data = bool(col_has_data[xi0:xi1 + 1].any())
+
+        if not (_MIN_W <= width <= _MAX_W):
+            _dbg(wall, width, 0, z0, floor_z, "width")
+            continue
+        if width > length * _MAX_FRACTION:
+            _dbg(wall, width, 0, z0, floor_z, f"frac w/L={width/length:.2f}")
+            continue
+
+        # Reunaehto: materiaalia molemmin puolin TAI pää ankkuroitu nurkkaan
+        at_start = xi0 <= x_lo + 1
+        at_end = xi1 >= x_hi - 1
+        left_ok = (not at_start) or (start_anchor and xi0 <= x_lo + 2)
+        right_ok = (not at_end) or (end_anchor and xi1 >= x_hi - 2)
+        # Sisäaukolle (ei seinän päässä) vaadi solidia naapuria heti vieressä
+        if not at_start:
+            left_ok = left_ok and bool(col_floor_solid[max(0, xi0 - _NEIGHBOR_COLS):xi0].any())
+        if not at_end:
+            right_ok = right_ok and bool(col_floor_solid[xi1 + 1:xi1 + 1 + _NEIGHBOR_COLS].any())
+        if not (left_ok and right_ok):
+            _dbg(wall, width, 0, z0, floor_z,
+                 f"sides L={left_ok} R={right_ok} atS={at_start} atE={at_end}")
+            continue
+
+        # Seinänpään aukko ilman dataa = todennäköisesti skannaamaton → hylkää,
+        # paitsi jos selvästi ankkuroitu nurkkaan (oviaukko).
+        if not run_has_data and not (at_start and start_anchor) and not (at_end and end_anchor):
+            _dbg(wall, width, 0, z0, floor_z, "no-data end")
+            continue
+
+        # Sill + korkeus: aukon sisäsarakkeiden Z-profiili. Käytä aukon keskisarakkeita.
+        # row_occ vaatii että pinta kattaa OSAN aukon leveydestä (oikea sokkeli/lintel
+        # ulottuu yli aukon; yksittäinen kalustepiste ei) → robusti clutterille.
+        cx0 = xi0 + max((xi1 - xi0) // 4, 0)
+        cx1 = xi1 - max((xi1 - xi0) // 4, 0) + 1
+        inner = occ[cx0:cx1]                       # (cols, n_z)
+        row_occ = inner.mean(axis=0) >= 0.5        # ≥50 % sisäsarakkeista täynnä
+        # sill = korkein yhtenäinen pohjalta alkava pinta (esim. ikkunan sokkeli)
+        z = 0
+        while z < n_z and not row_occ[z] and float(ze[z + 1]) - z0 <= _SILL_FOOT_GAP:
+            z += 1
+        if z >= n_z or not row_occ[z]:
+            z = 0
+        while z < n_z and row_occ[z]:
+            z += 1
+        sill_row = z
+        sill_z = float(ze[sill_row])
+        sill_h = max(sill_z - floor_z, 0.0)
+
+        # Head = aukon yläreuna. Aukon yli pinta palaa (lintel) → etsi seuraava
+        # yhtenäinen pinta sill_row:n yläpuolelta; jos ei löydy → kattoon asti.
+        head_row = n_z
+        z = sill_row
+        while z < n_z and not row_occ[z]:
+            z += 1
+        # z = ensimmäinen pinnallinen rivi sillin yläpuolella, tai n_z
+        head_row = z
+        head_z = float(ze[min(head_row, n_z)])
+        # Jos aukko ulottuu lähelle seinän yläreunaa (ei lintel-pintaa) → kattoon
+        if head_row >= wall_top_row - 1:
+            head_z = wall_top_z
+
+        height = head_z - sill_z
+        if height < _MIN_H:
+            _dbg(wall, width, height, sill_z, floor_z, "too-short")
+            continue
+        # Rajaa korkeus uskottavaan (täyskorkea oviaukko = lattiasta kattoon)
+        height = min(height, wall.height)
+
+        otype = _classify(sill_h, width, height)
+        if otype == "unknown":
+            _dbg(wall, width, height, sill_z, floor_z, f"unknown sill={sill_h:.0f}")
+            continue
+        _dbg(wall, width, height, sill_z, floor_z,
+             f"ACCEPT {otype} atS={at_start} atE={at_end} data={run_has_data}")
+        openings.append(Opening(
+            id=f"opening_{start_idx + len(openings):03d}",
+            confidence=round(min(1.0, (width / 900.0) * (height / 2000.0)), 3),
+            classification="opening",
+            source=ElementSource(method="opening"),
+            opening_type=otype,
+            wall_id=wall.id,
+            position_along=round(float(xe[xi0]), 1),
+            width=round(width, 1),
+            sill_height=round(sill_h, 1),
+            opening_height=round(height, 1),
+        ))
+
+    return openings
+
+
+def reclassify_interior_windows(walls, spaces, openings):
+    """Ikkuna vaatii ULKOseinän. Jos aukko on sisäseinällä (huone MOLEMMIN puolin),
+    se on läpikäynti/ovi, ei ikkuna → reklassifioi 'window' -> 'door'.
+
+    Sisä/ulko päätellään datasta (huonepolygonit kummallakin puolella), ei
+    seinätyyppilipusta → yleistyy: ulkoseinän ikkuna (ulkopuoli ei ole huone)
+    säilyy ikkunana, sisäseinän leveä aukko korjautuu oveksi."""
+    try:
+        from shapely.geometry import Point, Polygon
+    except ImportError:
+        return openings
+    polys = []
+    for s in spaces:
+        if len(getattr(s, "boundary", []) or []) >= 3:
+            try:
+                p = Polygon([(float(x), float(y)) for x, y in s.boundary])
+                if p.is_valid and p.area > 1.0:
+                    polys.append(p)
+            except Exception:
+                continue
+    if not polys:
+        return openings
+    wmap = {w.id: w for w in walls}
+    _MARGIN = 350.0   # mm — testipiste näin kauas seinäpinnasta kummallekin puolelle
+    out = []
+    for op in openings:
+        if op.opening_type != "window":
+            out.append(op)
+            continue
+        w = wmap.get(op.wall_id)
+        if w is None or len(w.axis) < 2:
+            out.append(op)
+            continue
+        a = np.array(w.axis[0], float); b = np.array(w.axis[1], float)
+        d = b - a; L = float(np.linalg.norm(d))
+        if L < 1.0:
+            out.append(op)
+            continue
+        u = d / L; n = np.array([-u[1], u[0]])
+        c = a + u * (op.position_along + op.width / 2.0)   # aukon keskipiste
+        off = w.thickness / 2.0 + _MARGIN
+        p_in = Point(*(c + n * off)); p_out = Point(*(c - n * off))
+        side1 = any(pl.contains(p_in) for pl in polys)
+        side2 = any(pl.contains(p_out) for pl in polys)
+        if side1 and side2:
+            out.append(op.model_copy(update={"opening_type": "door"}))   # sisäseinä → ovi
+        else:
+            out.append(op)
+    return out
+
+
+def _classify(sill_h: float, width: float, height: float) -> str:
+    # Ovi: lattiatason sill (matala) + uskottava korkeus. Leveys saa olla kapeahko
+    # (kapea ovi / läpikäynti) kunhan se ei ole sokkelillinen ikkuna.
+    if sill_h < _DOOR_SILL_MAX and height >= 1500.0:
+        if width <= _DOOR_MAX_W:
+            return "door"
+        return "window"  # lattiasta lähtevä mutta hyvin leveä = lasiseinä/ikkuna
+    # Ikkuna: kohonnut sill
+    if sill_h >= _DOOR_SILL_MAX:
+        return "window"
+    # Matala lattiatason rako (height < 1500) = epävarma → hylkää
+    return "unknown"

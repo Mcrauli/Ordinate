@@ -17,7 +17,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from scan2bim.core.segmentation import beam_detector as B  # noqa: E402
+from ordinate.core.segmentation import beam_detector as B  # noqa: E402
 
 
 def _load(p: Path) -> np.ndarray:
@@ -45,7 +45,7 @@ def main(cloud_path: str, model_path: str) -> None:
     cells = B._soffit_cells(pts, zf + 200.0, zc - 30.0, z_free, zc - min_depth)
     # Detektori pudottaa seinasolut ENNEN laikutusta; ilman tata luotain nayttaa
     # eri laikut kuin mita koodi oikeasti kasittelee.
-    from scan2bim.schemas.model import StructuralModel
+    from ordinate.schemas.model import StructuralModel
     walls = StructuralModel.load(model_path).walls
     if walls:
         cells = B._drop_wall_cells(cells, walls)

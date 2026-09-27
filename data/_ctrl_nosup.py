@@ -3,7 +3,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-import scan2bim.core.qa.deviation as _dev
+import ordinate.core.qa.deviation as _dev
 
 _dev.measure_wall_support = lambda model, cloud: None
 

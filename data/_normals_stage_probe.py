@@ -20,7 +20,7 @@ from pathlib import Path
 import numpy as np
 from scipy.spatial import cKDTree
 
-from scan2bim.core.segmentation import wall_normals as WN
+from ordinate.core.segmentation import wall_normals as WN
 
 FACE = {5, 6, 8, 15}
 MIN_PTS = 2000

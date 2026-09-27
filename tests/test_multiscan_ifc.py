@@ -182,7 +182,7 @@ def generate_scans() -> list[Path]:
 
 def test_multiscan_pipeline_produces_ifc():
     """Ajaa koko putken ja kirjoittaa IFC — tarkasta Solibrissa."""
-    from scan2bim.core.pipeline import Pipeline, PipelineConfig
+    from ordinate.core.pipeline import Pipeline, PipelineConfig
 
     print(f"\nGeneroidaan skannaustiedostot -> {RAW_DIR}")
     paths = generate_scans()
@@ -231,7 +231,7 @@ def test_diagnostics_report_written(tmp_path):
     koordinaatteja (pilotti ei voi jakaa skanneja — taman voi)."""
     import numpy as np
     import open3d as o3d
-    from scan2bim.core.pipeline import Pipeline, PipelineConfig
+    from ordinate.core.pipeline import Pipeline, PipelineConfig
 
     rng = np.random.RandomState(4)
     parts = []
@@ -265,7 +265,7 @@ def test_retail_filter_variant_loads():
     """pointnet-retail on ALIAS: erillinen liiketilamalli sulautettiin yhteen
     malliin (cb50610), joten omaa tiedostoa EI ole eika sita bundlata exe:hen
     (saasti 3.4 MB per lataus). Variantin on silti latauduttava fallbackilla."""
-    from scan2bim.core.segmentation.pointnet_filter import PointNetFilter, _find_model_path
+    from ordinate.core.segmentation.pointnet_filter import PointNetFilter, _find_model_path
     assert _find_model_path("retail") is None, "retail-mallitiedosto on palannut"
     f = PointNetFilter(variant="retail")
     assert f.is_available(), "retail-variantti ei pudonnut oletusmalliin"
@@ -273,8 +273,8 @@ def test_retail_filter_variant_loads():
 
 
 def test_corner_extensions_butt_joints():
-    from scan2bim.core.ifc.writer import _corner_extensions
-    from scan2bim.schemas.model import ElementSource, Wall
+    from ordinate.core.ifc.writer import _corner_extensions
+    from ordinate.schemas.model import ElementSource, Wall
 
     def w(wid, x0, y0, x1, y1, t):
         return Wall(id=wid, confidence=0.9, classification="wall",

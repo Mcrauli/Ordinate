@@ -12,7 +12,7 @@ import numpy as np
 from shapely.geometry import LineString
 from shapely.ops import polygonize, unary_union
 
-from scan2bim.core.semantics import room_detector as rd
+from ordinate.core.semantics import room_detector as rd
 
 model = json.loads(sorted(Path(sys.argv[1]).glob("floor_*/model.json"))[0]
                    .read_text(encoding="utf-8"))

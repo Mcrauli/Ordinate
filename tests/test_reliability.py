@@ -2,8 +2,8 @@
 import numpy as np
 import pytest
 
-from scan2bim.core.qa.reliability import measure
-from scan2bim.schemas.model import ElementSource, StructuralModel, Wall
+from ordinate.core.qa.reliability import measure
+from ordinate.schemas.model import ElementSource, StructuralModel, Wall
 
 _H = 2600.0
 _THICK_MARGIN = 60.0

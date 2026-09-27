@@ -16,8 +16,8 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from scan2bim.core.segmentation import opening_detector as OD  # noqa: E402
-from scan2bim.schemas.model import ElementSource, Wall  # noqa: E402
+from ordinate.core.segmentation import opening_detector as OD  # noqa: E402
+from ordinate.schemas.model import ElementSource, Wall  # noqa: E402
 
 
 def main(root: str) -> None:

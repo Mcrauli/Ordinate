@@ -6,7 +6,7 @@ Aidon perimetrireunan ulkopuolella ei ole kattopisteita.
 """
 import numpy as np
 
-from scan2bim.core.semantics.perimeter import add_perimeter_walls
+from ordinate.core.semantics.perimeter import add_perimeter_walls
 
 
 def _ceiling_pts(x0, x1, y0, y1, z, step=100.0):
@@ -53,8 +53,8 @@ def test_large_hall_becomes_a_space():
     """Iso myyntialue (72x48 m) on tila, ei roskaa. Absoluuttinen 90 m2 -katto oli
     asuntokoosta johdettu ja pudotti 3456 m2 hallin kokonaan -> 0 tilaa juuri
     siella missa arkkitehti niita eniten tarvitsee."""
-    from scan2bim.core.semantics.room_detector import detect_rooms
-    from scan2bim.schemas.model import ElementSource, Wall
+    from ordinate.core.semantics.room_detector import detect_rooms
+    from ordinate.schemas.model import ElementSource, Wall
 
     def w(i, a, b):
         return Wall(id=f"w{i}", confidence=1.0, classification="wall",
@@ -72,8 +72,8 @@ def test_building_outline_still_dropped_when_it_encloses_rooms():
     """Ulkokeha jonka sisalla on ERILLINEN (kytkematon) huonerengas: polygonize
     palauttaa molemmat, ja ulkokeha on pudotettava jotta ala ei laskettaisi
     kahteen kertaan."""
-    from scan2bim.core.semantics.room_detector import detect_rooms
-    from scan2bim.schemas.model import ElementSource, Wall
+    from ordinate.core.semantics.room_detector import detect_rooms
+    from ordinate.schemas.model import ElementSource, Wall
 
     def w(i, a, b):
         return Wall(id=f"w{i}", confidence=1.0, classification="wall",
@@ -98,8 +98,8 @@ def test_hall_closed_by_floor_contour_when_wall_ring_is_broken():
     """Perimetri pirstoutuu isossa tilassa (mitattu 72x48 m myymalalla: itaseina
     5 palana, suurin rako 5.3 m) -> polygonize ei tuota myyntialuetta lainkaan.
     Lattiakontuuri on rakenteeltaan suljettu -> se sulkee graafin."""
-    from scan2bim.core.semantics.room_detector import detect_rooms
-    from scan2bim.schemas.model import ElementSource, Wall
+    from ordinate.core.semantics.room_detector import detect_rooms
+    from ordinate.schemas.model import ElementSource, Wall
 
     def w(i, a, b):
         return Wall(id=f"w{i}", confidence=1.0, classification="wall",
@@ -132,8 +132,8 @@ def test_hall_closed_by_floor_contour_when_wall_ring_is_broken():
 def test_floor_contour_does_not_override_wall_line():
     """Kontuuri kulkee ~puoli paksuutta seinan ulkopuolella. Tilan rajan on
     pysyttava seinan keskilinjassa - kapea kaista niiden valissa putoaa."""
-    from scan2bim.core.semantics.room_detector import detect_rooms
-    from scan2bim.schemas.model import ElementSource, Wall
+    from ordinate.core.semantics.room_detector import detect_rooms
+    from ordinate.schemas.model import ElementSource, Wall
 
     def w(i, a, b):
         return Wall(id=f"w{i}", confidence=1.0, classification="wall",
@@ -156,8 +156,8 @@ def test_contour_never_shrinks_a_wall_bounded_room():
     """Kontuurin sijaintiprior on heikko (25 mm ruudukko + dilaatio). Se saa VAIN
     taydentaa, ei leikata: seinien rajaamat tilat on jaatava tasmalleen ennalleen.
     Ilman tata rajausta asunnon huoneala putosi 55.73 -> 53.62 m2."""
-    from scan2bim.core.semantics.room_detector import detect_rooms
-    from scan2bim.schemas.model import ElementSource, Wall
+    from ordinate.core.semantics.room_detector import detect_rooms
+    from ordinate.schemas.model import ElementSource, Wall
 
     def w(i, a, b):
         return Wall(id=f"w{i}", confidence=1.0, classification="wall",
@@ -183,8 +183,8 @@ def test_contour_only_space_must_be_substantial():
     sita ei ole voitu varmistaa seinaevidenssilla. Mitattu apt2: ilman korkeampaa
     rimaa syntyi 0.86 x 2.54 m "huone" vaarin sijoittuneen perimetriseinan ja
     aidon seinan valiin."""
-    from scan2bim.core.semantics.room_detector import detect_rooms
-    from scan2bim.schemas.model import ElementSource, Wall
+    from ordinate.core.semantics.room_detector import detect_rooms
+    from ordinate.schemas.model import ElementSource, Wall
 
     def w(i, a, b):
         return Wall(id=f"w{i}", confidence=1.0, classification="wall",

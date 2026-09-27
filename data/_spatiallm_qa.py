@@ -9,7 +9,7 @@ lateraalimediaanissa on konventioero, ei mittausvirhe."""
 import math, re, sys, tempfile, time
 import numpy as np, open3d as o3d
 from pathlib import Path
-from scan2bim.core.pipeline import Pipeline, PipelineConfig
+from ordinate.core.pipeline import Pipeline, PipelineConfig
 
 DIR = Path(sys.argv[1])
 # valinnainen 2. argumentti: PointNet-mallipolku (uuden mallin testaus koskematta

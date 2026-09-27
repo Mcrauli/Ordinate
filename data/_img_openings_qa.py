@@ -18,8 +18,8 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from scan2bim.core.pipeline import Pipeline, PipelineConfig  # noqa: E402
-from scan2bim.core.segmentation import image_openings as new_io  # noqa: E402
+from ordinate.core.pipeline import Pipeline, PipelineConfig  # noqa: E402
+from ordinate.core.segmentation import image_openings as new_io  # noqa: E402
 
 
 def _key(ops):
@@ -62,7 +62,7 @@ def main() -> None:
         return
 
     # Sama pilvi kuin detektiossa, jotta vertailu on aito.
-    from scan2bim.core.geometry.loader import load_point_cloud
+    from ordinate.core.geometry.loader import load_point_cloud
     pts = np.asarray(load_point_cloud(scan).points)
 
     t = time.time()

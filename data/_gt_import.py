@@ -43,7 +43,7 @@ import tempfile
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
-from scan2bim.core.geometry.loader import metre_scale  # noqa: E402
+from ordinate.core.geometry.loader import metre_scale  # noqa: E402
 
 _CLASS = {
     "wall": 5, "drywall": 6, "floor": 4, "ceiling": 1, "beam": 9,

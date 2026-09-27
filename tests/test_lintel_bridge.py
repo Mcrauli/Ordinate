@@ -6,8 +6,8 @@ import numpy as np
 import open3d 
 import pytest
 
-from scan2bim.core.semantics.wall_semantics import bridge_lintel_gaps
-from scan2bim.schemas.model import ElementSource, Wall
+from ordinate.core.semantics.wall_semantics import bridge_lintel_gaps
+from ordinate.schemas.model import ElementSource, Wall
 
 _RNG = np.random.RandomState(7)
 

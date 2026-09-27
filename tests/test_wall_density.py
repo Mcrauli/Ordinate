@@ -2,9 +2,9 @@
 import numpy as np
 import open3d as o3d
 
-from scan2bim.core.segmentation.base import DetectorRegistry
-from scan2bim.core.segmentation.wall_density import WallDetectorDensity
-from scan2bim.schemas.model import StructuralModel
+from ordinate.core.segmentation.base import DetectorRegistry
+from ordinate.core.segmentation.wall_density import WallDetectorDensity
+from ordinate.schemas.model import StructuralModel
 
 
 def _box_room_cloud(seed: int = 0) -> o3d.geometry.PointCloud:
@@ -76,7 +76,7 @@ def test_tall_space_wall_found_beam_rejected():
     import numpy as np
     import open3d as o3d
 
-    from scan2bim.core.segmentation.wall_contour import WallDetectorContour
+    from ordinate.core.segmentation.wall_contour import WallDetectorContour
 
     rng = np.random.RandomState(7)
 
@@ -118,8 +118,8 @@ def test_semantic_labels_relax_vertical_run_in_tall_space():
     import numpy as np
     import open3d as o3d
 
-    from scan2bim.core.segmentation.pointnet_filter import S3DIS_WALL, SemanticLabels
-    from scan2bim.core.segmentation.wall_contour import WallDetectorContour
+    from ordinate.core.segmentation.pointnet_filter import S3DIS_WALL, SemanticLabels
+    from ordinate.core.segmentation.wall_contour import WallDetectorContour
 
     rng = np.random.RandomState(11)
 

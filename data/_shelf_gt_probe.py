@@ -21,7 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _paths import DATA, OUTPUT  # noqa: E402
 
-from scan2bim.core.pipeline import Pipeline, PipelineConfig  # noqa: E402
+from ordinate.core.pipeline import Pipeline, PipelineConfig  # noqa: E402
 
 _BAND = 80.0
 _REG = {

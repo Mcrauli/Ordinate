@@ -2,7 +2,7 @@
 import numpy as np
 import pytest
 
-from scan2bim.core.geometry import loader
+from ordinate.core.geometry import loader
 
 
 def _write_ply(path, pts):

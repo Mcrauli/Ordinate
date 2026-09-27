@@ -2,7 +2,7 @@
 argv: src out detector mode"""
 import sys, json
 from pathlib import Path
-from scan2bim.core.pipeline import Pipeline, PipelineConfig
+from ordinate.core.pipeline import Pipeline, PipelineConfig
 
 src, out, detector, mode = Path(sys.argv[1]), Path(sys.argv[2]), sys.argv[3], sys.argv[4]
 cfg = PipelineConfig(detector=detector, semantic_filter_mode=mode,

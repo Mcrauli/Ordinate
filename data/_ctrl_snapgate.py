@@ -17,8 +17,8 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import scan2bim.core.semantics.wall_semantics as WS  # noqa: E402
-from scan2bim.core.pipeline import Pipeline, PipelineConfig  # noqa: E402
+import ordinate.core.semantics.wall_semantics as WS  # noqa: E402
+from ordinate.core.pipeline import Pipeline, PipelineConfig  # noqa: E402
 from _paths import DATA, OUTPUT  # noqa: E402
 
 SCENE = Path(str(DATA / "_rohbau/site_07/scene_07000"))

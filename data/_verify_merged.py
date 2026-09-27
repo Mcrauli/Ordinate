@@ -1,5 +1,5 @@
 from pathlib import Path
-from scan2bim.core.pipeline import Pipeline, PipelineConfig
+from ordinate.core.pipeline import Pipeline, PipelineConfig
 from _paths import DOWNLOADS, OUTPUT  # portable dev-tool paths
 
 apt = Path(str(DOWNLOADS / "raw_scans_apartment/apartment"))

@@ -10,8 +10,8 @@ paata ei kosketa, koska silloin venytys on laillinen mallinnusvara.
 import numpy as np
 import open3d as o3d
 
-from scan2bim.core.semantics.overstretch import trim_overstretched_walls
-from scan2bim.schemas.model import (
+from ordinate.core.semantics.overstretch import trim_overstretched_walls
+from ordinate.schemas.model import (
     ElementSource, Opening, Slab, StructuralModel, Wall,
 )
 
@@ -216,7 +216,7 @@ def test_diagonal_wall_is_trimmed_along_its_own_axis():
 
 def test_stale_dxf_is_removed_when_the_run_does_not_write_one(tmp_path):
     """GUI ajaa export_dxf=False -> vanha DXF ei korvaudu, joten se on poistettava."""
-    from scan2bim.core.pipeline import _drop_stale_dxf
+    from ordinate.core.pipeline import _drop_stale_dxf
 
     d = tmp_path / "floor_00"
     d.mkdir()
@@ -231,7 +231,7 @@ def test_stale_dxf_is_removed_when_the_run_does_not_write_one(tmp_path):
 
 
 def test_dropping_a_missing_dxf_is_silent(tmp_path):
-    from scan2bim.core.pipeline import _drop_stale_dxf
+    from ordinate.core.pipeline import _drop_stale_dxf
 
     msgs = []
     _drop_stale_dxf(tmp_path, msgs.append)
@@ -242,7 +242,7 @@ def test_stale_floor_directories_are_removed(tmp_path):
     """Kerrosjako voi muuttua ajojen valilla: vanha floor_01 ei saa jaada
     building.ifc:hen. Mitattu Rohbaussa: keksityn kerroksen korjaus jatti
     floor_01:n levylle ja se oli 2 paivaa vanha."""
-    from scan2bim.core.pipeline import _drop_stale_floors
+    from ordinate.core.pipeline import _drop_stale_floors
 
     for n in ("floor_00", "floor_01", "floor_02"):
         (tmp_path / n / "x").mkdir(parents=True)

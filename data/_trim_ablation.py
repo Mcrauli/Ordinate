@@ -27,7 +27,7 @@ sys.path.insert(0, str(HERE.parent / "src"))
 
 
 def main(cloud: str, out_dir: str, gt: str | None = None) -> None:
-    from scan2bim.core import pipeline as PL
+    from ordinate.core import pipeline as PL
 
     PL._MAX_TRIM = 0.0                      # modulitason vakio
     if hasattr(PL, "_trim_endpoints"):

@@ -16,7 +16,7 @@ from pathlib import Path
 import numpy as np
 import open3d as o3d
 
-from scan2bim.core.segmentation.pointnet_filter import PointNetFilter
+from ordinate.core.segmentation.pointnet_filter import PointNetFilter
 
 from _paths import DOWNLOADS  # portable dev-tool paths
 

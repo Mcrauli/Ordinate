@@ -28,7 +28,7 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
-from scan2bim.core.geometry.loader import load_point_cloud  # noqa: E402
+from ordinate.core.geometry.loader import load_point_cloud  # noqa: E402
 
 
 def main(src: str, out: str, max_pts: str = "4000000") -> None:

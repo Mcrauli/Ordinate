@@ -1,5 +1,5 @@
 """Nurkkakoneisto ohitetaan isossa matalassa tilassa, ei muualla."""
-from scan2bim.core.pipeline import _CORNER_MIN_HEIGHT, _FILTER_MIN_AREA_M2
+from ordinate.core.pipeline import _CORNER_MIN_HEIGHT, _FILTER_MIN_AREA_M2
 
 
 def _use_corners(area_m2: float, free_height_mm: float) -> bool:

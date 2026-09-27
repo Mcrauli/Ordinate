@@ -21,9 +21,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 def main(cloud: str, out_dir: str, ext_mm: str, max_pts: str = "4000000") -> None:
     import open3d as o3d
-    from scan2bim.core import pipeline as PL
-    from scan2bim.core.semantics import corner_snap as CS
-    from scan2bim.core.qa.coverage import wall_coverage
+    from ordinate.core import pipeline as PL
+    from ordinate.core.semantics import corner_snap as CS
+    from ordinate.core.qa.coverage import wall_coverage
 
     ext = float(ext_mm)
     CS._MAX_EXTEND = ext

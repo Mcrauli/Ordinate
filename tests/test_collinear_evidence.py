@@ -17,10 +17,10 @@ from __future__ import annotations
 
 import numpy as np
 
-from scan2bim.core.semantics.wall_semantics import (
+from ordinate.core.semantics.wall_semantics import (
     _COLIN_GAP_EVID_MM, _COLIN_GAP_MM, merge_collinear_walls,
 )
-from scan2bim.schemas.model import ElementSource, Wall
+from ordinate.schemas.model import ElementSource, Wall
 
 _H = 3000.0
 

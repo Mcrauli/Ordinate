@@ -1,8 +1,8 @@
 """remove_shelf_front_walls: lattia-katto-hyllyn etupinta poistetaan valeseinänä.
 Retail-portitus: koko-mittainen hylly (yhtä pitkä kuin perimetri) poistetaan VAIN
 liiketilassa; asunnossa aito seinä lähellä ulkoseinää (komero/erkkeri) säilyy."""
-from scan2bim.core.semantics.wall_semantics import remove_shelf_front_walls
-from scan2bim.schemas.model import ElementSource, Wall
+from ordinate.core.semantics.wall_semantics import remove_shelf_front_walls
+from ordinate.schemas.model import ElementSource, Wall
 
 
 def _wall(x0, y0, x1, y1, thickness=200.0):

@@ -62,8 +62,8 @@ def _nogt(model: Path, cloud: Path) -> str:
 
 def main(scene_dir: str, out_root: str, only: str = "") -> None:
     """`scene_dir` voi olla Rohbau-hakemisto (GT) tai suoraan .ply (ei GT)."""
-    from scan2bim.core import pipeline as PL
-    from scan2bim.core.segmentation.base import DetectorRegistry
+    from ordinate.core import pipeline as PL
+    from ordinate.core.segmentation.base import DetectorRegistry
 
     arg = Path(scene_dir)
     if arg.suffix.lower() == ".ply":

@@ -6,7 +6,7 @@ Nama testit vertaavat suoraan tayteen skannaukseen.
 """
 import numpy as np
 
-from scan2bim.core.geometry.xy_index import XYIndex
+from ordinate.core.geometry.xy_index import XYIndex
 
 
 def _cloud(n=60000, seed=7):

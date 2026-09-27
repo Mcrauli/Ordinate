@@ -20,7 +20,7 @@ import numpy as np
 
 
 def _one(path: Path, z_lo: float, z_hi: float, voxel: float) -> int:
-    from scan2bim.core.geometry.streaming import load_floor_slice
+    from ordinate.core.geometry.streaming import load_floor_slice
     c = load_floor_slice([path], z_lo, z_hi, voxel_size=voxel, progress_cb=None)
     return len(c.points)
 
@@ -32,7 +32,7 @@ def main(d: str, n: int = 4) -> None:
         return
     mb = sum(p.stat().st_size for p in paths) / 1e6
     print(f"{len(paths)} tiedostoa, {mb:.0f} MB")
-    from scan2bim.core.geometry.floor_splitter import detect_floors_from_files
+    from ordinate.core.geometry.floor_splitter import detect_floors_from_files
     z_lo, z_hi = detect_floors_from_files(paths, sample_step=max(1, len(paths)))[0]
     print(f"kaista {z_lo/1000:.2f}–{z_hi/1000:.2f} m")
 

@@ -30,19 +30,19 @@ sys.path.insert(0, str(HERE.parent / "src"))
 
 
 def main(scene_dir: str, out_dir: str, mode: str = "off") -> None:
-    from scan2bim.core import pipeline as PL
+    from ordinate.core import pipeline as PL
 
     scene = Path(scene_dir)
     out = Path(out_dir)
 
     if mode == "off":
-        from scan2bim.core.qa import deviation as DEV
-        from scan2bim.core.semantics import contrast_prune as CP
-        from scan2bim.core.semantics import direction_prune as DP
-        from scan2bim.core.semantics import flatness_prune as FP
-        from scan2bim.core.semantics import overstretch as OS
-        from scan2bim.core.semantics import semantic_prune as SP
-        from scan2bim.core.semantics import wall_semantics as WS
+        from ordinate.core.qa import deviation as DEV
+        from ordinate.core.semantics import contrast_prune as CP
+        from ordinate.core.semantics import direction_prune as DP
+        from ordinate.core.semantics import flatness_prune as FP
+        from ordinate.core.semantics import overstretch as OS
+        from ordinate.core.semantics import semantic_prune as SP
+        from ordinate.core.semantics import wall_semantics as WS
 
         _none = lambda *a, **kw: []          # noqa: E731 — palauttaa "ei poistettu"
         _same = lambda walls, *a, **kw: walls  # noqa: E731

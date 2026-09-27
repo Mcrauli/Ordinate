@@ -24,9 +24,9 @@ import open3d as o3d
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from scan2bim.core.qa.deviation import measure_wall_support  # noqa: E402
-from scan2bim.core.semantics.wall_semantics import prune_unsupported_walls  # noqa: E402
-from scan2bim.schemas.model import StructuralModel  # noqa: E402
+from ordinate.core.qa.deviation import measure_wall_support  # noqa: E402
+from ordinate.core.semantics.wall_semantics import prune_unsupported_walls  # noqa: E402
+from ordinate.schemas.model import StructuralModel  # noqa: E402
 
 MODEL = Path("data/output/_rohbau_site_07_scene_07000/floor_00/model.json")
 COORD = Path("data/_rohbau/site_07/scene_07000/coord.npy")

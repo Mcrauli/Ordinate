@@ -21,9 +21,9 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
-from scan2bim.core.geometry.xy_index import XYIndex  # noqa: E402
-from scan2bim.core.qa.coverage import wallish_points  # noqa: E402
-from scan2bim.core.semantics.flatness_prune import flat_fraction  # noqa: E402
+from ordinate.core.geometry.xy_index import XYIndex  # noqa: E402
+from ordinate.core.qa.coverage import wallish_points  # noqa: E402
+from ordinate.core.semantics.flatness_prune import flat_fraction  # noqa: E402
 
 _CELL = 150.0        # mm — ruudukko lunastamattomien pisteiden ryhmittelyyn
 _MIN_LEN = 2000.0    # mm — lyhyempi ei ole ehdokas

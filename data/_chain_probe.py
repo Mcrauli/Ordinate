@@ -43,10 +43,10 @@ def _wrap(mod, name, label):
 
 def main(cloud: str, out_dir: str, max_pts: str = "4000000") -> None:
     import open3d as o3d
-    from scan2bim.core import pipeline as PL
-    from scan2bim.core.semantics import wall_semantics as WS
-    from scan2bim.core.semantics import corner_snap as CS
-    from scan2bim.core.semantics import perimeter as PM
+    from ordinate.core import pipeline as PL
+    from ordinate.core.semantics import wall_semantics as WS
+    from ordinate.core.semantics import corner_snap as CS
+    from ordinate.core.semantics import perimeter as PM
 
     src = Path(cloud)
     lim = int(max_pts)

@@ -1,7 +1,7 @@
 """Erottele centerline-virhe vs paksuusvirhe vs keilaimen kohina."""
 from pathlib import Path
 import open3d as o3d, numpy as np
-from scan2bim.core.pipeline import Pipeline, PipelineConfig
+from ordinate.core.pipeline import Pipeline, PipelineConfig
 det=o3d.io.read_point_cloud(str(DATA / "_cache_apt.ply"))
 cfg=PipelineConfig(detector="contour",auto_voxel=False,voxel_size=12.0,export_ifc=False,export_dxf=False,export_qa=False)
 m=Pipeline(cfg)._detect(det,Path("apt"))

@@ -3,7 +3,7 @@ import numpy as np
 import open3d as o3d
 import pytest
 
-from scan2bim.core.segmentation.slab_detector import detect_slabs
+from ordinate.core.segmentation.slab_detector import detect_slabs
 
 
 _RNG = np.random.RandomState(42)
@@ -107,7 +107,7 @@ def test_disjoint_floor_regions_all_returned():
     """Kaksi erillista lattia-aluetta (asunto + viereinen huone paksun seinan
     takana) → molempien kontuurit talteen, ei vain suurinta (perimetri ei
     muuten koskaan sulje pienempaa huonetta)."""
-    from scan2bim.core.segmentation.slab_detector import detect_floor_contours
+    from ordinate.core.segmentation.slab_detector import detect_floor_contours
 
     parts = [
         _plane(0, 6000, 0, 6000, 0.0),          # iso lattia
@@ -132,7 +132,7 @@ def test_furniture_shadows_do_not_break_contour():
     ULOSPAIN-normaali) meni vaarin ja seinia syntyi fiktiivisille reunoille."""
     from shapely.geometry import Polygon
 
-    from scan2bim.core.segmentation.slab_detector import detect_floor_contours
+    from ordinate.core.segmentation.slab_detector import detect_floor_contours
 
     floor = _plane(0, 8000, 0, 8000, 0.0)   # 8 x 8 m = 64 m²
     # 18 kapeaa lahtea vuorotellen ylä- ja alareunasta, syvyys 3–5 m
@@ -158,7 +158,7 @@ def test_grid_cell_is_the_default_for_a_dense_scan():
     kuten ennenkin — mitattu: koko Rohbau site_07 -matriisi (5 scenea x 5
     elementtityyppia) on identtinen ennen ja jalkeen.
     """
-    from scan2bim.core.segmentation.slab_detector import _GRID_MM, _cell_mm
+    from ordinate.core.segmentation.slab_detector import _GRID_MM, _cell_mm
     dense = _plane(0, 6000, 0, 6000, 0.0, step=10.0)[:, :2]
     assert _cell_mm(dense) == _GRID_MM
 
@@ -170,7 +170,7 @@ def test_grid_cell_follows_a_coarse_scan():
     suurin osa lattian ruuduista on tyhjia eika maski kuvaa lattiaa vaan
     keilaustiheytta.
     """
-    from scan2bim.core.segmentation.slab_detector import _GRID_MM, _cell_mm
+    from ordinate.core.segmentation.slab_detector import _GRID_MM, _cell_mm
     coarse = _plane(0, 20000, 0, 20000, 0.0, step=70.0)[:, :2]
     cell = _cell_mm(coarse)
     assert cell > _GRID_MM
@@ -183,7 +183,7 @@ def test_coarse_floor_still_produces_a_contour():
     Mitattu Rohbau scene_07000 harvennussarjassa: kontuureja 3, 3, 2 ja 0
     pisteväleilla 4, 17, 35 ja 70 mm.
     """
-    from scan2bim.core.segmentation.slab_detector import detect_floor_contours
+    from ordinate.core.segmentation.slab_detector import detect_floor_contours
     cloud = _cloud(_plane(0, 12000, 0, 9000, 0.0, step=70.0))
     polys = detect_floor_contours(cloud, 0.0)
     assert polys, "karkea lattia ei tuottanut yhtaan kontuuria"

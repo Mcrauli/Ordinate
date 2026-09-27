@@ -1,5 +1,5 @@
 from pathlib import Path
-from scan2bim.core.pipeline import Pipeline, PipelineConfig
+from ordinate.core.pipeline import Pipeline, PipelineConfig
 from _paths import DOWNLOADS, OUTPUT  # portable dev-tool paths
 # Monen tiedoston ajo lukee tiedostot prosessipoolissa, ja Windowsin
 # spawn importtaa lapsessa __main__:in — ilman tätä vartijaa skripti

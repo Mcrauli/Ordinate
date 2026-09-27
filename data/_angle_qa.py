@@ -22,7 +22,7 @@ Kaytto: _angle_qa.py <model.json> <ply|dir> [nimi]
 import json, sys, glob, pathlib
 import numpy as np
 
-from scan2bim.core.geometry.loader import load_point_cloud
+from ordinate.core.geometry.loader import load_point_cloud
 
 _TOL = 45.0        # mm — pinnan kaista
 _MIN_PTS = 400

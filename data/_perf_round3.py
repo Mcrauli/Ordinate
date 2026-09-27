@@ -26,7 +26,7 @@ def patch(path, pairs):
     print("  " + path)
 
 
-patch("src/scan2bim/core/pipeline.py", [
+patch("src/ordinate/core/pipeline.py", [
     (
         "    pts = np.asarray(cloud.points)\n"
         "    out = []\n"
@@ -60,7 +60,7 @@ patch("src/scan2bim/core/pipeline.py", [
     ),
 ])
 
-patch("src/scan2bim/core/geometry/loader.py", [
+patch("src/ordinate/core/geometry/loader.py", [
     (
         "    d, _ = cKDTree(xyz).query(xyz[idx], k=2)",
 

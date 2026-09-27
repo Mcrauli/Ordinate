@@ -211,7 +211,7 @@ def main():
     wall_by_id = {w["id"]: w for w in model["walls"]}
     cams = load_cameras(e57)
     # pilvi syvyyskulkua varten (piilota mallireunat lahemman pinnan takaa)
-    from scan2bim.core.geometry.loader import load_point_cloud
+    from ordinate.core.geometry.loader import load_point_cloud
     cloud = np.asarray(load_point_cloud(e57).points)
     if len(cloud) > 12_000_000:
         cloud = cloud[:: len(cloud) // 12_000_000]

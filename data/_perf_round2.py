@@ -23,7 +23,7 @@ def patch(path, pairs):
 
 
 # --- 1. opening_detector -----------------------------------------------------
-patch("src/scan2bim/core/segmentation/opening_detector.py", [
+patch("src/ordinate/core/segmentation/opening_detector.py", [
     (
         "    pts = np.asarray(cloud.points)\n"
         "    origins = [np.asarray(o, dtype=float) for o in (scanner_origins or [])]\n"
@@ -35,7 +35,7 @@ patch("src/scan2bim/core/segmentation/opening_detector.py", [
         "    pts = np.asarray(cloud.points)\n"
         "    index = None\n"
         "    if len(pts) >= 300_000 and len(walls) >= 3:\n"
-        "        from scan2bim.core.geometry.xy_index import index_for  # noqa: PLC0415\n"
+        "        from ordinate.core.geometry.xy_index import index_for  # noqa: PLC0415\n"
         "        index = index_for(cloud, pts)\n"
         "    origins = [np.asarray(o, dtype=float) for o in (scanner_origins or [])]\n"
         "    openings: list[Opening] = []\n"
@@ -67,7 +67,7 @@ patch("src/scan2bim/core/segmentation/opening_detector.py", [
         "        # Säde kattaa MOLEMMAT pinnat (±th/2 ± _FACE_TOL) ja keskilinjan.\n"
         "        # Akselin suuntaista rajausta EI saa tehdä: pinnanvalinta (pos/neg)\n"
         "        # lasketaan koko tasokaistalta, ja rajaus muuttaisi sen laskennan.\n"
-        "        from scan2bim.core.geometry.xy_index import subset  # noqa: PLC0415\n"
+        "        from ordinate.core.geometry.xy_index import subset  # noqa: PLC0415\n"
         "        pts, _ = subset(pts, index, p0, along, normal,\n"
         "                        wall.thickness / 2.0 + _FACE_TOL)\n"
         "\n"
@@ -76,7 +76,7 @@ patch("src/scan2bim/core/segmentation/opening_detector.py", [
 ])
 
 # --- 2. split_gaps -----------------------------------------------------------
-patch("src/scan2bim/core/semantics/split_gaps.py", [
+patch("src/ordinate/core/semantics/split_gaps.py", [
     (
         "def split_walls_at_gaps(walls: list, pts: np.ndarray) -> list:",
         "def split_walls_at_gaps(walls: list, pts: np.ndarray, index=None) -> list:",
@@ -122,7 +122,7 @@ patch("src/scan2bim/core/semantics/split_gaps.py", [
         "    z_min = float(_zm) if _zm is not None else float(pts[:, 2].min())\n"
         "    height = float(getattr(w, \"height\", 0.0))\n"
         "    if index is not None:\n"
-        "        from scan2bim.core.geometry.xy_index import subset  # noqa: PLC0415\n"
+        "        from ordinate.core.geometry.xy_index import subset  # noqa: PLC0415\n"
         "        pts, _ = subset(pts, index, a, u, n, half + _BAND_MM,\n"
         "                        -_COL_MM, length + _COL_MM)\n"
         "    band = pts\n"
@@ -137,7 +137,7 @@ patch("src/scan2bim/core/semantics/split_gaps.py", [
 ])
 
 # --- 3. overstretch ----------------------------------------------------------
-patch("src/scan2bim/core/semantics/overstretch.py", [
+patch("src/ordinate/core/semantics/overstretch.py", [
     (
         "def _coverage(w, xy: np.ndarray) -> tuple[np.ndarray, float, np.ndarray, np.ndarray]:",
         "def _coverage(w, xy: np.ndarray, index=None) -> tuple[np.ndarray, float, np.ndarray, np.ndarray]:",
@@ -153,7 +153,7 @@ patch("src/scan2bim/core/semantics/overstretch.py", [
         "    if index is not None:\n"
         "        # Histogrammin range on (0, L), joten sen ulkopuoliset pisteet\n"
         "        # putoavat joka tapauksessa -> sama rajaus indeksiin.\n"
-        "        from scan2bim.core.geometry.xy_index import subset  # noqa: PLC0415\n"
+        "        from ordinate.core.geometry.xy_index import subset  # noqa: PLC0415\n"
         "        xy, _ = subset(xy, index, a, u, n, w.thickness / 2.0 + _TOL, 0.0, L)\n"
         "    rel = xy - a\n"
         "    s = rel @ u",
@@ -163,14 +163,14 @@ patch("src/scan2bim/core/semantics/overstretch.py", [
 
         "    index = None\n"
         "    if len(xy) >= 300_000 and len(model.walls) >= 3:\n"
-        "        from scan2bim.core.geometry.xy_index import XYIndex  # noqa: PLC0415\n"
+        "        from ordinate.core.geometry.xy_index import XYIndex  # noqa: PLC0415\n"
         "        index = XYIndex(xy)\n"
         "    prof = [_coverage(w, xy, index) for w in model.walls]",
     ),
 ])
 
 # --- 4. residual_walls._claimed ---------------------------------------------
-patch("src/scan2bim/core/semantics/residual_walls.py", [
+patch("src/ordinate/core/semantics/residual_walls.py", [
     (
         "def _claimed(band: np.ndarray, walls: list[Wall]) -> np.ndarray:\n"
         "    claimed = np.zeros(len(band), dtype=bool)\n"
@@ -194,7 +194,7 @@ patch("src/scan2bim/core/semantics/residual_walls.py", [
         "    xy = band[:, :2]\n"
         "    index = None\n"
         "    if len(band) >= 300_000 and len(walls) >= 3:\n"
-        "        from scan2bim.core.geometry.xy_index import XYIndex  # noqa: PLC0415\n"
+        "        from ordinate.core.geometry.xy_index import XYIndex  # noqa: PLC0415\n"
         "        index = XYIndex(xy)\n"
         "    for w in walls:\n"
         "        a = np.asarray(w.axis[0], dtype=float)\n"
@@ -223,7 +223,7 @@ patch("src/scan2bim/core/semantics/residual_walls.py", [
 ])
 
 # --- 5. pipeline valittaa indeksin split_walls_at_gaps:lle ------------------
-patch("src/scan2bim/core/pipeline.py", [
+patch("src/ordinate/core/pipeline.py", [
     (
         "            model.walls = split_walls_at_gaps(model.walls, np.asarray(cloud.points))",
 

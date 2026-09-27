@@ -1,8 +1,8 @@
-# scan2bim
+# Ordinate
 
 [![Latest release](https://img.shields.io/github/v/release/Mcrauli/scan2bim-web?include_prereleases&sort=semver)](https://github.com/Mcrauli/scan2bim-web/releases/latest)
 
-**Laserkeilauspilvi → puhdas arkkitehtoninen BIM-malli (IFC4).** scan2bim
+**Laserkeilauspilvi → puhdas arkkitehtoninen BIM-malli (IFC4).** Ordinate
 lukee sisätilan pistepilven (E57 / LAS / LAZ / PLY / PTS), tunnistaa
 rakenteet — **seinät, lattia, katto, ovet, ikkunat, pilarit, palkit ja
 tilat** — suodattaa kalusteet ja krääsän pois, ja kirjoittaa **älykkään
@@ -82,9 +82,9 @@ Tarkka putki ja moduulit: [`AGENTS.md`](AGENTS.md) ja
 Uusin Windows-build on
 [Releases-sivulla](https://github.com/Mcrauli/scan2bim-web/releases/latest):
 
-- `scan2bim-Setup.exe` — Inno Setup -installeri (**per-user**, ei
+- `Ordinate-Setup.exe` — Inno Setup -installeri (**per-user**, ei
   UAC-promptia, Start-menu + valinnainen desktop-shortcut)
-- `scan2bim-X.Y.Z.exe` — paljas exe ilman asennusta
+- `Ordinate-X.Y.Z.zip` — sovellushakemisto ilman asennusta (itsepäivityksen payload)
 - `*.sha256` — checksumit (`Get-FileHash -Algorithm SHA256 tiedosto.exe`)
 
 Sovellus **päivittää itsensä** GitHub Releasesista (per-user-asennus → ei
@@ -96,7 +96,7 @@ binääristä → **More info → Run anyway**.
 ### GUI
 
 ```bash
-python -m scan2bim          # tai asennettuna: scan2bim-gui
+python -m ordinate          # tai asennettuna: ordinate-gui
 ```
 
 Valitse pistepilvi(t) → aja → tulokset (IFC / DXF / model.json).
@@ -104,7 +104,7 @@ Valitse pistepilvi(t) → aja → tulokset (IFC / DXF / model.json).
 ### CLI
 
 ```bash
-scan2bim convert input.e57 output/          # yksi keilaus
+ordinate convert input.e57 output/          # yksi keilaus
 ```
 
 Tuotantopolku usealle keilaukselle on `Pipeline.run_floors([...])`
@@ -127,7 +127,7 @@ pytest tests/                   # testit
 python scripts/make_test_cloud.py --out data/raw/test_room.pts   # synteettinen testipilvi
 ```
 
-Windows-build: `.\build.ps1` → `dist\scan2bim.exe`.
+Windows-build: `.\build.ps1` → `dist\ordinate.exe`.
 Installeri: `.\scripts\build_installer.ps1`.
 
 ## Tech stack

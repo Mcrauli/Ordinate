@@ -9,7 +9,7 @@ Kaytto: _extent_qa.py <model.json> <ply|dir> [nimi]
 import json, sys, glob, pathlib
 import numpy as np
 
-from scan2bim.core.geometry.loader import load_point_cloud
+from ordinate.core.geometry.loader import load_point_cloud
 
 _TOL = 60.0        # mm — pinnan kaista
 _BIN = 200.0       # mm

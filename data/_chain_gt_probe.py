@@ -81,16 +81,16 @@ def _wrap(mod, name: str, label: str, extra=()) -> None:
 
 
 def main(scene_dir: str, out_dir: str, insts: str = "") -> None:
-    from scan2bim.core import pipeline as PL
-    from scan2bim.core.semantics import wall_semantics as WS
-    from scan2bim.core.semantics import corner_snap as CS
-    from scan2bim.core.semantics import orthogonal as OR
-    from scan2bim.core.semantics import perimeter as PM
-    from scan2bim.core.semantics import residual_walls as RW
-    from scan2bim.core.semantics import flatness_prune as FP
-    from scan2bim.core.semantics import direction_prune as DP
-    from scan2bim.core.semantics import split_gaps as SG
-    from scan2bim.core.segmentation import wall_normals as WN
+    from ordinate.core import pipeline as PL
+    from ordinate.core.semantics import wall_semantics as WS
+    from ordinate.core.semantics import corner_snap as CS
+    from ordinate.core.semantics import orthogonal as OR
+    from ordinate.core.semantics import perimeter as PM
+    from ordinate.core.semantics import residual_walls as RW
+    from ordinate.core.semantics import flatness_prune as FP
+    from ordinate.core.semantics import direction_prune as DP
+    from ordinate.core.semantics import split_gaps as SG
+    from ordinate.core.segmentation import wall_normals as WN
 
     scene = Path(scene_dir)
     G = np.load(scene / "coord.npy").astype(np.float64)

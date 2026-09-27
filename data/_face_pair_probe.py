@@ -51,7 +51,7 @@ def measure(wall: dict, pts: np.ndarray, index) -> tuple | None:
     """(paksuus, jatkuvuus_A, jatkuvuus_B, pituus) tai None jos ei mitattavissa."""
     from scipy.signal import find_peaks
 
-    from scan2bim.core.geometry.xy_index import subset
+    from ordinate.core.geometry.xy_index import subset
 
     ax = wall.get("axis") or []
     if len(ax) < 2:
@@ -92,7 +92,7 @@ def measure(wall: dict, pts: np.ndarray, index) -> tuple | None:
 def main(model_json: str, cloud_path: str, name: str = "") -> None:
     import open3d as o3d
 
-    from scan2bim.core.geometry.xy_index import XYIndex
+    from ordinate.core.geometry.xy_index import XYIndex
 
     pc = o3d.io.read_point_cloud(cloud_path)
     pts = np.asarray(pc.points, dtype=np.float64)

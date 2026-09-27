@@ -20,8 +20,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _soffit_probe import load_pts  # noqa: E402
 
-import scan2bim.core.segmentation.column_detector as CD  # noqa: E402
-from scan2bim.schemas.model import StructuralModel  # noqa: E402
+import ordinate.core.segmentation.column_detector as CD  # noqa: E402
+from ordinate.schemas.model import StructuralModel  # noqa: E402
 
 
 def main(coord_npy: str, model_json: str) -> None:

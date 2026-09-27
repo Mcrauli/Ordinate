@@ -1,5 +1,5 @@
 """Lohkoluvun raja on mitoitettava koko keilausprojektille, ei yhdelle tiedostolle."""
-from scan2bim.core.geometry import loader
+from ordinate.core.geometry import loader
 
 
 class _Header:

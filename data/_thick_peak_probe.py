@@ -32,7 +32,7 @@ from scipy.signal import find_peaks
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
-from scan2bim.core import pipeline as PL  # noqa: E402
+from ordinate.core import pipeline as PL  # noqa: E402
 
 _REG = {0: "None", 1: "Ceiling", 4: "Floor", 5: "Wall", 6: "Drywall", 8: "Parapet",
         9: "Beam", 10: "Column", 15: "Facade", 17: "TGA"}

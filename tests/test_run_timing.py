@@ -1,7 +1,7 @@
 """Ajon kesto ja pisimmät vaiheet käyttäjälle."""
 from __future__ import annotations
 
-from scan2bim.gui.run_timing import clock, fmt_duration, slowest_steps
+from ordinate.gui.run_timing import clock, fmt_duration, slowest_steps
 
 
 def test_duration_formats() -> None:

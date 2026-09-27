@@ -3,9 +3,9 @@ os.environ["QT_QPA_PLATFORM"] = "offscreen"
 import json
 from pathlib import Path
 from PySide6 import QtWidgets, QtCore
-from scan2bim.schemas.model import StructuralModel
-from scan2bim.gui.theme import apply_theme
-from scan2bim.gui.plan_view import PlanView
+from ordinate.schemas.model import StructuralModel
+from ordinate.gui.theme import apply_theme
+from ordinate.gui.plan_view import PlanView
 from _paths import OUTPUT  # portable dev-tool paths
 
 app = QtWidgets.QApplication([])

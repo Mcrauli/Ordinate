@@ -105,7 +105,7 @@ def _score(walls, gt):
 def main(scene_dir: str, voxel: str = "21.8") -> None:
     import open3d as o3d
 
-    from scan2bim.core.segmentation import wall_histogram as WH
+    from ordinate.core.segmentation import wall_histogram as WH
 
     scene = Path(scene_dir)
     xyz = np.load(scene / "coord.npy").astype(np.float64)

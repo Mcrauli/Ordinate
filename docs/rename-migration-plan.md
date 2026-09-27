@@ -1,6 +1,16 @@
 # Rename-migraatiosuunnitelma: scan2bim → Ordinate
 
-Status: **VALMIS ODOTTAMAAN** — ei aloiteta ennen kuin lukitusportti (alla) on vihreä.
+Status: **TOTEUTETTU LAAJEMPANA 27.9.2026 (v0.9.35).** Käyttäjä päätti vaihtaa nimen
+KAIKKIALLE — myös Python-paketti (`ordinate`), exe (`Ordinate.exe`, `ordinate-cli.exe`)
+ja IFC-pset (`Ordinate_Mittaus`) — ja aloittaa ennen lukitusporttia (domainit +
+tavaramerkki), riski tiedostaen. §1a:n itsepäivitysmiina ratkaistiin SILLALLA:
+paketissa on myös `scan2bim.exe` (sama GUI), koska ≤0.9.34:n päivittäjä etsii ja
+käynnistää sen; uusi päivittäjä hyväksyy molemmat nimet, odottaa ajossa olevaa exeä
+ja käynnistää `Ordinate.exe`:n. Installer: sama AppId (vanhat asennukset päivittyvät
+paikalleen), AppMutex molemmat nimet, vanhat `scan2bim`-pikakuvakkeet poistetaan.
+**Ei vielä tehty (ulkoisia):** GitHub-repot `Mcrauli/scan2bim` ja `scan2bim-web`
+(`updater.DEFAULT_REPO`), nettisivun sisältö; sillan poisto kun asennuskanta on
+päivittynyt. Alla oleva teksti on alkuperäinen suunnitelma (historia).
 Laadittu 5.8.2026. Liittyy nimibriefiin `docs/superpowers/specs/2026-07-15-nimibrief-design.md`.
 
 ---

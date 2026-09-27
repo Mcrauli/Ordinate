@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Polygon as MP
 from shapely.geometry import Polygon
 
-from scan2bim.core.geometry.loader import load_point_cloud
+from ordinate.core.geometry.loader import load_point_cloud
 
 ply, pa, pb, outpng = sys.argv[1:5]
 c = load_point_cloud(Path(ply)).voxel_down_sample(30.0)

@@ -2,8 +2,8 @@
 import numpy as np
 import pytest
 
-from scan2bim.core.semantics.direction_prune import prune_offdirection_walls
-from scan2bim.schemas.model import ElementSource, StructuralModel, Wall
+from ordinate.core.semantics.direction_prune import prune_offdirection_walls
+from ordinate.schemas.model import ElementSource, StructuralModel, Wall
 
 _H = 2600.0
 

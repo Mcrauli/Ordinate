@@ -36,7 +36,7 @@ def _opposite_side_pick(hist, centers, pks, dom, lo, hi):
 
 def main(cloud: str, out_dir: str, max_pts: str = "4000000") -> None:
     import open3d as o3d
-    from scan2bim.core import pipeline as PL
+    from ordinate.core import pipeline as PL
 
     src = Path(cloud)
     lim = int(max_pts)
@@ -52,7 +52,7 @@ def main(cloud: str, out_dir: str, max_pts: str = "4000000") -> None:
     del pc
     print(f"pisteita {len(pts):,}", flush=True)
 
-    from scan2bim.core.qa.coverage import wall_coverage
+    from ordinate.core.qa.coverage import wall_coverage
     orig = PL._thickness_lock_wall
 
     def patched(wall, p, ceiling_xy=None, inward=None, index=None):

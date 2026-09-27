@@ -11,8 +11,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _soffit_probe import load_pts  # noqa: E402
 
-from scan2bim.core.segmentation.opening_detector import detect_openings  # noqa: E402
-from scan2bim.schemas.model import StructuralModel  # noqa: E402
+from ordinate.core.segmentation.opening_detector import detect_openings  # noqa: E402
+from ordinate.schemas.model import StructuralModel  # noqa: E402
 
 
 def main(cloud_path: str, model_json: str) -> None:

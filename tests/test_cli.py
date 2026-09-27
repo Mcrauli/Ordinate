@@ -1,11 +1,11 @@
 """CLI-testit: varmista ettei komentorivin oletukset eroa tuotannon oletuksista."""
-import scan2bim.core.segmentation.wall_contour    # noqa: F401 — rekisteröi detektorit
-import scan2bim.core.segmentation.wall_density     # noqa: F401
-import scan2bim.core.segmentation.wall_histogram   # noqa: F401
-import scan2bim.core.segmentation.wall_ransac      # noqa: F401
-from scan2bim.cli import convert
-from scan2bim.core.pipeline import PipelineConfig
-from scan2bim.core.segmentation.base import DetectorRegistry
+import ordinate.core.segmentation.wall_contour    # noqa: F401 — rekisteröi detektorit
+import ordinate.core.segmentation.wall_density     # noqa: F401
+import ordinate.core.segmentation.wall_histogram   # noqa: F401
+import ordinate.core.segmentation.wall_ransac      # noqa: F401
+from ordinate.cli import convert
+from ordinate.core.pipeline import PipelineConfig
+from ordinate.core.segmentation.base import DetectorRegistry
 
 
 def _detector_option():
@@ -30,7 +30,7 @@ def test_cli_detector_choices_are_registered():
 def test_report_characters_survive_a_cp1252_console():
     """CLI ei saa kaatua siihen ettei konsoli osaa raportin merkkejä.
 
-    Mitattu: `scan2bim inspect` kaatui UnicodeEncodeErroriin Windowsin
+    Mitattu: `ordinate inspect` kaatui UnicodeEncodeErroriin Windowsin
     oletuskonsolissa (cp1252) heti kun raporttiin tuli `→`. Poikkeus tuli
     kesken tulostuksen eikä prosessi poistunut siististi, joten vika näytti
     jumilta eikä kaatumiselta.
@@ -38,7 +38,7 @@ def test_report_characters_survive_a_cp1252_console():
     import io
     import sys
 
-    from scan2bim.cli import force_utf8_output
+    from ordinate.cli import force_utf8_output
 
     raw = io.BytesIO()
     stdout, stderr = sys.stdout, sys.stderr

@@ -1,7 +1,7 @@
 """Ajokirjanpito: koneluettava rivi per ajo, ilman asiakkaan sijaintitietoa."""
 import json
 
-from scan2bim.core.qa.runlog import RunLog, load_runs
+from ordinate.core.qa.runlog import RunLog, load_runs
 
 
 def test_run_is_written_as_one_json_line(tmp_path):

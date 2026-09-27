@@ -50,7 +50,7 @@ def _trace_classify(filt, pts_full):
 
     Askelhuippu (0.2 s naytteistys) on tassa se olennainen luku: iso osa
     kulutuksesta on transienttia joka ei nay askeleen jalkeisessa RSS:ssa."""
-    from scan2bim.core.segmentation import pointnet_filter as pnf
+    from ordinate.core.segmentation import pointnet_filter as pnf
 
     rss(f"  classify sisaan, pts_full {len(pts_full):,}")
     origin = pts_full.min(axis=0)
@@ -63,7 +63,7 @@ def _trace_classify(filt, pts_full):
     del first
     rss("  + wpts")
 
-    from scan2bim.core.segmentation import point_features as pf
+    from ordinate.core.segmentation import point_features as pf
     h = pf.height(wpts)
     rss("  + height")
     g = pf.geometric(wpts)
@@ -91,11 +91,11 @@ def main() -> None:
     paths = [Path(a.cloud)]
     threading.Thread(target=_watch, daemon=True).start()
 
-    from scan2bim.core.geometry.floor_splitter import detect_floors_from_files
-    from scan2bim.core.geometry.loader import (
+    from ordinate.core.geometry.floor_splitter import detect_floors_from_files
+    from ordinate.core.geometry.loader import (
         load_point_cloud as _lpc, ply_z_range, ply_autoscale_factor)
-    from scan2bim.core.geometry.streaming import load_floor_slice as _lfs
-    from scan2bim.core.pipeline import _auto_voxel
+    from ordinate.core.geometry.streaming import load_floor_slice as _lfs
+    from ordinate.core.pipeline import _auto_voxel
 
     rss("alku")
     floors = detect_floors_from_files(paths, sample_step=1)
@@ -115,7 +115,7 @@ def main() -> None:
     if a.real:
         # Putki lataa thick/refine VASTA suodattimen jalkeen, joten niita ei
         # ladata tassakaan — muuten huippu mitattaisiin vaarasta lahtotasosta.
-        from scan2bim.core.segmentation.pointnet_filter import PointNetFilter
+        from ordinate.core.segmentation.pointnet_filter import PointNetFilter
         filt = PointNetFilter()
         rss("PointNetFilter ladattu")
         out, labels = filt.filter_with_labels(cloud)
@@ -142,7 +142,7 @@ def main() -> None:
         print(f"\nHUIPPU {_PEAK[0]:.2f} GB")
         return
 
-    from scan2bim.core.segmentation.pointnet_filter import PointNetFilter
+    from ordinate.core.segmentation.pointnet_filter import PointNetFilter
     filt = PointNetFilter()
     rss("PointNetFilter ladattu")
     _trace_classify(filt, np.asarray(cloud.points))

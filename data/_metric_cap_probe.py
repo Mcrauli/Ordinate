@@ -37,7 +37,7 @@ _GT = {"rohbau_07000": 0.920, "rohbau_07001": 0.905, "rohbau_07002": 0.863,
 
 
 def _model_walls(path: Path):
-    from scan2bim.schemas.model import ElementSource, Wall
+    from ordinate.schemas.model import ElementSource, Wall
     m = json.loads(path.read_text(encoding="utf-8"))
     out = []
     for w in m["walls"]:
@@ -53,7 +53,7 @@ def _model_walls(path: Path):
 def main(*caps: str) -> None:
     import open3d as o3d
 
-    from scan2bim.core.qa import coverage as CV
+    from ordinate.core.qa import coverage as CV
 
     cap_list = [float(c) for c in caps] or [2000.0, 2400.0, 2800.0, 3400.0]
     orig = CV._SPAN_FRAC

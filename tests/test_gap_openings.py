@@ -7,8 +7,8 @@ molemmin puolin ja oven paalla on ylitys.
 """
 import numpy as np
 
-from scan2bim.core.segmentation.opening_detector import detect_openings, openings_in_wall_gaps
-from scan2bim.schemas.model import ElementSource, Wall
+from ordinate.core.segmentation.opening_detector import detect_openings, openings_in_wall_gaps
+from ordinate.schemas.model import ElementSource, Wall
 
 
 class _Cloud:

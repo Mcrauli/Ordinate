@@ -4,7 +4,7 @@ from pathlib import Path
 import numpy as np
 import cv2
 
-import scan2bim.core.segmentation.wall_contour as WC
+import ordinate.core.segmentation.wall_contour as WC
 from _paths import DATA, OUTPUT  # portable dev-tool paths
 
 _vm = WC.WallDetectorContour._vertical_mask
@@ -62,7 +62,7 @@ WC._merge_collinear = mc
 WC._group_segments = gs
 WC._regularize_orthogonal = ro
 
-from scan2bim.core.pipeline import Pipeline, PipelineConfig  # noqa: E402
+from ordinate.core.pipeline import Pipeline, PipelineConfig  # noqa: E402
 
 D = Path(str(DATA / "_rohbau/site_07"))
 plys = [sc / "cloud.ply" for sc in sorted(p for p in D.iterdir() if p.is_dir())]

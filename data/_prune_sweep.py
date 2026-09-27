@@ -20,7 +20,7 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
-from scan2bim.core.semantics import semantic_prune as SP  # noqa: E402
+from ordinate.core.semantics import semantic_prune as SP  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _sem_cache import load as load_sem  # noqa: E402

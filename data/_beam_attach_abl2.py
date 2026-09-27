@@ -22,8 +22,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _paths import DATA, OUTPUT  # noqa: E402
 
-from scan2bim.core.segmentation import beam_detector as B  # noqa: E402
-from scan2bim.schemas.model import StructuralModel  # noqa: E402
+from ordinate.core.segmentation import beam_detector as B  # noqa: E402
+from ordinate.schemas.model import StructuralModel  # noqa: E402
 
 _TRUE = lambda *a, **k: True  # noqa: E731
 _CASES = [("_retail_s.ply", "_2nd_retail_s", "_retail_s.ply.gt.json"),

@@ -39,7 +39,7 @@ def _session(model_path: str, threads: int):
 
 
 def main(n_batches: str = "3") -> None:
-    from scan2bim.core.segmentation import pointnet_filter as PF
+    from ordinate.core.segmentation import pointnet_filter as PF
 
     mp = None
     for attr in ("_model_path", "MODEL_PATH", "_MODEL_PATH"):

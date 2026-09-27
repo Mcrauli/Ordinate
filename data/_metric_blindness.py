@@ -36,7 +36,7 @@ _MIN_PTS = 2000
 
 
 def _gt_walls(scene: Path):
-    from scan2bim.schemas.model import ElementSource, Wall
+    from ordinate.schemas.model import ElementSource, Wall
 
     xyz = np.load(scene / "coord.npy").astype(np.float64)
     cls = np.load(scene / "class.npy").ravel()
@@ -71,7 +71,7 @@ def _gt_walls(scene: Path):
 
 
 def main(scene_dir: str) -> None:
-    from scan2bim.core.qa.coverage import wall_scores
+    from ordinate.core.qa.coverage import wall_scores
 
     scene = Path(scene_dir)
     walls, lens, xyz = _gt_walls(scene)

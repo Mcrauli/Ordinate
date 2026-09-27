@@ -2,7 +2,7 @@
 import numpy as np
 import pytest
 
-from scan2bim.core.geometry.floor_splitter import detect_floors
+from ordinate.core.geometry.floor_splitter import detect_floors
 
 
 def _make_floor_z(floor_z: float, height: float = 2800.0, n: int = 5000) -> np.ndarray:
@@ -134,7 +134,7 @@ def _hist(levels, n_bins=8, lo=5300.0, step=100.0):
 
 def test_slab_pair_requires_concrete_between_the_two_surfaces():
     """Kaksi pintaa 300 mm etaisyydella JA valissa tyhjaa = valipohja."""
-    from scan2bim.core.geometry.floor_splitter import _is_slab_pair
+    from ordinate.core.geometry.floor_splitter import _is_slab_pair
     centers, hist = _hist({0: 50000, 1: 400, 2: 300, 3: 48000})
     group = [float(centers[0]), float(centers[3])]
     assert _is_slab_pair(group, centers, hist)
@@ -147,7 +147,7 @@ def test_one_thick_surface_is_not_a_slab_pair():
     levays 200 mm eli vanhan saannon mukaan "pintapari", mutta binit sisalla
     olivat 198868 ja 263273 — ei yhtaan tyhjaa. Betoni ei palauta pistetta.
     """
-    from scan2bim.core.geometry.floor_splitter import _is_slab_pair
+    from ordinate.core.geometry.floor_splitter import _is_slab_pair
     centers, hist = _hist({0: 50000, 1: 46000, 2: 44000, 3: 48000})
     group = [float(centers[0]), float(centers[3])]
     assert not _is_slab_pair(group, centers, hist)
@@ -156,7 +156,7 @@ def test_one_thick_surface_is_not_a_slab_pair():
 def test_slab_pair_emptiness_is_relative_to_the_group_peak():
     """Tyhjyys on OSUUS ryhman huipusta, ei pistemaara — muuten saanto muuttuu
     skannin tiheyden mukana. Sama muoto kymmenesosalla pisteita = sama tulos."""
-    from scan2bim.core.geometry.floor_splitter import _is_slab_pair
+    from ordinate.core.geometry.floor_splitter import _is_slab_pair
     centers, hist = _hist({0: 5000, 1: 40, 2: 30, 3: 4800})
     group = [float(centers[0]), float(centers[3])]
     assert _is_slab_pair(group, centers, hist)

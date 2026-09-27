@@ -3,7 +3,7 @@ vain big-box-liiketilaan (iso pohja + korkea tila). Asuintila/rohbau (matala) ei
 saa triggeröidä — suodatin regressoi niitä (talo 9→8 seinää, 2→1 huone)."""
 import numpy as np
 
-from scan2bim.core.pipeline import _looks_like_retail
+from ordinate.core.pipeline import _looks_like_retail
 
 
 class _Cloud:
@@ -58,7 +58,7 @@ def test_decision_does_not_change_with_point_density():
     """
     # Pistemaara riittava jotta harvinkin sarja pysyy realistisella
     # tiheydella: alle 3 pistetta nelioametrilla ei ole enaa rakennusskanni,
-    # ja `scan2bim inspect` varoittaa siita erikseen.
+    # ja `ordinate inspect` varoittaa siita erikseen.
     big = _box(0, 0, 7000, 60_000, 40_000, n=800_000)
     small = _box(0, 0, 2700, 7000, 4000, n=800_000)
     for k in (1, 2, 4, 8, 16):

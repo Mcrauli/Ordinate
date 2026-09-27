@@ -16,9 +16,9 @@ from pathlib import Path
 import numpy as np
 import open3d as o3d
 
-from scan2bim.core import pipeline as pl
-from scan2bim.core.geometry.loader import ply_z_range, read_ply_xyz_band
-from scan2bim.schemas.model import ElementSource, Wall
+from ordinate.core import pipeline as pl
+from ordinate.core.geometry.loader import ply_z_range, read_ply_xyz_band
+from ordinate.schemas.model import ElementSource, Wall
 
 cloud_path, out = Path(sys.argv[1]), Path(sys.argv[2])
 m = json.loads(sorted(out.glob("floor_*/model.json"))[0].read_text(encoding="utf-8"))

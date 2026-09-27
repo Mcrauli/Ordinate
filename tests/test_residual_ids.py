@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from scan2bim.core.semantics.residual_walls import _to_walls
+from ordinate.core.semantics.residual_walls import _to_walls
 
 
 def _pairs(n: int) -> list:

@@ -2,8 +2,8 @@
 mm-tasolle (step-sovitus: tyhja aukko vs tayси seinapinta)."""
 import numpy as np
 
-from scan2bim.core.segmentation.opening_detector import detect_openings
-from scan2bim.schemas.model import ElementSource, Wall
+from ordinate.core.segmentation.opening_detector import detect_openings
+from ordinate.schemas.model import ElementSource, Wall
 
 _RNG = np.random.RandomState(11)
 

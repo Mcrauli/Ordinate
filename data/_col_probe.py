@@ -26,8 +26,8 @@ def _cache_path(cloud_path: Path) -> Path:
 
 def _cache(cloud_path: Path) -> None:
     cache = _cache_path(cloud_path)
-    import scan2bim.core.segmentation.column_detector as CD
-    from scan2bim.core.pipeline import Pipeline, PipelineConfig
+    import ordinate.core.segmentation.column_detector as CD
+    from ordinate.core.pipeline import Pipeline, PipelineConfig
 
     real = CD.detect_columns
     saved = {}
@@ -45,7 +45,7 @@ def _cache(cloud_path: Path) -> None:
         return real(cloud, walls, floor_z, ceiling_z)
 
     CD.detect_columns = spy
-    import scan2bim.core.pipeline as P
+    import ordinate.core.pipeline as P
     P.detect_columns = spy   # jos pipeline importtasi nimen suoraan
     cfg = PipelineConfig(detector="contour", auto_voxel=True, export_ifc=False,
                          export_dxf=False, export_qa=False,
@@ -54,7 +54,7 @@ def _cache(cloud_path: Path) -> None:
 
 
 def _gates(cloud_path: Path) -> None:
-    import scan2bim.core.segmentation.column_detector as CD
+    import ordinate.core.segmentation.column_detector as CD
     from scipy.ndimage import label as _cc_label
     from scipy.spatial import cKDTree
     import json
@@ -223,7 +223,7 @@ def _gap(cx, cy, wx, wy, waist_pts, waist_tree):
 
 def _sectors(cx, cy, fp, waist_pts, waist_tree):
     """(taysien sektorien maara, suurin yhtenainen VAPAA kaari asteina)."""
-    import scan2bim.core.segmentation.column_detector as CD
+    import ordinate.core.segmentation.column_detector as CD
     if waist_tree is None:
         return 0, 360.0
     r_out = fp / 2.0 + CD._SECTOR_RING_OUT

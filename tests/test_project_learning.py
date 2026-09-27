@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import numpy as np
 
-from scan2bim.core.qa.project_learning import MIN_LABELS, CorrectionLearner, wall_vector
-from scan2bim.schemas.model import ElementSource, Wall
+from ordinate.core.qa.project_learning import MIN_LABELS, CorrectionLearner, wall_vector
+from ordinate.schemas.model import ElementSource, Wall
 
 
 def _wall(i: int, fake: bool, rng) -> Wall:

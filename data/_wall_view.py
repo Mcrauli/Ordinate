@@ -20,7 +20,7 @@ import numpy as np
 import open3d as o3d
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-from scan2bim.schemas.model import StructuralModel  # noqa: E402
+from ordinate.schemas.model import StructuralModel  # noqa: E402
 
 _SEEK = 1500.0     # mm — kuinka kaukaa pintaa etsitään
 

@@ -27,7 +27,7 @@ from scipy.spatial import cKDTree
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
-from scan2bim.core import pipeline as PL  # noqa: E402
+from ordinate.core import pipeline as PL  # noqa: E402
 
 _FACE_IDS = {5, 6, 8, 15}          # Wall, Drywall, Parapet, Facade Element
 _WIDE = 20.0

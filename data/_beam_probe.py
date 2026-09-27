@@ -18,12 +18,12 @@ import open3d as o3d
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from scan2bim.core.segmentation import beam_detector as bd  # noqa: E402
-from scan2bim.core.segmentation.column_detector import _dist_to_walls  # noqa: E402
+from ordinate.core.segmentation import beam_detector as bd  # noqa: E402
+from ordinate.core.segmentation.column_detector import _dist_to_walls  # noqa: E402
 
 
 def _walls(m):
-    from scan2bim.schemas.model import StructuralModel
+    from ordinate.schemas.model import StructuralModel
     return StructuralModel.model_validate(m).walls
 
 

@@ -1,6 +1,6 @@
-﻿# Local Windows PyInstaller build for scan2bim.
+﻿# Local Windows PyInstaller build for ordinate.
 # Usage:  .\scripts\build_exe.ps1
-# Output: dist/scan2bim/ (one-dir) + dist/scan2bim-<version>.zip (+ .sha256)
+# Output: dist/ordinate/ (one-dir) + dist/ordinate-<version>.zip (+ .sha256)
 #
 # ONE-DIR eika one-file: LGPL (IfcOpenShell, Qt) vaatii etta kayttaja voi
 # vaihtaa kirjaston. Itsepaivitys lataa zipin ja vaihtaa hakemiston
@@ -18,20 +18,20 @@ $root = (Resolve-Path "$PSScriptRoot\..").Path
 $py = Join-Path $root ".venv\Scripts\python.exe"
 if (-not (Test-Path $py)) { throw "venv missing: $py - create with: py -3.12 -m venv .venv" }
 
-if (-not $env:SCAN2BIM_VERSION) {
-    $env:SCAN2BIM_VERSION = (Select-String -Path "$root\src\scan2bim\_version.py" -Pattern '__version__\s*=\s*"([^"]+)"').Matches[0].Groups[1].Value
+if (-not $env:ORDINATE_VERSION) {
+    $env:ORDINATE_VERSION = (Select-String -Path "$root\src\ordinate\_version.py" -Pattern '__version__\s*=\s*"([^"]+)"').Matches[0].Groups[1].Value
 }
-Write-Host "Building scan2bim.exe version $($env:SCAN2BIM_VERSION)..."
+Write-Host "Building ordinate.exe version $($env:ORDINATE_VERSION)..."
 
-$appDir = Join-Path $root "dist\scan2bim"
-$source = Join-Path $appDir "scan2bim.exe"
-$target = Join-Path $root "dist\scan2bim-$($env:SCAN2BIM_VERSION).zip"
+$appDir = Join-Path $root "dist\ordinate"
+$source = Join-Path $appDir "Ordinate.exe"
+$target = Join-Path $root "dist\Ordinate-$($env:ORDINATE_VERSION).zip"
 $preBuildMtime = if (Test-Path $source) { (Get-Item $source).LastWriteTime } else { [datetime]::MinValue }
 
 & $py -m pip install -e "$root[gui,build]" --quiet
 if ($LASTEXITCODE -ne 0) { throw "pip install failed (exit $LASTEXITCODE)" }
 
-& $py -m PyInstaller "$root\build\scan2bim.spec" --clean --noconfirm --distpath "$root\dist" --workpath "$root\build"
+& $py -m PyInstaller "$root\build\ordinate.spec" --clean --noconfirm --distpath "$root\dist" --workpath "$root\build"
 if ($LASTEXITCODE -ne 0) { throw "pyinstaller failed (exit $LASTEXITCODE)" }
 
 if (-not (Test-Path $source)) { throw "PyInstaller did not produce $source" }

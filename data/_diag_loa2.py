@@ -2,7 +2,7 @@
 mittaa mallin LÄHIMMÄN pinnan systemaattisen poikkeaman siitä."""
 from pathlib import Path
 import open3d as o3d, numpy as np
-from scan2bim.core.pipeline import Pipeline, PipelineConfig
+from ordinate.core.pipeline import Pipeline, PipelineConfig
 from scipy.signal import find_peaks
 from _paths import DATA  # portable dev-tool paths
 det=o3d.io.read_point_cloud(str(DATA / "_cache_apt.ply"))

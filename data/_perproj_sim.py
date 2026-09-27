@@ -21,9 +21,9 @@ from pathlib import Path
 
 import numpy as np
 
-from scan2bim.core.qa.deviation import flag_low_confidence
-from scan2bim.core.qa.project_learning import CorrectionLearner, wall_vector
-from scan2bim.schemas.model import StructuralModel
+from ordinate.core.qa.deviation import flag_low_confidence
+from ordinate.core.qa.project_learning import CorrectionLearner, wall_vector
+from ordinate.schemas.model import StructuralModel
 
 _KS = (10, 20, 40, 60, 80, 120)
 _SEEDS = 30

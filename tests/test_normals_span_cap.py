@@ -10,7 +10,7 @@ import numpy as np
 import open3d as o3d
 import pytest
 
-from scan2bim.core.segmentation import wall_normals as WN
+from ordinate.core.segmentation import wall_normals as WN
 
 _STEP = 60.0
 

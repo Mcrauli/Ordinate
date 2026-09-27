@@ -3,10 +3,10 @@ from __future__ import annotations
 
 import numpy as np
 
-from scan2bim.core.segmentation.column_detector import (
+from ordinate.core.segmentation.column_detector import (
     _WALL_MARGIN, _dist_to_walls, _far_from_walls,
 )
-from scan2bim.schemas.model import ElementSource, Wall
+from ordinate.schemas.model import ElementSource, Wall
 
 
 def _walls(rng, k: int) -> list[Wall]:

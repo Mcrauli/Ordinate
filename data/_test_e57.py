@@ -1,6 +1,6 @@
 import time
 from pathlib import Path
-from scan2bim.core.pipeline import Pipeline, PipelineConfig
+from ordinate.core.pipeline import Pipeline, PipelineConfig
 from _paths import DOWNLOADS, OUTPUT  # portable dev-tool paths
 for name in ["gargage.e57"]:
     p=Path(str(DOWNLOADS / f"{name}"))

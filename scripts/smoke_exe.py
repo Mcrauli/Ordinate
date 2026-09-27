@@ -24,10 +24,10 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 def main() -> int:
-    dist = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "dist" / "scan2bim"
+    dist = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "dist" / "ordinate"
     cloud = Path(sys.argv[2]) if len(sys.argv) > 2 else ROOT / "data" / "raw" / "test_room.ply"
-    if not (dist / "scan2bim-cli.exe").exists():
-        print(f"EI LOYDY: {dist / 'scan2bim-cli.exe'} — aja build ensin")
+    if not (dist / "ordinate-cli.exe").exists():
+        print(f"EI LOYDY: {dist / 'ordinate-cli.exe'} — aja build ensin")
         return 2
     if not cloud.exists():
         print(f"EI LOYDY: {cloud}")
@@ -36,7 +36,8 @@ def main() -> int:
     # Paketin on sisallettava MOLEMMAT exet ja malli. GUI on se mita asiakas
     # kayttaa; CLI on se mita voi testata automaattisesti. Jos toinen puuttuu,
     # paketti on vajaa vaikka konversio onnistuisi.
-    missing = [str(f) for f in (dist / "scan2bim.exe",
+    missing = [str(f) for f in (dist / "Ordinate.exe",
+                                dist / "scan2bim.exe",
                                 dist / "_internal" / "models" / "s3dis_pointnet.onnx")
                if not f.exists()]
     if missing:
@@ -47,7 +48,7 @@ def main() -> int:
     try:
         shutil.copytree(dist, tmp / "app")
         shutil.copy(cloud, tmp / "scan.ply")
-        exe = tmp / "app" / "scan2bim-cli.exe"
+        exe = tmp / "app" / "ordinate-cli.exe"
 
         r = subprocess.run([str(exe), "--help"], cwd=tmp, capture_output=True,
                            text=True, encoding="utf-8", errors="replace")
@@ -87,7 +88,7 @@ def main() -> int:
         # --config ei deserialisoidu, sovellus on rikki vaikka `convert` toimii.
         import dataclasses as _dc
         import json as _json
-        from scan2bim.core.pipeline import PipelineConfig as _PC
+        from ordinate.core.pipeline import PipelineConfig as _PC
         raw = {k: (str(v) if isinstance(v, Path) else v)
                for k, v in _dc.asdict(_PC()).items()}
         (tmp / "cfg.json").write_text(_json.dumps(raw), encoding="utf-8")

@@ -7,7 +7,7 @@ muutos voidaan mitata uudelleen kestavalta pohjalta.
 """
 import pathlib
 
-p = pathlib.Path("src/scan2bim/core/segmentation/wall_histogram.py")
+p = pathlib.Path("src/ordinate/core/segmentation/wall_histogram.py")
 s = p.read_text(encoding="utf-8")
 
 old = """_PEAK_SIGMA = 3.0          # piikki = keskiarvo + tama x keskihajonta"""

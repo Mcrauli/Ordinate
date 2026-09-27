@@ -18,8 +18,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _soffit_probe import _BASE, _CELL, _MAX_DEPTH, _OFF, load_pts, patches, soffit_map  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-from scan2bim.core.segmentation.column_detector import _dist_to_walls  # noqa: E402
-from scan2bim.schemas.model import StructuralModel  # noqa: E402
+from ordinate.core.segmentation.column_detector import _dist_to_walls  # noqa: E402
+from ordinate.schemas.model import StructuralModel  # noqa: E402
 
 _WALL_MARGIN = 250.0
 _REG = {1: "Ceiling", 4: "Floor", 5: "Wall", 6: "Drywall", 9: "Beam", 10: "Column",

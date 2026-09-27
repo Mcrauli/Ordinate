@@ -1,11 +1,11 @@
 """remove_dangling_walls: poistaa vain TYNGAT — pitka detektoitu seina sailyy
 vaikka sen paat eivat (viela) yhdy mihinkaan (nurkkien sulku tapahtuu myohemmin)."""
-from scan2bim.core.semantics.wall_semantics import (
+from ordinate.core.semantics.wall_semantics import (
     _deduplicate,
     merge_collinear_walls,
     remove_dangling_walls,
 )
-from scan2bim.schemas.model import ElementSource, Wall
+from ordinate.schemas.model import ElementSource, Wall
 
 
 def _wall(wid, x0, y0, x1, y1, method="contour"):
@@ -90,8 +90,8 @@ def test_separate_parallel_wall_not_merged_into_perimeter():
 
 
 def test_remove_walls_beyond_scan_range():
-    from scan2bim.core.semantics.wall_semantics import remove_walls_beyond_scan_range
-    from scan2bim.schemas.model import ElementSource, Wall
+    from ordinate.core.semantics.wall_semantics import remove_walls_beyond_scan_range
+    from ordinate.schemas.model import ElementSource, Wall
 
     def _w(x0, y0, x1, y1):
         return Wall(id="w", confidence=1.0, classification="wall",

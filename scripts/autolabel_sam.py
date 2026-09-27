@@ -94,7 +94,7 @@ def _region_class(pts3d, floor_z, ceil_z, model):
 
 def main():
     e57, mp, out = Path(sys.argv[1]), Path(sys.argv[2]), Path(sys.argv[3])
-    from scan2bim.core.geometry.loader import load_point_cloud
+    from ordinate.core.geometry.loader import load_point_cloud
     cl = load_point_cloud(e57, e57_colors=True)
     P = np.asarray(cl.points, np.float32)
     RGB = (np.asarray(cl.colors) if cl.has_colors() else np.full((len(P), 3), 0.5)).astype(np.float32)

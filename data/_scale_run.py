@@ -64,7 +64,7 @@ def main() -> None:
 
     threading.Thread(target=_watch, daemon=True).start()
 
-    from scan2bim.core.pipeline import Pipeline, PipelineConfig
+    from ordinate.core.pipeline import Pipeline, PipelineConfig
 
     cfg = PipelineConfig(detector=a.detector, auto_voxel=a.voxel <= 0.0,
                          voxel_size=a.voxel if a.voxel > 0.0 else 12.0,

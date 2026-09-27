@@ -79,7 +79,7 @@ def _rules():
 
 
 def _patched_segments(rule):
-    from scan2bim.core.segmentation import wall_normals as WN
+    from ordinate.core.segmentation import wall_normals as WN
 
     def _segments(q, sel, deg, z_lo, z_hi):
         n = np.array([np.cos(np.radians(deg)), np.sin(np.radians(deg))])
@@ -135,7 +135,7 @@ def _load(scene: Path):
 def main(*scene_dirs: str) -> None:
     import open3d as o3d
 
-    from scan2bim.core.segmentation import wall_normals as WN
+    from ordinate.core.segmentation import wall_normals as WN
 
     orig = WN._segments
     totals: dict[str, list] = {}

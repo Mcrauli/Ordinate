@@ -12,7 +12,7 @@ from pathlib import Path
 
 import numpy as np
 
-from scan2bim.core.geometry.loader import ply_z_range, read_ply_xyz_band
+from ordinate.core.geometry.loader import ply_z_range, read_ply_xyz_band
 
 cloud = Path(sys.argv[1])
 wid = sys.argv[2]

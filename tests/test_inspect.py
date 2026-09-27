@@ -9,7 +9,7 @@ import numpy as np
 import open3d as o3d
 import pytest
 
-from scan2bim.core.inspect import format_report, inspect_scan
+from ordinate.core.inspect import format_report, inspect_scan
 
 _RNG = np.random.RandomState(3)
 

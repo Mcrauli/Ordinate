@@ -33,7 +33,7 @@ _MIN_PTS = 2000
 def main(scene_dir: str, voxel: str = "21.8") -> None:
     import open3d as o3d
 
-    from scan2bim.core.segmentation.wall_histogram import (
+    from ordinate.core.segmentation.wall_histogram import (
         _BIN, _MID_HI, _MID_LO, _PEAK_MIN_PTS, _dominant_angle,
     )
 

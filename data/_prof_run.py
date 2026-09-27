@@ -11,7 +11,7 @@ import pstats
 import sys
 from pathlib import Path
 
-from scan2bim.core.pipeline import Pipeline, PipelineConfig
+from ordinate.core.pipeline import Pipeline, PipelineConfig
 
 cloud = Path(sys.argv[1])
 out = Path(sys.argv[2])

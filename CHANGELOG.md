@@ -4,6 +4,16 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 [`Mcrauli/scan2bim-web`](https://github.com/Mcrauli/scan2bim-web/releases):iin;
 sovellus päivittää itsensä sieltä.
 
+## v0.9.35 (27.9.2026) — tuotenimi Ordinate
+
+- **scan2bim on nyt Ordinate.** Ikkuna, asennusohjelma, pikakuvakkeet, exe
+  (`Ordinate.exe`, komentorivi `ordinate-cli.exe`), IFC-tiedoston ohjelmatieto ja
+  mittauspset (`Ordinate_Mittaus`, ent. `scan2bim_Mittaus`).
+- **Päivitys toimii vanhasta versiosta suoraan:** sovelluskansiossa on vielä
+  `scan2bim.exe`, jotta vanha itsepäivitys löytää sen; vanhat pikakuvakkeet
+  korvataan Ordinate-pikakuvakkeilla. Diagnostiikkahistoria alkaa alusta
+  `%APPDATA%\Ordinate`-kansioon.
+
 ## v0.9.34 (18.9.2026) — ovet ja ikkunat löytyvät useammin ja oikeaan kohtaan
 
 - **Aukon korkeus ja reunat mitataan raakapilvestä.** Reunojen hienosäätö

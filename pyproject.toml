@@ -3,7 +3,7 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "scan2bim"
+name = "ordinate"
 dynamic = ["version"]
 description = "Pistepilvi → puhdas arkkitehtimalli (IFC/DXF)"
 requires-python = ">=3.12"
@@ -30,13 +30,13 @@ dev = ["pytest>=8.2", "pytest-cov>=5.0"]
 build = ["pyinstaller>=6.0", "pillow>=10.0"]
 
 [project.scripts]
-scan2bim = "scan2bim.cli:main"
+ordinate = "ordinate.cli:main"
 
 [project.gui-scripts]
-scan2bim-gui = "scan2bim.gui.app:run"
+ordinate-gui = "ordinate.gui.app:run"
 
 [tool.setuptools.dynamic]
-version = { attr = "scan2bim._version.__version__" }
+version = { attr = "ordinate._version.__version__" }
 
 [tool.setuptools.packages.find]
 where = ["src"]

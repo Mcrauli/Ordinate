@@ -10,8 +10,8 @@ import pytest
 
 pytest.importorskip("cv2")
 
-from scan2bim.core.segmentation import image_openings as io  # noqa: E402
-from scan2bim.schemas.model import ElementSource, Wall  # noqa: E402
+from ordinate.core.segmentation import image_openings as io  # noqa: E402
+from ordinate.schemas.model import ElementSource, Wall  # noqa: E402
 
 _L = 6000.0        # seinan pituus mm
 _H = 2700.0        # seinan korkeus mm

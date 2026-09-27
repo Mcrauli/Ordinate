@@ -7,7 +7,7 @@ tuloksia voisi verrata vanhoihin.
 """
 import numpy as np
 
-from scan2bim.core.segmentation import point_features as pf
+from ordinate.core.segmentation import point_features as pf
 
 
 def _scene(n=4000, seed=1):

@@ -40,7 +40,7 @@ def _inst_cov(model: Path, scene: Path) -> str:
 
 
 def main(scene_dir: str, out_root: str) -> None:
-    from scan2bim.core import pipeline as PL
+    from ordinate.core import pipeline as PL
 
     scene = Path(scene_dir)
     orig = PL.Pipeline._best_detector

@@ -22,8 +22,8 @@ import numpy as np  # noqa: E402
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import scan2bim.core.pipeline as PL  # noqa: E402
-from scan2bim.core.pipeline import Pipeline, PipelineConfig  # noqa: E402
+import ordinate.core.pipeline as PL  # noqa: E402
+from ordinate.core.pipeline import Pipeline, PipelineConfig  # noqa: E402
 from _paths import DOWNLOADS, OUTPUT  # noqa: E402
 
 E57 = Path(str(DOWNLOADS / "matterport_lobby.e57"))
@@ -54,7 +54,7 @@ def band_points(m):
         return np.load(_BAND_CACHE)
     z0 = min(w["z_min"] for w in m["walls"])
     h = max(w["height"] for w in m["walls"])
-    from scan2bim.core.geometry.loader import read_e57_xyz_band
+    from ordinate.core.geometry.loader import read_e57_xyz_band
     pts = read_e57_xyz_band(E57, z0 + 0.30 * h, z0 + 0.70 * h, max_points=3_000_000)
     if pts is not None and len(pts):
         np.save(_BAND_CACHE, pts)

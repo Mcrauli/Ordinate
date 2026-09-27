@@ -3,7 +3,7 @@ import json
 
 import pytest
 
-from scan2bim.schemas.model import (
+from ordinate.schemas.model import (
     Beam, BeamProfile, Column, ColumnProfile, Discarded, ElementSource,
     Metadata, Slab, Space, StructuralModel, Wall,
 )

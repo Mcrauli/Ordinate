@@ -3,7 +3,7 @@ Korvaa RANSACin liiketilassa (deterministinen + nopea + pilarivapaa)."""
 import numpy as np
 import open3d as o3d
 
-from scan2bim.core.segmentation.wall_histogram import WallDetectorHistogram
+from ordinate.core.segmentation.wall_histogram import WallDetectorHistogram
 
 
 def _room_cloud(theta=0.0, seed=0):

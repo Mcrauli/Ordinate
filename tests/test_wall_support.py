@@ -7,8 +7,8 @@ seinaa peitto 0.29-0.49, 6 valeseinaa 0.016-0.063.
 import numpy as np
 import open3d as o3d
 
-from scan2bim.core.qa.deviation import flag_low_confidence, measure_wall_support
-from scan2bim.schemas.model import ElementSource, StructuralModel, Wall
+from ordinate.core.qa.deviation import flag_low_confidence, measure_wall_support
+from ordinate.schemas.model import ElementSource, StructuralModel, Wall
 
 _H = 2700.0
 _T = 200.0
@@ -166,7 +166,7 @@ def test_sparse_scan_does_not_turn_a_real_wall_into_a_beam_line():
     aitoja seinia. Mitattu Rohbaulla: 1/250 harvennus poisti kaksi GT-aitoa
     seinaa, ja synteettisesti erottelu (aito - palkki) romahti 0.94 -> 0.00.
     """
-    from scan2bim.core.semantics.wall_semantics import prune_unsupported_walls
+    from ordinate.core.semantics.wall_semantics import prune_unsupported_walls
     sparse = _thin(_face_points(0, 0, 24000, 0), 250)
     model = StructuralModel(walls=[_long_wall("w_sparse")])
     measure_wall_support(model, _cloud(sparse))
@@ -177,7 +177,7 @@ def test_sparse_scan_does_not_turn_a_real_wall_into_a_beam_line():
 
 def test_beam_line_is_still_caught_when_the_scan_is_sparse():
     """Erottelun on sailyttava molempiin suuntiin, ei vain 'ala poista'."""
-    from scan2bim.core.semantics.wall_semantics import prune_unsupported_walls
+    from ordinate.core.semantics.wall_semantics import prune_unsupported_walls
     model = StructuralModel(walls=[_long_wall("w_line")])
     measure_wall_support(model, _cloud(_thin(_beam_line_points(), 50)))
     assert model.walls[0].continuity < _PRUNE_CONT_MAX, model.walls[0].continuity
@@ -189,7 +189,7 @@ def test_short_wall_is_never_pruned_because_it_cannot_prove_a_beam_line():
     jatkuvuus ei todista kumpaankaan suuntaan. Palkkilinjat ovat aina pitkia
     (Rohbaussa 28 m) — lyhyiden suojaaminen ei siis maksa mitaan.
     """
-    from scan2bim.core.semantics.wall_semantics import prune_unsupported_walls
+    from ordinate.core.semantics.wall_semantics import prune_unsupported_walls
     sparse = _thin(_face_points(0, 0, 1000, 0), 100)
     model = StructuralModel(walls=[_wall("w_tiny", 0, 0, 1000, 0)])
     measure_wall_support(model, _cloud(sparse))
@@ -202,7 +202,7 @@ def test_short_phantom_is_still_pruned_when_the_place_is_truly_empty():
     lyhyilla on 63 754 / 46 581 taydella pilvella ja yha 36 / 27 kun pilvi on
     harvennettu 1/2500:aan. Ero on tyhja vs ei-tyhja, ei tiheyskynnys.
     """
-    from scan2bim.core.semantics.wall_semantics import prune_unsupported_walls
+    from ordinate.core.semantics.wall_semantics import prune_unsupported_walls
     real = _face_points(0, 0, 6000, 0)
     model = StructuralModel(walls=[
         _wall("w_real", 0, 0, 6000, 0),
@@ -213,7 +213,7 @@ def test_short_phantom_is_still_pruned_when_the_place_is_truly_empty():
 
 
 def test_beam_line_is_pruned_from_the_model():
-    from scan2bim.core.semantics.wall_semantics import prune_unsupported_walls
+    from ordinate.core.semantics.wall_semantics import prune_unsupported_walls
     model = StructuralModel(walls=[_long_wall("w_line"), _wall("w_real", 0, 9000, 6000, 9000)])
     pts = np.vstack([_beam_line_points(), _face_points(0, 9000, 6000, 9000)])
     measure_wall_support(model, _cloud(pts))
@@ -223,7 +223,7 @@ def test_beam_line_is_pruned_from_the_model():
 
 def test_displaced_real_wall_is_kept_for_review_not_pruned():
     """Kauppakeskuksen wall_ext_010: aito GT-seina 375 mm sivussa — EI saa poistua."""
-    from scan2bim.core.semantics.wall_semantics import prune_unsupported_walls
+    from ordinate.core.semantics.wall_semantics import prune_unsupported_walls
     model = StructuralModel(walls=[_wall("w_moved", 0, 0, 6000, 0)])
     measure_wall_support(model, _cloud(_displaced_face_points(0, 0, 6000, 0, 500.0)))
     w = model.walls[0]
@@ -247,7 +247,7 @@ def test_phantom_next_to_clutter_is_pruned_not_saved_by_its_offset():
     kohinasta, joten siirtymaraja suojeli haamua. Vastineen pitaa olla
     jatkuva pinta, ei mika tahansa histogrammihuippu.
     """
-    from scan2bim.core.semantics.wall_semantics import prune_unsupported_walls
+    from ordinate.core.semantics.wall_semantics import prune_unsupported_walls
     model = StructuralModel(walls=[_long_wall("w_phantom")])
     cloud = _cloud(_clutter_blob(3000.0, 400.0))
     measure_wall_support(model, cloud)
@@ -259,8 +259,8 @@ def test_phantom_next_to_clutter_is_pruned_not_saved_by_its_offset():
 
 def test_pruning_takes_the_openings_with_it():
     """Muuten IFC:hen jaisi aukko jonka seinaa ei ole."""
-    from scan2bim.schemas.model import Opening
-    from scan2bim.core.semantics.wall_semantics import prune_unsupported_walls
+    from ordinate.schemas.model import Opening
+    from ordinate.core.semantics.wall_semantics import prune_unsupported_walls
     model = StructuralModel(
         walls=[_long_wall("w_line")],
         openings=[Opening(id="op_0", confidence=0.9, source=ElementSource(method="opening"),
@@ -273,7 +273,7 @@ def test_pruning_takes_the_openings_with_it():
 
 
 def test_good_model_is_untouched_by_pruning():
-    from scan2bim.core.semantics.wall_semantics import prune_unsupported_walls
+    from ordinate.core.semantics.wall_semantics import prune_unsupported_walls
     model = StructuralModel(walls=[_wall("w_a", 0, 0, 6000, 0), _wall("w_b", 0, 4000, 6000, 4000)])
     pts = np.vstack([_face_points(0, 0, 6000, 0), _face_points(0, 4000, 6000, 4000)])
     measure_wall_support(model, _cloud(pts))
@@ -282,7 +282,7 @@ def test_good_model_is_untouched_by_pruning():
 
 
 def _snap(model, cloud):
-    from scan2bim.core.semantics.wall_semantics import snap_displaced_walls
+    from ordinate.core.semantics.wall_semantics import snap_displaced_walls
     return snap_displaced_walls(model, cloud)
 
 
@@ -446,7 +446,7 @@ def test_wall_whose_continuity_could_not_be_measured_is_not_taken_as_proven():
     merkitsi molemmat vaaran luokan seiniksi. Aitojen seinien tuki samoissa
     malleissa on 0.329-0.923.
     """
-    from scan2bim.core.semantics.wall_semantics import prune_unsupported_walls
+    from ordinate.core.semantics.wall_semantics import prune_unsupported_walls
     real = _face_points(0, 0, 6000, 0)
     clutter = _floor_clutter_face(0, 9000, 6000, 9000)
     model = StructuralModel(walls=[
@@ -462,7 +462,7 @@ def test_wall_whose_continuity_could_not_be_measured_is_not_taken_as_proven():
 
 def test_measured_support_still_saves_a_wall_without_continuity():
     """Jos tuki on MITATTU ja hyva, jatkuvuuden puuttuminen ei saa poistaa seinaa."""
-    from scan2bim.core.semantics.wall_semantics import prune_unsupported_walls
+    from ordinate.core.semantics.wall_semantics import prune_unsupported_walls
     pts = _face_points(0, 0, 6000, 0)
     model = StructuralModel(walls=[_wall("w_real", 0, 0, 6000, 0)])
     measure_wall_support(model, _cloud(pts))

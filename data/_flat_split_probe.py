@@ -24,7 +24,7 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
-from scan2bim.core.geometry.xy_index import XYIndex, subset  # noqa: E402
+from ordinate.core.geometry.xy_index import XYIndex, subset  # noqa: E402
 
 _COL = 500.0
 _BAND = 120.0

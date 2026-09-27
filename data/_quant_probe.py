@@ -46,7 +46,7 @@ def _session(model_path: str, threads: int = 8):
 def main(n_batches: str = "4") -> None:
     from onnxruntime.quantization import QuantType, quantize_dynamic
 
-    from scan2bim.core.segmentation import pointnet_filter as PF
+    from ordinate.core.segmentation import pointnet_filter as PF
 
     src = PF._find_model_path()
     if src is None:

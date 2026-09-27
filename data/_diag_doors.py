@@ -1,7 +1,7 @@
 from pathlib import Path
 import open3d as o3d, numpy as np
-from scan2bim.core.pipeline import Pipeline, PipelineConfig
-from scan2bim.core.segmentation import opening_detector as od
+from ordinate.core.pipeline import Pipeline, PipelineConfig
+from ordinate.core.segmentation import opening_detector as od
 from _paths import DATA  # portable dev-tool paths
 
 cloud = o3d.io.read_point_cloud(str(DATA / "_cache_apt.ply"))

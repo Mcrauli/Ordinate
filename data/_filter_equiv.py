@@ -24,8 +24,8 @@ def _h(a: np.ndarray) -> str:
 def main() -> None:
     src, out = Path(sys.argv[1]), Path(sys.argv[2])
 
-    from scan2bim.core.geometry.loader import load_point_cloud
-    from scan2bim.core.segmentation.pointnet_filter import PointNetFilter
+    from ordinate.core.geometry.loader import load_point_cloud
+    from ordinate.core.segmentation.pointnet_filter import PointNetFilter
 
     cloud = load_point_cloud(src)
     n_in = len(cloud.points)

@@ -3,7 +3,7 @@ koko-suhteisella confidencella (12 m takahuoneseinä = murto-osa koko pilvestä 
 conf ~0.01 → pudotettiin). Skaalariippumaton peitto pelastaa aidon seinän."""
 import numpy as np
 
-from scan2bim.core.segmentation.wall_ransac import _dense_segment
+from ordinate.core.segmentation.wall_ransac import _dense_segment
 
 
 def _proj_uniform(lo, hi, n=5000, seed=0):

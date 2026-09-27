@@ -2,7 +2,7 @@
 import numpy as np
 import pytest
 
-from scan2bim.core.pipeline import (
+from ordinate.core.pipeline import (
     _FILTER_MIN_AREA_M2, _looks_like_retail, _occupancy_area_m2,
 )
 

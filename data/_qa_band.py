@@ -1,7 +1,7 @@
 """Tallenna seinäkaista TÄYDELLÄ resalla 1.5mm tarkkuusmittausta varten (kerran)."""
 from pathlib import Path
 import open3d as o3d, numpy as np
-from scan2bim.core.geometry.loader import load_point_cloud
+from ordinate.core.geometry.loader import load_point_cloud
 from _paths import DATA, DOWNLOADS  # portable dev-tool paths
 apt=Path(str(DOWNLOADS / "raw_scans_apartment/apartment"))
 # määritä lattia/katto ensin yhdestä skannista

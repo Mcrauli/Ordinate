@@ -1,8 +1,8 @@
 """Seinä pilkotaan kohdasta jossa pintaa ei ole — mutta ei oviaukosta."""
 import numpy as np
 
-from scan2bim.core.semantics.split_gaps import split_walls_at_gaps
-from scan2bim.schemas.model import ElementSource, Wall
+from ordinate.core.semantics.split_gaps import split_walls_at_gaps
+from ordinate.schemas.model import ElementSource, Wall
 
 
 def _wall(x0, x1, thickness=200.0, wid="w0"):

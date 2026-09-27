@@ -8,7 +8,7 @@ Ajo: _run_one.py <pilvi.ply> <hakemisto>
 import sys
 from pathlib import Path
 
-from scan2bim.core.pipeline import Pipeline, PipelineConfig
+from ordinate.core.pipeline import Pipeline, PipelineConfig
 
 # Monen tiedoston ajo lukee tiedostot prosessipoolissa, ja Windowsin
 # spawn importtaa lapsessa __main__:in — ilman tätä vartijaa skripti

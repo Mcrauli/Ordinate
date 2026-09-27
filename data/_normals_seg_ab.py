@@ -20,8 +20,8 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
-import scan2bim.core.segmentation.wall_normals as WN  # noqa: E402
-from scan2bim.core.qa.coverage import wall_coverage  # noqa: E402
+import ordinate.core.segmentation.wall_normals as WN  # noqa: E402
+from ordinate.core.qa.coverage import wall_coverage  # noqa: E402
 
 _COL = 500.0        # mm — sarake pituussuunnassa
 _ZBIN = 100.0       # mm — z-bini peiton mittaukseen
@@ -333,7 +333,7 @@ def main(cloud_path: str, max_pts: str = "3000000") -> None:
     print(f"pisteita {len(pts):,}")
 
     global _WALLISH_XY
-    from scan2bim.core.qa.coverage import wallish_points
+    from ordinate.core.qa.coverage import wallish_points
     _fz = float(np.percentile(pts[:, 2], 2)); _cz = float(np.percentile(pts[:, 2], 98))
     _mask, _q = wallish_points(pts, _fz + 400.0, _cz - 300.0)
     _WALLISH_XY = _q[_mask][:, :2]

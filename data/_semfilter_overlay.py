@@ -14,8 +14,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
-from scan2bim.core.geometry.loader import load_point_cloud
-from scan2bim.core.segmentation.pointnet_filter import PointNetFilter, _slab_bands
+from ordinate.core.geometry.loader import load_point_cloud
+from ordinate.core.segmentation.pointnet_filter import PointNetFilter, _slab_bands
 
 REPO = Path(__file__).resolve().parent.parent
 

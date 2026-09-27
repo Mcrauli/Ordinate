@@ -91,7 +91,7 @@ def main():
     pc = o3d.geometry.PointCloud(); pc.points = o3d.utility.Vector3dVector(pts_mm / 1000.0)  # m
     o3d.io.write_point_cloud(str(SYNTH), pc)
 
-    from scan2bim.core.pipeline import Pipeline, PipelineConfig
+    from ordinate.core.pipeline import Pipeline, PipelineConfig
     cfg = PipelineConfig(detector="contour", auto_voxel=True, export_ifc=True, export_dxf=False, export_qa=False)
     models = Pipeline(cfg).run_floors([SYNTH], OUT)
     rec = json.loads((OUT / "floor_00" / "model.json").read_text())

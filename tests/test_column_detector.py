@@ -3,8 +3,8 @@ ketjuttaa pilaria muuhun kramaan (DBSCAN eps teki niin -> 0/92 pilaria)."""
 import numpy as np
 import open3d as o3d
 
-from scan2bim.core.segmentation.column_detector import detect_columns
-from scan2bim.schemas.model import ElementSource, Wall
+from ordinate.core.segmentation.column_detector import detect_columns
+from ordinate.schemas.model import ElementSource, Wall
 
 _RNG = np.random.RandomState(13)
 
