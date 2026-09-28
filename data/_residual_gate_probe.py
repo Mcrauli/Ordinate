@@ -1,116 +1,60 @@
-"""Mihin porttiin jaannosseinaehdokkaat kaatuvat?
+"""Mika jaannosseinahaun portti hylkaa puuttuvan linjan (GT-vapaa).
 
-`residual_walls.py`:n omat portit viritettiin silloin kun mikaan ketjun
-myohempi vaihe ei osannut tuomita huonoa ehdokasta. Nyt osaa (semanttinen
-enemmistoaani, kontrasti, tasomaisuus, suunta), joten portteja voi loysata —
-mutta vain sen verran kuin mittaus sanoo. Tama kertoo mika portti sitoo.
-
-Vakiot luetaan moduulista, joten luvut vastaavat tuotantoa.
-
-Kaytto: _residual_gate_probe.py <model.json> <pilvi.ply> [nimi]
+Toistaa `find_residual_walls`in komponenttivaiheen ja tulostaa jokaiselle
+`_missing_line_probe`-linjalle sen komponentin mitat ja portin joka kaatoi.
+Kaytto: _residual_gate_probe.py <model.json> <wallish.npz>
 """
-from __future__ import annotations
-
 import json
 import sys
-from collections import Counter
-from pathlib import Path
 
 import numpy as np
+from scipy.ndimage import label
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
-import ordinate.core.semantics.residual_walls as RW  # noqa: E402
+sys.path.insert(0, "data")
+from _missing_line_probe import lines
 
 
-def main(model_json: str, cloud_path: str, name: str = "", close: str = "0") -> None:
-    import open3d as o3d
-    from scipy.ndimage import label as cc_label
-
-    pc = o3d.io.read_point_cloud(cloud_path)
-    pts = np.asarray(pc.points, dtype=np.float64)
-    if np.ptp(pts[:, 0]) < 500.0:
-        pts = pts * 1000.0
-    del pc
-    m = json.loads(Path(model_json).read_text(encoding="utf-8"))
-
-    class W:
-        def __init__(s, d):
-            s.axis = d["axis"]
-            s.thickness = d["thickness"]
-            s.z_min = d["z_min"]
-            s.height = d["height"]
-
-    walls = [W(w) for w in m["walls"] if len(w.get("axis") or []) > 1]
-    floor_z = min((s["elevation"] for s in m["slabs"] if s["slab_type"] == "floor"),
-                  default=float(np.percentile(pts[:, 2], 1)))
-    ceiling_z = max((s["elevation"] for s in m["slabs"] if s["slab_type"] == "ceiling"),
-                    default=float(np.percentile(pts[:, 2], 99)))
-    height = ceiling_z - floor_z
-    z_lo = floor_z + min(RW._WAIST_LO_FRAC * height, RW._WAIST_LO_MM)
-    z_hi = floor_z + RW._WAIST_HI * height
+def main(mj, npz):
+    import ordinate.core.semantics.residual_walls as RW
+    from ordinate.schemas.model import StructuralModel
+    m = StructuralModel.load(mj)
+    z = np.load(npz)
+    pts = z["q"].astype(float); fz, cz = float(z["fz"]), float(z["cz"])
+    h = cz - fz
+    z_lo = fz + min(RW._WAIST_LO_FRAC * h, RW._WAIST_LO_MM); z_hi = fz + RW._WAIST_HI * h
     band = pts[(pts[:, 2] > z_lo) & (pts[:, 2] < z_hi)]
-    free = band[~RW._claimed(band, walls)]
-    print(f"{name}: kaista {len(band):,}  lunastamatta {len(free):,}")
-    if len(free) < 200:
-        return
-
-    origin = free[:, :2].min(axis=0)
-    ij = np.floor((free[:, :2] - origin) / RW._CELL).astype(np.int64)
+    free = band[~RW._claimed(band, m.walls)]
+    o = free[:, :2].min(0)
+    ij = np.floor((free[:, :2] - o) / RW._CELL).astype(np.int64)
     nx, ny = int(ij[:, 0].max()) + 1, int(ij[:, 1].max()) + 1
     flat = ij[:, 0] * ny + ij[:, 1]
     counts = np.bincount(flat, minlength=nx * ny)
-    occupied = counts[counts > 0]
-    need = max(RW._SURF_FRAC * float(np.median(occupied)), 2.0)
+    need = max(RW._SURF_FRAC * float(np.median(counts[counts > 0])), 2.0)
     surf = (counts >= need).reshape(nx, ny)
-    close = int(sys.argv[4]) if len(sys.argv) > 4 else 0
-    if close:
-        from scipy import ndimage
-        surf = ndimage.binary_closing(surf, structure=np.ones((close, close), bool))
-    labels, ncomp = cc_label(surf, structure=np.ones((3, 3), dtype=int))
-    print(f"  pintasoluja {int(surf.sum()):,} (kynnys {need:.0f} pistetta/solu), "
-          f"komponentteja {ncomp}")
-
-    why = Counter()
-    survivors = []
-    lab_flat = labels.ravel()
-    for k in range(1, ncomp + 1):
-        cx, cy = np.nonzero(labels == k)
-        if len(cx) < RW._MIN_CELLS:
-            why["solut alle _MIN_CELLS"] += 1
-            continue
-        xy = np.column_stack([cx, cy]).astype(np.float64) * RW._CELL + origin + RW._CELL / 2.0
-        c = xy.mean(axis=0)
-        A = xy - c
-        _, V = np.linalg.eigh(A.T @ A / len(A))
-        u, n = V[:, 1], V[:, 0]
-        length = float((A @ u).ptp()) + RW._CELL
-        width = float((A @ n).ptp()) + RW._CELL
-        if length < RW._MIN_LEN:
-            why["lyhyt (_MIN_LEN)"] += 1
-            continue
-        if width > RW._MAX_WIDTH:
-            why["levea (_MAX_WIDTH)"] += 1
-            continue
-        if length / width < RW._MIN_ASPECT:
-            why["aspekti (_MIN_ASPECT)"] += 1
-            continue
-        q = free[lab_flat[flat] == k]
-        if not len(q):
-            why["ei pisteita"] += 1
-            continue
-        if float(q[:, 2].ptp()) < min(RW._MIN_VSPAN_MM,
-                                      RW._MIN_VSPAN_FRAC * (z_hi - z_lo)):
-            why["pystyulottuvuus"] += 1
-            continue
-        survivors.append(length)
-        why["LAPI"] += 1
-
-    for kk, v in why.most_common():
-        print(f"    {kk:24s} {v:5d}")
-    if survivors:
-        s = np.array(survivors)
-        print(f"  lapi paasseet: {len(s)} kpl, yhteensa {s.sum()/1000:.0f} m, "
-              f"pisin {s.max()/1000:.1f} m")
+    lab, n = label(surf, np.ones((3, 3), int))
+    print(f"kaista {z_lo-fz:.0f}..{z_hi-fz:.0f} mm, vapaita {len(free):,}, solukynnys {need:.1f}, komponentteja {n}")
+    for i, r in enumerate(lines(mj, npz, 1500.0)):
+        L, P = r[0], r[6]
+        pij = np.floor((P[:, :2] - o) / RW._CELL).astype(np.int64)
+        ok = (pij[:, 0] >= 0) & (pij[:, 0] < nx) & (pij[:, 1] >= 0) & (pij[:, 1] < ny)
+        ks = lab[pij[ok, 0], pij[ok, 1]]
+        surf_frac = float((ks > 0).mean()) if len(ks) else 0.0
+        if not (ks > 0).any():
+            print(f"{i:2d} L={L:6.0f} MAD={r[2]:5.1f}: solut EIVAT ole pintaa ({surf_frac:.2f})"); continue
+        k = np.bincount(ks[ks > 0]).argmax()
+        cx, cy = np.nonzero(lab == k)
+        xy = np.column_stack([cx, cy]).astype(float) * RW._CELL
+        A = xy - xy.mean(0); _, V = np.linalg.eigh(A.T @ A / len(A))
+        length = float(np.ptp(A @ V[:, 1])) + RW._CELL; width = float(np.ptp(A @ V[:, 0])) + RW._CELL
+        q = free[(lab.ravel()[flat] == k)]
+        vs = float(np.ptp(q[:, 2]))
+        why = []
+        if len(cx) < RW._MIN_CELLS: why.append("solut")
+        if length < RW._MIN_LEN: why.append("lyhyt")
+        if width > RW._MAX_WIDTH: why.append(f"LEVEA {width:.0f}")
+        if length / width < RW._MIN_ASPECT: why.append(f"aspekti {length/width:.1f}")
+        if vs < min(RW._MIN_VSPAN_MM, RW._MIN_VSPAN_FRAC * (z_hi - z_lo)): why.append(f"pysty {vs:.0f}")
+        print(f"{i:2d} L={L:6.0f} MAD={r[2]:5.1f}: komp {len(cx)} solua, {length:.0f}x{width:.0f}, pinta {surf_frac:.2f} -> {', '.join(why) or 'LAPI (pari/lahiseina/ketju)'}")
 
 
 if __name__ == "__main__":

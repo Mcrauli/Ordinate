@@ -210,6 +210,42 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
 
 ## Kovalla työllä opitut asiat — ÄLÄ keksi uudelleen
 
+- **KELLARIN PUUTTUVAT SEINÄT OLIVAT JÄÄNNÖSHAUN MÖHKÄLEISSÄ (28.9.2026).**
+  `data/_missing_line_probe.py` etsii valmiin mallin lunastamattomista
+  seinämäisistä pisteistä suorat linjat (GT-vapaa): kellarista puuttui **34
+  linjaa / 114 m, joista 80 m tasomaisia** (MAD ≤ 20 mm). Ketjukoetin
+  (`data/_chain_line_probe.py`, samat 36 skannia kuin käyttäjän ajossa) näytti
+  että **78 m ei ollut mallissa missään vaiheessa**, ja
+  `data/_residual_gate_probe.py` kertoi miksi: jäännöshaku yhdistää 100 mm
+  solut komponenteiksi, ja putkikellarin vyötärökaistalla lähes jokaisessa
+  solussa on jotain → seinälinja liimautuu sotkuun ja syntyy **98 × 37 m
+  möhkäle**, joka hylätään liian leveänä.
+  Erottelija on solun PYSTYULOTTUVUUS (`data/_residual_vspan_probe.py`): kun
+  solulta vaaditaan pisteitä ≥ 0.6 × kaista (katto `_MIN_VSPAN_MM`),
+  puuttuvien linjojen soluista jää 56 % ja sotkusta 2 %, ja möhkäleet hajoavat
+  ohuiksi viivoiksi (pisin 12.4 m × 200 mm). Leveä komponentti pilkotaan
+  vain sen tall-soluihin; kaikki muu toimii kuten ennen.
+  **ENSIMMÄINEN VERSIO REGRESSOI — rajattu isoon matalaan tilaan.** Kaikkialla
+  käytettynä: retail_l 13 → **103** seinää (tarkkuus 0.876 → 0.624), retail_s
+  0.842 → 0.764, 3dses 0.634 → 0.525. Hyllyjen päädyt ja etupinnat ovat yhtä
+  korkeita kuin seinät, joten pystyulottuvuus ei erota niitä. Pilkonta ajetaan
+  nyt vain samalla ehdolla kuin nurkkakoneiston ohitus (ala ≥ 600 m² ja vapaa
+  korkeus < 3.5 m, `split_wide`).
+  | | ennen | jälkeen |
+  |---|---|---|
+  | kellari, seiniä | 244 | 268 |
+  | kellari, GT-vapaa kattavuus / tarkkuus | 0.379 / 0.206 | **0.444 / 0.214** |
+  | muut 11 aineistoa | | **+0.000** |
+  Käyttäjän 36 skannin ajossa: 219 → 231 seinää, vanhoista ei muuttunut
+  yhtään, 11/12 uutta istuu seinäpinnan päällä.
+  **Auki:** käytävän 11.5 m seinä putoaa `_drop_near_existing`iin (tulkitaan
+  vanhan seinän toiseksi pinnaksi), ja 10.4 m seinä syntyy ehdokkaaksi mutta
+  katoaa myöhemmin — `data/_residual_trace_run.py` tallentaa tuomiot.
+  **Sivuhavainto:** kellarikansiossa on numeroton `Kellari- Kellari.e57`;
+  sen kanssa ajettuna malli muuttuu (259 seinää) ja putki varoittaa 25
+  erillisestä alueesta. Vertailuajot tehdään 36 numeroidulla skannilla
+  (`data/_kellari_run.py`).
+
 - **AUKKOJEN SIJOITUS MITATTU ENSIMMÄISTÄ KERTAA — JA KORKEUS OLI VÄÄRIN
   VÄÄRÄN PILVEN TAKIA (17.9.2026).** Aukkoja oli mitattu vain löytymisenä.
   `data/_opening_place_qa.py` vertaa keilatun myymälän `gt.json`:iin

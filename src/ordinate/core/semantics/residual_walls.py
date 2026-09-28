@@ -57,11 +57,19 @@ _WAIST_LO_MM = 900.0     # kaistan alaraja lattiasta MILLEINÄ: alaraja on kyse
                          # vapaita pisteitä 154 906 kun kaista alkoi 2.5 m:stä.
 _WAIST_LO_FRAC = 0.25    # …mutta matalassa tilassa ei yli neljänneskorkeuden
 _DEFAULT_THICKNESS = 200.0
+_CELL_VSPAN_FRAC = 0.6
+_WIDE = object()
 
 
 def find_residual_walls(walls: list[Wall], cloud, floor_z: float,
-                        ceiling_z: float) -> list[Wall]:
-    """Seinäehdokkaat pisteistä joita yksikään mallin seinä ei lunasta."""
+                        ceiling_z: float, split_wide: bool = False) -> list[Wall]:
+    """Seinäehdokkaat pisteistä joita yksikään mallin seinä ei lunasta.
+
+    `split_wide`: pilko liian leveä komponentti soluihin joiden pisteet
+    ulottuvat koko vyötärökaistan läpi. Vain isossa matalassa tilassa: siellä
+    seinälinja liimautuu putkisotkuun, mutta korkeassa tilassa hyllyjen päädyt
+    ovat yhtä korkeita kuin seinät (mitattu retail_l 13 → 103 seinää).
+    """
     from scipy.ndimage import label as _cc_label
 
     pts = np.asarray(cloud.points, dtype=np.float64)
@@ -101,42 +109,71 @@ def find_residual_walls(walls: list[Wall], cloud, floor_z: float,
     h_w = max((w.height for w in walls), default=height)
     th_w = float(np.median([w.thickness for w in walls])) if walls else _DEFAULT_THICKNESS
 
-    out: list[Wall] = []
+    vmin = min(_MIN_VSPAN_MM, _MIN_VSPAN_FRAC * (z_hi - z_lo))
+    tall = None
+    out: list = []
     for k in range(1, ncomp + 1):
-        cx, cy = np.nonzero(labels == k)
-        if len(cx) < _MIN_CELLS:
-            continue
-        xy = np.column_stack([cx, cy]).astype(np.float64) * _CELL + origin + _CELL / 2.0
-        c = xy.mean(axis=0)
-        A = xy - c
-        _, V = np.linalg.eigh(A.T @ A / len(A))
-        u, n = V[:, 1], V[:, 0]
-        s = A @ u
-        length = float(s.ptp()) + _CELL
-        width = float((A @ n).ptp()) + _CELL
-        if length < _MIN_LEN or width > _MAX_WIDTH or length / width < _MIN_ASPECT:
-            continue
-
-        sel = lab_flat[flat] == k
-        q = free[sel]
-        if not len(q):
-            continue
-        # Pystyulottuvuus: seinä on pinta koko vyötärökaistan läpi, kalusteen
-        # yläpinta on ohut viipale.
-        if float(q[:, 2].ptp()) < min(_MIN_VSPAN_MM, _MIN_VSPAN_FRAC * (z_hi - z_lo)):
-            continue
-
-        # Pinnan sijainti luetaan PISTEISTÄ, ei solukeskipisteistä: 100 mm solu
-        # siirtäisi pintaa puoli solua ulospäin ja parin keskilinja jäisi 50 mm
-        # sivuun. Sama estimaattori kuin `_align_faces_to_surface_median`.
-        cq = np.array([np.median(q[:, 0]), np.median(q[:, 1])])
-        sq = (q[:, :2] - cq) @ u
-        p_lo = cq + u * float(sq.min())
-        p_hi = cq + u * float(sq.max())
-        out.append((p_lo, p_hi, u, float(sq.ptp())))
+        comp = labels == k
+        face = _component_face(comp, lab_flat == k, flat, free, origin, vmin)
+        if face is _WIDE and split_wide:
+            if tall is None:
+                tall = _tall_cells(free[:, 2], flat, nx * ny,
+                                   min(_MIN_VSPAN_MM, _CELL_VSPAN_FRAC * (z_hi - z_lo))).reshape(nx, ny)
+            sub, nsub = _cc_label(comp & tall, structure=np.ones((3, 3), dtype=int))
+            sub_flat = sub.ravel()
+            for j in range(1, nsub + 1):
+                f = _component_face(sub == j, sub_flat == j, flat, free, origin, vmin)
+                if f is not None and f is not _WIDE:
+                    out.append(f)
+        elif face is not None and face is not _WIDE:
+            out.append(face)
 
     return _to_walls(_drop_near_existing(_pair_faces(out), walls), h_w, th_w, z_min_w,
                      taken={w.id for w in walls})
+
+
+def _tall_cells(z: np.ndarray, flat: np.ndarray, ncells: int, need: float) -> np.ndarray:
+    """Solut joiden pisteet ulottuvat pystysuunnassa vähintään `need`."""
+    order = np.lexsort((z, flat))
+    fs = flat[order]
+    zs = z[order]
+    cells, start, cnt = np.unique(fs, return_index=True, return_counts=True)
+    lo = zs[start + np.floor(0.05 * (cnt - 1)).astype(np.int64)]
+    hi = zs[start + np.floor(0.95 * (cnt - 1)).astype(np.int64)]
+    out = np.zeros(ncells, dtype=bool)
+    out[cells] = (hi - lo) >= need
+    return out
+
+
+def _component_face(comp: np.ndarray, cell_sel: np.ndarray, flat: np.ndarray,
+                    free: np.ndarray, origin: np.ndarray, vmin: float):
+    cx, cy = np.nonzero(comp)
+    if len(cx) < _MIN_CELLS:
+        return None
+    xy = np.column_stack([cx, cy]).astype(np.float64) * _CELL + origin + _CELL / 2.0
+    c = xy.mean(axis=0)
+    A = xy - c
+    _, V = np.linalg.eigh(A.T @ A / len(A))
+    u, n = V[:, 1], V[:, 0]
+    length = float(np.ptp(A @ u)) + _CELL
+    width = float(np.ptp(A @ n)) + _CELL
+    if length < _MIN_LEN:
+        return None
+    if width > _MAX_WIDTH or length / width < _MIN_ASPECT:
+        return _WIDE
+    q = free[cell_sel[flat]]
+    if not len(q):
+        return None
+    # Pystyulottuvuus: seinä on pinta koko vyötärökaistan läpi, kalusteen
+    # yläpinta on ohut viipale.
+    if float(np.ptp(q[:, 2])) < vmin:
+        return None
+    # Pinnan sijainti luetaan PISTEISTÄ, ei solukeskipisteistä: 100 mm solu
+    # siirtäisi pintaa puoli solua ulospäin ja parin keskilinja jäisi 50 mm
+    # sivuun. Sama estimaattori kuin `_align_faces_to_surface_median`.
+    cq = np.array([np.median(q[:, 0]), np.median(q[:, 1])])
+    sq = (q[:, :2] - cq) @ u
+    return (cq + u * float(sq.min()), cq + u * float(sq.max()), u, float(np.ptp(sq)))
 
 
 def _drop_near_existing(pairs: list, walls: list[Wall]) -> list:

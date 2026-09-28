@@ -1,6 +1,6 @@
-# Kolmannen osapuolen lisenssit — scan2bim
+# Kolmannen osapuolen lisenssit — ordinate
 
-scan2bim itse on **proprietary** (`pyproject.toml: license = "Proprietary"`).
+ordinate itse on **proprietary** (`pyproject.toml: license = "Proprietary"`).
 Tämä tiedosto luettelee mukana toimitettavat kolmannen osapuolen osat ja niiden
 ehdot. **Tiedosto on toimitettava sovelluksen mukana** (installer + zip), koska
 usea lisenssi vaatii ilmoituksen säilyttämistä.
@@ -64,7 +64,7 @@ harhaanjohtava.
 ## C. Portattu koodi
 
 **Cloud2BIM** — MIT License, Copyright (c) 2025 Václav Nežerka.
-`src/scan2bim/core/segmentation/wall_contour.py` on portattu tästä projektista.
+`src/ordinate/core/segmentation/wall_contour.py` on portattu tästä projektista.
 MIT vaatii copyright-ilmoituksen ja lisenssitekstin säilyttämisen:
 
 ```
@@ -93,7 +93,7 @@ SOFTWARE.
 
 `reference/` sisältää kokonaiset kopiot Cloud2BIM- ja dwg2ifc-projekteista
 kehitysviitteenä. **Niitä ei toimiteta sovelluksen mukana** eikä niitä pakata
-exe:hen (`build/scan2bim.spec` bundlaa vain `models/`, riippuvuudet ja koodin).
+exe:hen (`build/ordinate.spec` bundlaa vain `models/`, riippuvuudet ja koodin).
 
 ---
 
@@ -110,7 +110,7 @@ exe:hen (`build/scan2bim.spec` bundlaa vain `models/`, riippuvuudet ja koodin).
 | packaging | Apache-2.0 / BSD-2-Clause |
 
 **Open3D:n transitiiviset riippuvuudet** (paketoituvat mukaan, koska Open3D
-vetää ne web-visualisoijaansa/TensorBoard-integraatioonsa; scan2bim ei käytä
+vetää ne web-visualisoijaansa/TensorBoard-integraatioonsa; ordinate ei käytä
 niitä, mutta ne ovat toistaiseksi bundlessa):
 
 | Osa | Lisenssi |
@@ -120,8 +120,8 @@ niitä, mutta ne ovat toistaiseksi bundlessa):
 | importlib_metadata | Apache-2.0 |
 | typing_extensions | PSF-2.0 |
 
-> **Optimointimahdollisuus (ei tehty):** koska scan2bim ei käytä Open3D:n
-> web-visualisoijaa, nämä voi jättää pois `build/scan2bim.spec`:n
+> **Optimointimahdollisuus (ei tehty):** koska ordinate ei käytä Open3D:n
+> web-visualisoijaa, nämä voi jättää pois `build/ordinate.spec`:n
 > `excludes`-listalla → pienempi paketti ja vähemmän attribuutiovelvoitteita.
 > Vaatii build+testin (varmista ettei Open3D tuo niitä eageristi importissa).
 
@@ -142,9 +142,9 @@ Ratkaisu käyttää **samaa Windows-kikkaa tiedosto kerrallaan**: käytössä ol
 tiedostoa ei voi poistaa mutta sen voi *nimetä uudelleen* — tämä pätee myös
 ladattuihin DLL:iin, ei vain exeen. Asennus on per-user, joten UAC:ia ei tarvita.
 
-1. `build/scan2bim.spec`: lisää `COLLECT` → `dist/scan2bim/`
-2. `scripts/build_exe.ps1`: paketoi hakemisto `scan2bim-<v>.zip` + `.sha256`
-3. `build/installer.iss`: `Source: "..\dist\scan2bim\*"; Flags: recursesubdirs`
+1. `build/ordinate.spec`: lisää `COLLECT` → `dist/ordinate/`
+2. `scripts/build_exe.ps1`: paketoi hakemisto `ordinate-<v>.zip` + `.sha256`
+3. `build/installer.iss`: `Source: "..\dist\ordinate\*"; Flags: recursesubdirs`
 4. `updater.py`: hyväksy `.zip`-asset, pura temppiin, **vaihda tiedosto
    kerrallaan** (olemassa oleva → `.old`, uusi tilalle), siivoa `.old`-tiedostot
    käynnistyksessä kuten nytkin (`cleanup_old_exe` yleistetään hakemistoon)

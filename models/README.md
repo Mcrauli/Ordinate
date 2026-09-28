@@ -4,7 +4,7 @@
 pistepilven pisteet 13 S3DIS-luokkaan. Pipeline pitää rakenneluokat (0–6) ja
 poistaa kalusteet/krääsän (7–12) ennen geometrista putkea.
 
-Bundlataan exe:hen automaattisesti (`build/scan2bim.spec`).
+Bundlataan exe:hen automaattisesti (`build/ordinate.spec`).
 
 ## Tiedostot
 

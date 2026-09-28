@@ -1535,7 +1535,8 @@ class Pipeline:
                     from ordinate.core.semantics.residual_walls import (  # noqa: PLC0415
                         find_residual_walls,
                     )
-                    res = find_residual_walls(model.walls, cloud, _fz, _cz)
+                    res = find_residual_walls(model.walls, cloud, _fz, _cz,
+                                              split_wide=getattr(self, "_low_open", False))
                     if res:
                         # Portit tuomitsevat vain UUDET seinät. Aiemmat ovat jo
                         # läpäisseet samat portit, ja kontrastiportin voimaehto
@@ -1916,6 +1917,7 @@ class Pipeline:
             _fz, _cz = float(np.percentile(_zz, 2)), float(np.percentile(_zz, 98))
         _use_corners = not (area >= _FILTER_MIN_AREA_M2
                             and (_cz - _fz) < _CORNER_MIN_HEIGHT)
+        self._low_open = not _use_corners
         if not _use_corners:
             self._progress(
                 "  Iso matala tila → nurkkakoneisto ohitetaan (mitattu: "
@@ -2120,7 +2122,8 @@ class Pipeline:
             _zf = min((w.z_min for w in model.walls), default=None)
             _zh = max((w.height for w in model.walls), default=0.0)
             _res = ([] if _zf is None or _zh < 1500.0
-                    else find_residual_walls(model.walls, cloud, _zf, _zf + _zh))
+                    else find_residual_walls(model.walls, cloud, _zf, _zf + _zh,
+                                         split_wide=not _use_corners))
             if _res:
                 _res = _recenter_wall_axes(_res, lock_cloud, band=300.0,
                                            keep_thickness=True)

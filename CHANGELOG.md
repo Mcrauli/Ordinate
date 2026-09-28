@@ -4,8 +4,12 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 [`Mcrauli/scan2bim-web`](https://github.com/Mcrauli/scan2bim-web/releases):iin;
 sovellus päivittää itsensä sieltä.
 
-## v0.9.35 (27.9.2026) — tuotenimi Ordinate
+## v0.9.35 (28.9.2026) — tuotenimi Ordinate, kellariin lisää seiniä
 
+- **Isoissa matalissa tiloissa löytyy enemmän seiniä.** Putkien ja laitteiden
+  keskeltä kulkeva seinä jäi ennen löytämättä, koska se sulautui ympäröivään
+  sotkuun. Koulun kellarissa löytyi 12 uutta seinää, eikä yksikään vanha
+  muuttunut; muut testikohteet ennallaan.
 - **scan2bim on nyt Ordinate.** Ikkuna, asennusohjelma, pikakuvakkeet, exe
   (`Ordinate.exe`, komentorivi `ordinate-cli.exe`), IFC-tiedoston ohjelmatieto ja
   mittauspset (`Ordinate_Mittaus`, ent. `scan2bim_Mittaus`).

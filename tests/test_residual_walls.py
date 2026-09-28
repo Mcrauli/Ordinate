@@ -126,3 +126,27 @@ def test_other_face_of_a_known_wall_is_not_a_new_wall():
     got = find_residual_walls(walls + [thin], _cloud(*pts, seg),
                               floor_z=0.0, ceiling_z=_H)
     assert got == [], f"seinan toinen pinta tuli uudeksi seinaksi: {[w.axis for w in got]}"
+
+
+def test_wall_touching_clutter_is_split_out():
+    """Putkikellarissa seinälinja koskettaa vyötärökaistan tavaraa, ja
+    100 mm solujen komponentista tuli 98 x 37 m möhkäle joka hylättiin
+    liian leveänä. Seinän solut ulottuvat koko kaistan läpi, tavaran eivät."""
+    import numpy as np
+    from ordinate.core.semantics.residual_walls import find_residual_walls
+
+    class _C:
+        def __init__(self, p):
+            self.points = p
+
+    rng = np.random.default_rng(3)
+    wx = rng.uniform(0, 6000, 40000)
+    wall = np.column_stack([wx, rng.normal(0, 3, len(wx)), rng.uniform(100, 1700, len(wx))])
+    cx = rng.uniform(0, 6000, 60000)
+    clutter = np.column_stack([cx, rng.uniform(50, 3000, len(cx)), rng.normal(900, 20, len(cx))])
+    assert find_residual_walls([], _C(np.vstack([wall, clutter])), 0.0, 1800.0) == []
+    walls = find_residual_walls([], _C(np.vstack([wall, clutter])), 0.0, 1800.0, split_wide=True)
+    assert len(walls) == 1, len(walls)
+    a, b = np.array(walls[0].axis[0]), np.array(walls[0].axis[1])
+    assert np.linalg.norm(b - a) > 5000
+    assert abs(a[1]) < 60 and abs(b[1]) < 60
