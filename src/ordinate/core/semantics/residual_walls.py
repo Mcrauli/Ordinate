@@ -111,6 +111,7 @@ def find_residual_walls(walls: list[Wall], cloud, floor_z: float,
 
     vmin = min(_MIN_VSPAN_MM, _MIN_VSPAN_FRAC * (z_hi - z_lo))
     tall = None
+    used = np.zeros((nx, ny), dtype=bool)
     out: list = []
     for k in range(1, ncomp + 1):
         comp = labels == k
@@ -125,11 +126,64 @@ def find_residual_walls(walls: list[Wall], cloud, floor_z: float,
                 f = _component_face(sub == j, sub_flat == j, flat, free, origin, vmin)
                 if f is not None and f is not _WIDE:
                     out.append(f)
+                    used |= sub == j
         elif face is not None and face is not _WIDE:
             out.append(face)
+            used |= comp
+
+    if split_wide and tall is not None:
+        out.extend(_line_faces(surf & tall & ~used, free, flat, ny, origin, vmin))
 
     return _to_walls(_drop_near_existing(_pair_faces(out), walls), h_w, th_w, z_min_w,
                      taken={w.id for w in walls})
+
+
+_LINE_MIN_CELLS = 15
+_LINE_MAX_GAP_CELLS = 6
+_LINE_BAND = 150.0
+
+
+def _line_faces(mask: np.ndarray, free: np.ndarray, flat: np.ndarray, ny: int,
+                origin: np.ndarray, vmin: float) -> list:
+    """Suorat linjat pystysuuntaisista soluista aukkojen yli.
+
+    Putkien takaa keilattu seinä näkyy pätkinä: yhtenäinen komponentti ei
+    koskaan kasva seinän mittaiseksi, mutta viivahaku hyppää aukkojen yli.
+    """
+    import cv2  # noqa: PLC0415
+
+    img = mask.astype(np.uint8) * 255
+    segs = cv2.HoughLinesP(img, 1, np.pi / 360, threshold=10,
+                           minLineLength=_LINE_MIN_CELLS, maxLineGap=_LINE_MAX_GAP_CELLS)
+    if segs is None:
+        return []
+    cell_ok = mask.ravel()[flat]
+    pts = free[cell_ok]
+    taken = np.zeros(len(pts), dtype=bool)
+    cands = []
+    for a, b, c, d in segs[:, 0, :]:
+        p = origin + np.array([b, a], dtype=np.float64) * _CELL + _CELL / 2.0
+        q = origin + np.array([d, c], dtype=np.float64) * _CELL + _CELL / 2.0
+        cands.append((float(np.linalg.norm(q - p)), p, q))
+    out = []
+    for L, p, q in sorted(cands, key=lambda t: -t[0]):
+        if L < _MIN_LEN:
+            continue
+        u = (q - p) / L
+        n = np.array([-u[1], u[0]])
+        rel = pts[:, :2] - p
+        t = rel @ u
+        sel = (t > -_CELL) & (t < L + _CELL) & (np.abs(rel @ n) < _LINE_BAND)
+        if not sel.any() or taken[sel].mean() > 0.5:
+            continue
+        q3 = pts[sel]
+        if float(np.ptp(q3[:, 2])) < vmin:
+            continue
+        taken |= sel
+        cq = np.array([np.median(q3[:, 0]), np.median(q3[:, 1])])
+        sq = (q3[:, :2] - cq) @ u
+        out.append((cq + u * float(sq.min()), cq + u * float(sq.max()), u, float(np.ptp(sq))))
+    return out
 
 
 def _tall_cells(z: np.ndarray, flat: np.ndarray, ncells: int, need: float) -> np.ndarray:

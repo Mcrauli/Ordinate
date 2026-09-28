@@ -150,3 +150,25 @@ def test_wall_touching_clutter_is_split_out():
     a, b = np.array(walls[0].axis[0]), np.array(walls[0].axis[1])
     assert np.linalg.norm(b - a) > 5000
     assert abs(a[1]) < 60 and abs(b[1]) < 60
+
+
+def test_wall_seen_in_pieces_is_found_as_one_line():
+    """Putkien takaa keilattu seinä näkyy vyötäröllä pätkinä. Viivahaku
+    hyppää aukkojen yli; ilman sitä pätkät jäävät alle 1 m komponenteiksi."""
+    import numpy as np
+    from ordinate.core.semantics.residual_walls import find_residual_walls
+
+    class _C:
+        def __init__(self, p):
+            self.points = p
+
+    rng = np.random.default_rng(4)
+    xs = np.concatenate([rng.uniform(s, s + 700, 6000) for s in range(0, 8000, 1200)])
+    wall = np.column_stack([xs, rng.normal(0, 3, len(xs)), rng.uniform(100, 1700, len(xs))])
+    cx = rng.uniform(0, 8000, 60000)
+    clutter = np.column_stack([cx, rng.uniform(50, 3000, len(cx)), rng.normal(900, 20, len(cx))])
+    cloud = _C(np.vstack([wall, clutter]))
+    assert find_residual_walls([], cloud, 0.0, 1800.0) == []
+    walls = find_residual_walls([], cloud, 0.0, 1800.0, split_wide=True)
+    longest = max((np.linalg.norm(np.subtract(w.axis[1], w.axis[0])) for w in walls), default=0)
+    assert longest > 6000, longest

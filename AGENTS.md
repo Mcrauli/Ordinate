@@ -245,6 +245,21 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   sen kanssa ajettuna malli muuttuu (259 seinää) ja putki varoittaa 25
   erillisestä alueesta. Vertailuajot tehdään 36 numeroidulla skannilla
   (`data/_kellari_run.py`).
+  **Jatko: katveiden katkoma seinä (`_line_faces`).** Tall-solujen
+  komponentit jäävät paloiksi, kun putket peittävät seinää metrin välein.
+  `cv2.HoughLinesP` samaan `surf & tall & ~used` -maskiin (min 15 solua,
+  aukko ≤ 6 solua) kokoaa palat yhdeksi linjaksi; pinta asetetaan pisteiden
+  mediaaniin ja jo käytettyjen pisteiden linjat (>50 %) ohitetaan. Vain
+  `split_wide`-tilassa. HUOM: OpenCV:n pisteet ovat (sarake, rivi) —
+  väärin päin haku palautti 0 linjaa (`data/_residual_hough_probe.py`).
+  | | ennen | jälkeen |
+  |---|---|---|
+  | kellari, GT-vapaa kattavuus / tarkkuus | 0.444 / 0.214 | **0.537 / 0.226** |
+  | muut 11 aineistoa | | **+0.000** |
+  Käyttäjän 36 skannin ajossa 231 → 245 seinää, 36.3 / 38 m uusista
+  pinnalla; tasomaisia puuttuvia linjoja 80 → 55 m.
+  **Yhä auki:** paksu tiiliseinä, jonka pinnat 510 mm päässä (paritusraja
+  500 mm), ja oikean reunan pitkät linjat, joissa tall-osuus on pieni.
 
 - **AUKKOJEN SIJOITUS MITATTU ENSIMMÄISTÄ KERTAA — JA KORKEUS OLI VÄÄRIN
   VÄÄRÄN PILVEN TAKIA (17.9.2026).** Aukkoja oli mitattu vain löytymisenä.

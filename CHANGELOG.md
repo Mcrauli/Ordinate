@@ -1,14 +1,24 @@
 # Muutosloki
 
 Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
-[`Mcrauli/scan2bim-web`](https://github.com/Mcrauli/scan2bim-web/releases):iin;
+[`Mcrauli/Ordinate-web`](https://github.com/Mcrauli/Ordinate-web/releases):iin;
 sovellus päivittää itsensä sieltä.
+
+## Julkaisematon — katveiden katkoma seinä löytyy yhtenä
+
+- **Paloina näkyvä seinä löytyy.** Isossa matalassa tilassa seinä, jonka
+  putket ja laitteet katkovat moneen osaan, kootaan nyt yhdeksi seinäksi
+  suoranhaulla (Hough) korkeiden solujen kartasta. Kellarissa 14 uutta seinää,
+  36,3 / 38 m osuu pintaan; kattavuus 0.444 → 0.537, tarkkuus 0.214 → 0.226.
+  Muut 11 aineistoa bitilleen ennallaan.
+- Päivittäjä hakee julkaisut `Mcrauli/Ordinate-web`-reposta (vanha nimi
+  ohjautuu GitHubissa, joten vanhat asennukset päivittyvät yhä).
 
 ## v0.9.35 (28.9.2026) — tuotenimi Ordinate, kellariin lisää seiniä
 
 - **Isoissa matalissa tiloissa löytyy enemmän seiniä.** Putkien ja laitteiden
   keskeltä kulkeva seinä jäi ennen löytämättä, koska se sulautui ympäröivään
-  sotkuun. Koulun kellarissa löytyi 12 uutta seinää, eikä yksikään vanha
+  sotkuun. Kellarikohteessa löytyi 12 uutta seinää, eikä yksikään vanha
   muuttunut; muut testikohteet ennallaan.
 - **scan2bim on nyt Ordinate.** Ikkuna, asennusohjelma, pikakuvakkeet, exe
   (`Ordinate.exe`, komentorivi `ordinate-cli.exe`), IFC-tiedoston ohjelmatieto ja

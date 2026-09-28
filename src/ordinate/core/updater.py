@@ -33,7 +33,7 @@ from packaging.version import InvalidVersion, Version
 
 from ordinate._version import __version__
 
-DEFAULT_REPO: str = "Mcrauli/scan2bim-web"
+DEFAULT_REPO: str = "Mcrauli/Ordinate-web"
 GITHUB_API_URL: str = "https://api.github.com/repos/{repo}/releases"
 USER_AGENT: str = f"ordinate-updater/{__version__}"
 APP_EXE: str = "Ordinate.exe"
