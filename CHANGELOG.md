@@ -11,6 +11,11 @@ sovellus päivittää itsensä sieltä.
   suoranhaulla (Hough) korkeiden solujen kartasta. Kellarissa 14 uutta seinää,
   36,3 / 38 m osuu pintaan; kattavuus 0.444 → 0.537, tarkkuus 0.214 → 0.226.
   Muut 11 aineistoa bitilleen ennallaan.
+- **Isoissa halleissa löytyy enemmän väliseiniä.** Ohjelma käytti ennen vain
+  yhden seinätunnistimen tulosta; nyt toisen tunnistimen löytämät seinät
+  lisätään, jos ne ovat yhtenäistä pintaa eivätkä pilarin tai julkisivun
+  ripoja. Runkovaiheen testikohteissa löydettyjen seinien osuus 54 % → 63 %
+  (yksi scene 41 % → 59 %), tarkkuus ennallaan; myymälöissä ei muutosta.
 - Päivittäjä hakee julkaisut `Mcrauli/Ordinate-web`-reposta (vanha nimi
   ohjautuu GitHubissa, joten vanhat asennukset päivittyvät yhä).
 

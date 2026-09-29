@@ -261,6 +261,43 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   **Yhä auki:** paksu tiiliseinä, jonka pinnat 510 mm päässä (paritusraja
   500 mm), ja oikean reunan pitkät linjat, joissa tall-osuus on pieni.
 
+- **NORMALS-TÄYDENNYS: valinta ei enää hukkaa häviäjän seiniä (29.9.2026).**
+  Kun histogrammi voittaa valinnan (Rohbau, retail_s), normals ajetaan silti
+  täydellä pilvellä ja sen seinät tarjotaan mallille VASTA jäännöshaun jälkeen
+  `_measure_support`issa, samojen porttien läpi kuin jäännösseinät.
+  Järjestys on mitattu, ja kolme ensimmäistä versiota epäonnistuivat:
+  1. **Lisäys detektorivaiheessa** (ennen ketjua): Rohbau GTinst 0.539 → 0.606
+     mutta retail_s 9 → 35 seinää, perimetri pilkkoutui (kate 0.58).
+  2. **F1-portti** (lisää vain jos GT-vapaa F1 nousee): täsmälleen väärin
+     päin — retail_s läpäisi (0.503 → 0.509), Rohbau hylättiin joka scenessä.
+     GT-vapaa mittari ei näe lyhyitä seiniä ([[metric-blindness]]).
+  3. **Jatkuvuus ≥ 0.6 + jatkeen esto**: retail puhdas, mutta 07003 0.593 →
+     0.519, koska lisätty seinä pilkkoi jäännöshaun 10.6 m seinän kolmeen
+     vinoon palaan 80 mm pinnan viereen. Kaikkien epäonnistumisten juurisyy
+     oli sama: ketjun alussa lisätty seinä rikkoo sen, minkä ketju olisi
+     rakentanut kokonaisena.
+  Portit lisäykselle (kaikki mitattu GT-luokista, `data/_added_gt_class.py`):
+  jatkuvuus ≥ 0.6 (retail_s:n pilarilinjat 0.07–0.29, Rohbaun väliseinät
+  0.67–1.0); ei tunnistetun pilarin pintaa (`_column_face`: retail_s:n kolme
+  1 m tynkää osuivat kaikki pilariin); ei ulkoseinän yli ulospäin sojottavaa
+  ripaa (`_outward_rib`: 11 lisäystä ylitti pitkän julkisivun ja ulottui
+  1.0–1.3 m ulos, GT 25–44 % Column — pilasterien kyljet); hyllynpoisto
+  ajetaan lisäyksen jälkeen uudelleen.
+  | | ennen | jälkeen |
+  |---|---|---|
+  | Rohbau GTinst 07000–07004 | 0.673 / 0.469 / 0.409 / 0.593 / 0.550 | **0.673 / 0.594 / 0.591 / 0.630 / 0.650** |
+  | Rohbau GTtark | 0.895 / 0.941 / 0.956 / 0.855 / 0.925 | 0.895 / 0.937 / 0.954 / 0.856 / 0.925 |
+  | retail_s | 9/9 GT, 0 ylim. | **9/9, 0** |
+  | kellari, apt, retail_l, 3dses, test_room, synth | | **+0.000** (eivät valitse histogrammia) |
+  Lisätyistä 18 seinästä 16 on GT:n mukaan seinää; kaksi on tunnistamattoman
+  pilarin pintaa. GT-overlay: `data/_gt_overlay.py` (vihreä = GT-seinä
+  mallissa, punainen = puuttuu, oranssi = lisäys) — tällä pilasterit löytyivät,
+  instanssiluku ei näyttänyt niitä.
+  **Rohbau3D:ssä on 14 työmaata (CC BY 4.0, kaupallinen käyttö sallittu
+  maininnalla).** Site 01, 02 ja 10 ladattu (38 sceneä, `data/_rohbau/`);
+  `data/_rohbau_wide.py <tag>` ajaa kaikki scenet ja kirjoittaa GTinst/GTtark
+  CSV:hen. Viisi site_07-sceneä on liian kapea pohja kynnyksille.
+
 - **AUKKOJEN SIJOITUS MITATTU ENSIMMÄISTÄ KERTAA — JA KORKEUS OLI VÄÄRIN
   VÄÄRÄN PILVEN TAKIA (17.9.2026).** Aukkoja oli mitattu vain löytymisenä.
   `data/_opening_place_qa.py` vertaa keilatun myymälän `gt.json`:iin

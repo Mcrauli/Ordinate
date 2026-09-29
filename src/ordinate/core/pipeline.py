@@ -762,6 +762,93 @@ _CHOICE_MARGIN = 1.5   # uuden menetelmän F1:n oltava näin monta kertaa paremp
 _CHOICE_VOXEL = 80.0        # mm — valinnan harvennus (järjestys säilyy, ks. _best_detector)
 _CHOICE_MAX_POINTS = 2_000_000   # tätä pienempi pilvi ajetaan sellaisenaan
 _MARGIN_ONLY = frozenset({"normals"})   # vain nämä joutuvat marginaalin taakse
+_UNION_NORMALS = True
+_UNION_NEAR = 300.0   # mm
+_UNION_COVERED = 0.5
+_UNION_CONT = 0.6
+_UNION_COL_SPAN = 3.0
+_UNION_COL_GAP = 300.0   # mm
+_UNION_RIB_HOST = 5000.0   # mm
+_UNION_RIB_COS = 0.26    # cos 75°
+
+
+def _covered_by(wall, walls, near: float = _UNION_NEAR) -> bool:
+    ax = wall.axis
+    a = np.asarray(ax[0], float)[:2]
+    b = np.asarray(ax[-1], float)[:2]
+    L = float(np.linalg.norm(b - a))
+    if L < 1.0:
+        return True
+    u = (b - a) / L
+    P = a + np.linspace(0.0, L, max(2, int(L / 100.0)))[:, None] * u
+    hit = np.zeros(len(P), bool)
+    cos_tol = np.cos(np.radians(15.0))
+    for v in walls:
+        c = np.asarray(v.axis[0], float)[:2]
+        d = np.asarray(v.axis[-1], float)[:2]
+        Lv = float(np.linalg.norm(d - c))
+        if Lv < 1.0:
+            continue
+        uv = (d - c) / Lv
+        if abs(float(u @ uv)) < cos_tol:
+            continue
+        q = P - c
+        t = q @ uv
+        n = np.abs(q @ np.array([-uv[1], uv[0]]))
+        hit |= (t > -near) & (t < Lv + near) & (n < near)
+    return float(hit.mean()) >= _UNION_COVERED
+
+
+def _outward_rib(wall, walls) -> bool:
+    a = np.asarray(wall.axis[0], float)[:2]
+    b = np.asarray(wall.axis[-1], float)[:2]
+    L = float(np.linalg.norm(b - a))
+    if L < 1.0 or not walls:
+        return True
+    u = (b - a) / L
+    cen = np.mean([0.5 * (np.asarray(v.axis[0], float)[:2] + np.asarray(v.axis[-1], float)[:2])
+                   for v in walls], axis=0)
+    for v in walls:
+        c = np.asarray(v.axis[0], float)[:2]
+        d = np.asarray(v.axis[-1], float)[:2]
+        Lv = float(np.linalg.norm(d - c))
+        if Lv < _UNION_RIB_HOST:
+            continue
+        uv = (d - c) / Lv
+        if abs(float(u @ uv)) > _UNION_RIB_COS:
+            continue
+        ta, tb = float((a - c) @ uv), float((b - c) @ uv)
+        if min(ta, tb) < -_UNION_NEAR or max(ta, tb) > Lv + _UNION_NEAR:
+            continue
+        nv = np.array([-uv[1], uv[0]])
+        sa, sb = float((a - c) @ nv), float((b - c) @ nv)
+        if sa * sb > 0.0 and min(abs(sa), abs(sb)) > _UNION_NEAR:
+            continue
+        inward = np.sign(float((cen - c) @ nv)) or 1.0
+        outside = max(0.0, -inward * sa, -inward * sb)
+        if outside >= 0.5 * L:
+            return True
+    return False
+
+
+def _column_face(wall, columns) -> bool:
+    a = np.asarray(wall.axis[0], float)[:2]
+    b = np.asarray(wall.axis[-1], float)[:2]
+    L = float(np.linalg.norm(b - a))
+    if L < 1.0:
+        return True
+    u = (b - a) / L
+    for c in columns or []:
+        prof = getattr(c, "profile", None)
+        size = max(float(getattr(prof, "width", 0.0) or 0.0),
+                   float(getattr(prof, "depth", 0.0) or 0.0))
+        if size <= 0.0 or L > _UNION_COL_SPAN * size:
+            continue
+        p = np.asarray(c.location, float)[:2] - a
+        t = float(np.clip(p @ u, 0.0, L))
+        if float(np.linalg.norm(p - t * u)) <= 0.5 * size + _UNION_COL_GAP:
+            return True
+    return False
 
 
 def _crop_to_building_envelope(cloud):
@@ -1559,6 +1646,41 @@ class Pipeline:
                 except Exception as e:  # noqa: BLE001
                     self._progress(f"  Jäännösseinähaku ohitettu: {e}")
 
+                extra = getattr(self, "_union_extra", None) or []
+                if extra:
+                    from ordinate.core.qa.deviation import _wall_support  # noqa: PLC0415
+                    pts_u = np.asarray(cloud.points)
+                    add = []
+                    for w in extra:
+                        if (_covered_by(w, model.walls) or _column_face(w, model.columns)
+                                or _outward_rib(w, model.walls)):
+                            continue
+                        sc = _wall_support(w, pts_u, None)
+                        if sc is not None and sc[1] is not None and sc[1] >= _UNION_CONT:
+                            add.append(w)
+                    if add:
+                        before = list(model.walls)
+                        add = _recenter_wall_axes(add, cloud, band=300.0,
+                                                  keep_thickness=True)
+                        model.walls = model.walls + add
+                        measure_wall_support(model, cloud)
+                        self._progress(f"  Normals-seiniä lisätty: {len(add)}")
+                        _gates("normals-lisäyksestä")
+                        from ordinate.core.semantics.wall_semantics import (  # noqa: PLC0415
+                            remove_shelf_front_walls,
+                        )
+                        new_ids = {w.id for w in add}
+                        kept = remove_shelf_front_walls(
+                            model.walls, retail=_looks_like_retail(cloud),
+                            pts=np.asarray(cloud.points))
+                        kept_ids = {w.id for w in kept}
+                        model.walls = [w for w in model.walls
+                                       if w.id in kept_ids or w.id not in new_ids]
+                        survived = {w.id for w in model.walls}
+                        rescued = [w for w in before if w.id not in survived]
+                        if rescued:
+                            model.walls = model.walls + rescued
+
                 # Kertooko malli itse olevansa epäluotettava? Kellari tuotti 427
                 # valeseinää eikä yksikään putken luku varoittanut — vika löytyi
                 # vasta kuvista. Nämä kolme suhdelukua olisivat kertoneet sen.
@@ -1667,6 +1789,7 @@ class Pipeline:
         from ordinate.core.segmentation.base import DetectorRegistry  # noqa: PLC0415
         from ordinate.core.segmentation.slab_detector import detect_slabs  # noqa: PLC0415
 
+        self._union_extra = []
         best_model = None
         best_name = names[0]
         best_f1 = -1.0
@@ -1755,6 +1878,7 @@ class Pipeline:
                 best_model = models_by_name[ref_name]
                 best_name, best_f1 = ref_name, ref_f1
         self._progress(f"  valittu {best_name} (F1 {best_f1:.3f})")
+        union = _UNION_NORMALS and best_name == "histogram" and "normals" in models_by_name
         if probe is not cloud:
             # Voittaja ajetaan uudelleen TÄYDELLÄ pilvellä: harvennettu tulos
             # kelpaa järjestykseen muttei malliksi.
@@ -1762,6 +1886,11 @@ class Pipeline:
             if self._sem_labels is not None and hasattr(detector, "semantic_labels"):
                 detector.semantic_labels = self._sem_labels
             best_model = detector.detect(cloud)
+        if union:
+            detector = DetectorRegistry.get("normals")()
+            if self._sem_labels is not None and hasattr(detector, "semantic_labels"):
+                detector.semantic_labels = self._sem_labels
+            self._union_extra = detector.detect(cloud).walls
         log = getattr(self, "_runlog", None)
         if log is not None:
             log.choice("detector", best_name, scores)
