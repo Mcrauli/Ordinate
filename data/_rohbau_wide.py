@@ -1,6 +1,6 @@
 """Kaikki ladatut Rohbau3D-scenet putken lapi + GT-mittaus (instanssi + tarkkuus).
 
-Kaytto: _rohbau_wide.py <tag> [MODUULI:NIMI=arvo ...]
+Kaytto: _rohbau_wide.py <tag> [MODUULI:NIMI=arvo ...] [detector=nimi] [only=scene_a,scene_b]
 Tulos: data/output/_wide/<tag>.csv (jatkaa siita mihin jai). Asetukset
 korvaavat moduulivakion ajon ajaksi, esim. ordinate.core.pipeline:_UNION_NORMALS=False.
 """
@@ -20,6 +20,8 @@ def scenes():
 
 
 def main(tag, *sets):
+    only = {x for s in sets if s.startswith("only=") for x in s[5:].split(",")}
+    sets = [s for s in sets if not s.startswith("only=")]
     out_root = ROOT / "data" / "output" / "_wide" / tag
     out_root.mkdir(parents=True, exist_ok=True)
     csv_path = out_root.parent / f"{tag}.csv"
@@ -32,7 +34,7 @@ def main(tag, *sets):
         if new:
             wr.writerow(["scene", "walls", "gt_pre", "inst_found", "inst_total", "inst", "inside", "secs"])
         for sc in scenes():
-            if sc.name in done:
+            if sc.name in done or (only and sc.name not in only):
                 continue
             od = out_root / sc.name
             r = subprocess.run([PY, str(HERE / "_run_one_cfg.py"), str(sc / "cloud.ply"), str(od), *sets],

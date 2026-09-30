@@ -298,6 +298,38 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   `data/_rohbau_wide.py <tag>` ajaa kaikki scenet ja kirjoittaa GTinst/GTtark
   CSV:hen. Viisi site_07-sceneä on liian kapea pohja kynnyksille.
 
+- **PIENEN TILAN VALINTA VALMIISTA MALLEISTA (30.9.2026).** Laaja Rohbau-ajo
+  (43 sceneä, site 01/02/07/10, `data/_rohbau_wide.py`) paljasti että pieni tila
+  meni aina pelkällä contourilla ja epäonnistui täysin porraskäytävissä
+  (10004: 0/26 — contour teki 1 seinän, perimetri 12° vinossa, direction_prune
+  pudotti kaiken). Mitattu matkalla:
+  | kokeilu | GTinst 43 sceneä | tarkkuus ka | huonompia |
+  |---|---|---|---|
+  | nykyinen (contour) | 399 / 678 = 0.588 | 0.868 | – |
+  | pakotettu normals | 461 | – | tarkkuus heikkenee monessa |
+  | contour + normals-täydennys | 428 | 0.842 | 3 (palkit, portaat 30 % lisäyksistä) |
+  | kisa pienessäkin tilassa | 449 | 0.846 | 7 |
+  | **valmiiden mallien F1-valinta** | **447 / 678 = 0.659** | **0.856** | 4 |
+  | valmiiden mallien yhdiste | 450 | 0.844 | 7 |
+  **Valintahetken F1 on pienessä tilassa merkityksetön:** contour saa seinänsä
+  vasta perimetristä ketjun lopussa, joten sen raaka-F1 on 0.000 myös
+  sceneissä joissa valmis malli on erinomainen (02000: tarkkuus 0.98). Siksi
+  `_better_final` ajaa ketjun loppuun kahdesti (kisan voittaja ja contour) ja
+  valitsee `wall_scores`-F1:llä valmiista malleista.
+  Kokeiltu ja HYLÄTTY lisäysten portteina (eivät erota palkkeja/portaita
+  seinistä, `data/_added_gt_class.py`, `data/_added_levels.py`): PointNet-
+  enemmistö, hyllytasot (vale 0–5, aito 0–3), pystytäyttö huoneen korkeudelta,
+  päiden leikkaus.
+  **Valeseinät eivät ole tarkkuuden pullonkaula:** 104 valetta kattaa vain
+  3.9 % mallin pisteistä (`data/_fp_features.py`); jatkuvuus < 0.22 poistaisi
+  7 valetta ja 0 aitoa, mutta tarkkuus 0.868 → 0.869. Vaje on puuttuvissa:
+  220 puuttuvasta 72 löytää jokin muu ajo, 148 ei mikään (53 alle 1 m, 18
+  julkisivua, 58 yli 2 m — site_07:ssä korkealla roikkuvia elementtejä,
+  muualla kaukaisia harvoja seiniä), `data/_miss_map.py`.
+  Matriisi: 3dses kattavuus 0.994 → 0.983, tarkkuus 0.634 → 0.666 (vaihtaa
+  pitkän käytäväseinän yläkerran huoneen seinään — kuva tarkistettu), muut
+  11 bitilleen ennallaan.
+
 - **AUKKOJEN SIJOITUS MITATTU ENSIMMÄISTÄ KERTAA — JA KORKEUS OLI VÄÄRIN
   VÄÄRÄN PILVEN TAKIA (17.9.2026).** Aukkoja oli mitattu vain löytymisenä.
   `data/_opening_place_qa.py` vertaa keilatun myymälän `gt.json`:iin

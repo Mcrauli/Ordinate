@@ -16,6 +16,11 @@ sovellus päivittää itsensä sieltä.
   lisätään, jos ne ovat yhtenäistä pintaa eivätkä pilarin tai julkisivun
   ripoja. Runkovaiheen testikohteissa löydettyjen seinien osuus 54 % → 63 %
   (yksi scene 41 % → 59 %), tarkkuus ennallaan; myymälöissä ei muutosta.
+- **Pienissä tiloissa verrataan valmiita malleja.** Ennen pieni tila meni aina
+  yhdellä tunnistimella, ja jos se epäonnistui, malli jäi tyhjäksi (porraskäytävä
+  0/26 seinää). Nyt ohjelma ajaa tarvittaessa kaksi vaihtoehtoa loppuun asti ja
+  pitää paremman. 43 runkovaiheen keilauksessa löydetyt seinät 399 → 447 (+12 %),
+  tarkkuus 0.868 → 0.856.
 - Päivittäjä hakee julkaisut `Mcrauli/Ordinate-web`-reposta (vanha nimi
   ohjautuu GitHubissa, joten vanhat asennukset päivittyvät yhä).
 

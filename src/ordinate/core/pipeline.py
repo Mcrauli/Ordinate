@@ -763,6 +763,7 @@ _CHOICE_VOXEL = 80.0        # mm — valinnan harvennus (järjestys säilyy, ks.
 _CHOICE_MAX_POINTS = 2_000_000   # tätä pienempi pilvi ajetaan sellaisenaan
 _MARGIN_ONLY = frozenset({"normals"})   # vain nämä joutuvat marginaalin taakse
 _UNION_NORMALS = True
+_COMPETE_SMALL = True
 _UNION_NEAR = 300.0   # mm
 _UNION_COVERED = 0.5
 _UNION_CONT = 0.6
@@ -1127,6 +1128,9 @@ class Pipeline:
         self._scanner_origins: list = []   # täytetään kerroskohtaisesti (E57)
         self._sem_labels = None            # PointNetin luokat (SemanticLabels|None)
         self._shelf_fronts: list = []      # hyllyksi mitatut (diagnostiikka)
+        self._force_default = False
+        self._small_space = False
+        self._chosen_detector = None
 
     def run(self, input_path: Path | list[Path], output_dir: Path) -> StructuralModel:
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -1404,10 +1408,14 @@ class Pipeline:
                 f"5mm-pilvi {len(refine_cloud.points):,} pistettä")
 
             self._progress(f"  Seinädetektio ({self.config.detector})…")
+            self._force_default = False
             model = self._detect(cloud, source, refine_cloud=refine_cloud, thick_cloud=thick_cloud)
+            self._measure_support(model, refine_cloud)
+            if (_COMPETE_SMALL and self._small_space
+                    and self._chosen_detector != self.config.detector):
+                model = self._better_final(model, cloud, source, refine_cloud, thick_cloud)
             model.metadata.floor_index = floor_idx
             model.metadata.floor_count = len(floors)
-            self._measure_support(model, refine_cloud)
 
             floor_dir = output_dir / f"floor_{floor_idx:02d}"
             floor_dir.mkdir(exist_ok=True)
@@ -1897,6 +1905,31 @@ class Pipeline:
         return best_model, best_name
 
 
+    def _final_f1(self, model, cloud) -> float:
+        from ordinate.core.qa.coverage import detector_score, wall_scores  # noqa: PLC0415
+
+        fz = min((s.elevation for s in model.slabs if s.slab_type == "floor"), default=None)
+        cz = max((s.elevation for s in model.slabs if s.slab_type == "ceiling"), default=None)
+        if fz is None or cz is None:
+            return 0.0
+        cov, pre = wall_scores(np.asarray(cloud.points), model.walls, fz, cz)
+        return detector_score(cov, pre)
+
+    def _better_final(self, model, cloud, source, refine_cloud, thick_cloud):
+        chosen = self._chosen_detector
+        self._force_default = True
+        try:
+            alt = self._detect(cloud, source, refine_cloud=refine_cloud, thick_cloud=thick_cloud)
+            self._measure_support(alt, refine_cloud)
+        finally:
+            self._force_default = False
+        f_new, f_old = self._final_f1(model, cloud), self._final_f1(alt, cloud)
+        keep = f_new > f_old
+        self._progress(
+            f"  valmiit mallit: {chosen} F1 {f_new:.3f}, {self.config.detector} F1 "
+            f"{f_old:.3f} → {chosen if keep else self.config.detector}")
+        return model if keep else alt
+
     def _detect(self, cloud, source_path: Path, refine_cloud=None, thick_cloud=None) -> StructuralModel:
         import ordinate.core.segmentation.wall_ransac  # noqa: F401
         import ordinate.core.segmentation.wall_density  # noqa: F401
@@ -1933,14 +1966,18 @@ class Pipeline:
         # Iso tila TAI liiketila → histogrammi (myös contour-oletuksesta): iso
         # rakennus jonka lattia on osin okkluusiossa jää contourilla vajaaksi
         # (vain skannerihuone). Asunto/talo (pieni pohja) pysyvät contourissa.
-        if detector_name in ("ransac", "density", "contour") and (is_retail or is_large):
+        small = not (is_retail or is_large)
+        self._small_space = small
+        if detector_name in ("ransac", "density", "contour") and (
+                is_retail or is_large or (_COMPETE_SMALL and not self._force_default)):
             candidates = [detector_name, "histogram", "normals"]
-            why = "liiketila" if is_retail else "iso tila"
+            why = "liiketila" if is_retail else ("iso tila" if is_large else "pieni tila")
             self._progress(f"  {why} → mitataan mikä detektori kattaa eniten")
         else:
             candidates = [detector_name]
 
         model, detector_name = self._best_detector(cloud, candidates)
+        self._chosen_detector = detector_name
         model.slabs = detect_slabs(cloud)
 
         floor_slab = next((s for s in model.slabs if s.slab_type == "floor"), None)
