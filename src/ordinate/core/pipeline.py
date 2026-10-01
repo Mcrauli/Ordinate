@@ -764,6 +764,8 @@ _CHOICE_MAX_POINTS = 2_000_000   # tätä pienempi pilvi ajetaan sellaisenaan
 _MARGIN_ONLY = frozenset({"normals"})   # vain nämä joutuvat marginaalin taakse
 _UNION_NORMALS = True
 _COMPETE_SMALL = True
+_VERIFY_ACCEPT = 0.5
+_VERIFY_NEAR = 500.0   # mm
 _UNION_NEAR = 300.0   # mm
 _UNION_COVERED = 0.5
 _UNION_CONT = 0.6
@@ -1128,7 +1130,7 @@ class Pipeline:
         self._scanner_origins: list = []   # täytetään kerroskohtaisesti (E57)
         self._sem_labels = None            # PointNetin luokat (SemanticLabels|None)
         self._shelf_fronts: list = []      # hyllyksi mitatut (diagnostiikka)
-        self._force_default = False
+        self._force_detector = None
         self._small_space = False
         self._chosen_detector = None
 
@@ -1408,12 +1410,10 @@ class Pipeline:
                 f"5mm-pilvi {len(refine_cloud.points):,} pistettä")
 
             self._progress(f"  Seinädetektio ({self.config.detector})…")
-            self._force_default = False
             model = self._detect(cloud, source, refine_cloud=refine_cloud, thick_cloud=thick_cloud)
             self._measure_support(model, refine_cloud)
-            if (_COMPETE_SMALL and self._small_space
-                    and self._chosen_detector != self.config.detector):
-                model = self._better_final(model, cloud, source, refine_cloud, thick_cloud)
+            if _COMPETE_SMALL and self._small_space:
+                model = self._small_space_model(model, cloud, source, refine_cloud, thick_cloud)
             model.metadata.floor_index = floor_idx
             model.metadata.floor_count = len(floors)
 
@@ -1915,20 +1915,55 @@ class Pipeline:
         cov, pre = wall_scores(np.asarray(cloud.points), model.walls, fz, cz)
         return detector_score(cov, pre)
 
-    def _better_final(self, model, cloud, source, refine_cloud, thick_cloud):
-        chosen = self._chosen_detector
-        self._force_default = True
-        try:
-            alt = self._detect(cloud, source, refine_cloud=refine_cloud, thick_cloud=thick_cloud)
-            self._measure_support(alt, refine_cloud)
-        finally:
-            self._force_default = False
-        f_new, f_old = self._final_f1(model, cloud), self._final_f1(alt, cloud)
-        keep = f_new > f_old
-        self._progress(
-            f"  valmiit mallit: {chosen} F1 {f_new:.3f}, {self.config.detector} F1 "
-            f"{f_old:.3f} → {chosen if keep else self.config.detector}")
-        return model if keep else alt
+    def _small_space_model(self, model, cloud, source, refine_cloud, thick_cloud):
+        chosen, default = self._chosen_detector, self.config.detector
+        finals = {chosen: model}
+        for det in (default, "normals"):
+            if det in finals:
+                continue
+            self._force_detector = det
+            try:
+                alt = self._detect(cloud, source, refine_cloud=refine_cloud, thick_cloud=thick_cloud)
+                self._measure_support(alt, refine_cloud)
+            finally:
+                self._force_detector = None
+            finals[det] = alt
+        keep = chosen
+        if chosen != default:
+            f_new, f_old = self._final_f1(finals[chosen], cloud), self._final_f1(finals[default], cloud)
+            keep = chosen if f_new > f_old else default
+            self._progress(
+                f"  valmiit mallit: {chosen} F1 {f_new:.3f}, {default} F1 {f_old:.3f} → {keep}")
+        base = finals[keep]
+        others = [w for k, m in finals.items() if k != keep for w in m.walls]
+        added = self._verified_extras(base, others, refine_cloud)
+        if added:
+            base.walls = list(base.walls) + added
+            self._progress(f"  Tarkistimen hyväksymiä lisäseiniä: {len(added)}")
+        return base
+
+    def _verified_extras(self, base, others, refine_cloud) -> list:
+        from ordinate.core.semantics import wall_verifier as V  # noqa: PLC0415
+
+        trees = V.load()
+        fz = min((s.elevation for s in base.slabs if s.slab_type == "floor"), default=None)
+        cz = max((s.elevation for s in base.slabs if s.slab_type == "ceiling"), default=None)
+        if trees is None or fz is None or cz is None or not others:
+            return []
+        q, nz = V.prepare(np.asarray(refine_cloud.points), fz, cz)
+        cands = list(base.walls) + list(others)
+        X, _ = V.features(cands, base.walls, q, nz, fz, cz,
+                          [1] * len(base.walls) + [0] * len(others))
+        prob = V.predict(trees, X)[len(base.walls):]
+        accepted: list = []
+        for i in np.argsort(-prob):
+            if prob[i] < _VERIFY_ACCEPT:
+                break
+            w = others[i]
+            if _covered_by(w, list(base.walls) + accepted, near=_VERIFY_NEAR):
+                continue
+            accepted.append(w.model_copy(update={"id": f"wall_v{len(accepted):03d}_{w.id[5:]}"}))
+        return accepted
 
     def _detect(self, cloud, source_path: Path, refine_cloud=None, thick_cloud=None) -> StructuralModel:
         import ordinate.core.segmentation.wall_ransac  # noqa: F401
@@ -1968,8 +2003,10 @@ class Pipeline:
         # (vain skannerihuone). Asunto/talo (pieni pohja) pysyvät contourissa.
         small = not (is_retail or is_large)
         self._small_space = small
-        if detector_name in ("ransac", "density", "contour") and (
-                is_retail or is_large or (_COMPETE_SMALL and not self._force_default)):
+        if self._force_detector is not None:
+            detector_name = self._force_detector
+        if self._force_detector is None and detector_name in ("ransac", "density", "contour") and (
+                is_retail or is_large or _COMPETE_SMALL):
             candidates = [detector_name, "histogram", "normals"]
             why = "liiketila" if is_retail else ("iso tila" if is_large else "pieni tila")
             self._progress(f"  {why} → mitataan mikä detektori kattaa eniten")

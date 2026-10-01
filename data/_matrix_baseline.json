@@ -8,7 +8,7 @@
   "gt_inst": 0.673,
   "walls": 27,
   "openings": 14,
-  "secs": 390
+  "secs": 421
  },
  "rohbau_07001": {
   "cov": 0.888,
@@ -19,7 +19,7 @@
   "gt_inst": 0.594,
   "walls": 19,
   "openings": 5,
-  "secs": 323
+  "secs": 365
  },
  "rohbau_07002": {
   "cov": 0.914,
@@ -30,7 +30,7 @@
   "gt_inst": 0.591,
   "walls": 23,
   "openings": 11,
-  "secs": 352
+  "secs": 390
  },
  "rohbau_07003": {
   "cov": 0.822,
@@ -41,7 +41,7 @@
   "gt_inst": 0.63,
   "walls": 13,
   "openings": 7,
-  "secs": 384
+  "secs": 402
  },
  "rohbau_07004": {
   "cov": 0.654,
@@ -52,7 +52,7 @@
   "gt_inst": 0.65,
   "walls": 10,
   "openings": 0,
-  "secs": 284
+  "secs": 328
  },
  "kellari": {
   "cov": 0.537,
@@ -60,15 +60,15 @@
   "wallish": 669814,
   "walls": 298,
   "openings": 4,
-  "secs": 1178
+  "secs": 1350
  },
  "apt": {
-  "cov": 0.813,
-  "pre": 0.656,
+  "cov": 0.839,
+  "pre": 0.653,
   "wallish": 172826,
-  "walls": 13,
+  "walls": 14,
   "openings": 4,
-  "secs": 58
+  "secs": 90
  },
  "retail_s": {
   "cov": 0.724,
@@ -76,7 +76,7 @@
   "wallish": 2336233,
   "walls": 9,
   "openings": 7,
-  "secs": 594
+  "secs": 791
  },
  "retail_l": {
   "cov": 0.606,
@@ -84,15 +84,15 @@
   "wallish": 6256621,
   "walls": 13,
   "openings": 6,
-  "secs": 2910
+  "secs": 2919
  },
  "3dses": {
   "cov": 0.983,
-  "pre": 0.666,
+  "pre": 0.559,
   "wallish": 118834,
-  "walls": 10,
+  "walls": 11,
   "openings": 3,
-  "secs": 177
+  "secs": 186
  },
  "test_room": {
   "cov": 0.998,
@@ -100,14 +100,14 @@
   "wallish": 68138,
   "walls": 4,
   "openings": 0,
-  "secs": 18
+  "secs": 20
  },
  "synth": {
-  "cov": 0.797,
-  "pre": 0.67,
+  "cov": 0.826,
+  "pre": 0.669,
   "wallish": 255344,
-  "walls": 17,
+  "walls": 18,
   "openings": 3,
-  "secs": 32
+  "secs": 39
  }
 }

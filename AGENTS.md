@@ -330,6 +330,38 @@ layout-chunkit (1.85MB) sisältävät Wall/Door/Window-annotaatiot samoille scen
   pitkän käytäväseinän yläkerran huoneen seinään — kuva tarkistettu), muut
   11 bitilleen ennallaan.
 
+- **OPITTU SEINÄTARKISTIN (`semantics/wall_verifier.py`, 1.10.2026).** Kaikki
+  geometriset portit ovat kaatuneet samaan rajaan: palkkilinja, pilaririvi,
+  porras ja seinä ovat tasoina samannäköisiä. Ratkaisu on erillinen opittu
+  tarkistin, EI PointNetin uudelleenkoulutus (sen "seesaw" on mitattu).
+  Ehdokkaat = usean ketjun valmiiden mallien seinät; piirteet lasketaan VAIN
+  pilvestä (pystyjakauma 10 binissä, vaakapintojen osuus kokonaan ja yläosassa,
+  jatkuvuus kolmella korkeudella, tasomaisuus, suhteellinen pistemäärä,
+  X-risteämät ja lähin rinnakkainen); GT antaa vain tuomion (≥ 0.5 seinää /
+  ≤ 0.2 ei). Random forest 150 puuta, viety JSONiin (`models/wall_verifier.json`,
+  0.7 MB), numpy-ennuste = sklearn 3e-7 tarkkuudella → exe ei tarvitse sklearnia.
+  Uudelleenkoulutus: `data/_cand_features.py` (käyttää samaa `_one`/`_topo`
+  -koodia kuin tuotanto) → `scripts/export_wall_verifier.py` (.venv-train).
+  Mitattu tyomaa kerrallaan (leave-one-site-out, 6 tyomaata, 1116 ehdokasta):
+  | kokeilu (93 sceneä) | GTinst | tarkkuus ka | huonompia |
+  |---|---|---|---|
+  | master (valmiiden mallien valinta) | 689 / 1038 = 0.664 | 0.848 | – |
+  | pelkkä suodatettu pooli | ~731 | 0.847 | 17 (hylkää masterin oikeita) |
+  | master + lisäykset p ≥ 0.3 | 744 | 0.846 | 7 |
+  | **master + lisäykset p ≥ 0.5, putkessa** | **737 / 1038 = 0.710** | **0.855** | **1** |
+  Ainoa huonompi (00016) on 3 → 8 seinää, tarkkuus 0.88 → 0.81 (kuva tarkistettu).
+  Pooli PITÄÄ pohjamallin seinät aina: pelkkä pooli menetti masterin seiniä
+  (02007 16 → 12). Kopiot: ahne hyväksyntä todennäköisyysjärjestyksessä,
+  `_covered_by` 500 mm; tiukempi kopiosääntö (30 % pituudesta) ei auttanut.
+  Vain pienissä tiloissa: site_07 (iso halli) olisi antanut +6, kolme ketjua
+  isolle pilvelle on liian kallis. Matriisi: apt 0.813 → 0.839, synth 0.797 →
+  0.826, **3dses GT-vapaa tarkkuus 0.666 → 0.559** — lisätty seinä on aito
+  8.7 m käytäväseinä ovineen (`data/_zoom_wall.py`), takana tiheä massa jota
+  GT-vapaa mittari ei pidä seinänä. Muut 9 bitilleen ennallaan.
+  **Huom:** valeseinät ovat vain 3.9 % mallin pisteistä, joten tarkkuus on
+  lähellä kattoa — tarkistimen arvo on kattavuudessa: se sallii lisätä
+  ehdokkaita joita ennen ei uskallettu.
+
 - **AUKKOJEN SIJOITUS MITATTU ENSIMMÄISTÄ KERTAA — JA KORKEUS OLI VÄÄRIN
   VÄÄRÄN PILVEN TAKIA (17.9.2026).** Aukkoja oli mitattu vain löytymisenä.
   `data/_opening_place_qa.py` vertaa keilatun myymälän `gt.json`:iin

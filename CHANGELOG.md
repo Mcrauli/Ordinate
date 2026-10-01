@@ -21,6 +21,12 @@ sovellus päivittää itsensä sieltä.
   0/26 seinää). Nyt ohjelma ajaa tarvittaessa kaksi vaihtoehtoa loppuun asti ja
   pitää paremman. 43 runkovaiheen keilauksessa löydetyt seinät 399 → 447 (+12 %),
   tarkkuus 0.868 → 0.856.
+- **Opittu seinätarkistin pienissä tiloissa.** Ohjelma ajaa nyt kolme
+  tunnistusketjua ja lisää malliin muiden ketjujen löytämät seinät, jos niille
+  koulutettu tarkistin sanoo kyseessä olevan seinä eikä palkki-, pilari- tai
+  porraslinja. Tarkistin on koulutettu 93 runkovaiheen keilauksella kuudelta
+  työmaalta (Rohbau3D, CC BY 4.0). Löydetyt seinät 689 → 737 (+7 %), tarkkuus
+  0.848 → 0.855; asunnossa ja synteettisessä kohteessa löytyy enemmän seiniä.
 - Päivittäjä hakee julkaisut `Mcrauli/Ordinate-web`-reposta (vanha nimi
   ohjautuu GitHubissa, joten vanhat asennukset päivittyvät yhä).
 
