@@ -20,7 +20,7 @@ from ordinate.gui.stage_indicator import StageIndicator, stage_for_message
 from ordinate.gui.update_banner import UpdateBanner, UpdateChecker, perform_update
 from ordinate.gui.brand import app_icon, logo_pixmap
 from ordinate.gui.theme import TEXT
-from ordinate.core.updater import cleanup_old_exe
+from ordinate.core.updater import cleanup_old_exe, updates_disabled
 
 
 class MainWindow(QtWidgets.QMainWindow):
@@ -153,9 +153,13 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Siivoa edellisen päivityksen .old-exe ja tarkista uusi versio.
         cleanup_old_exe()
-        self._update_checker = UpdateChecker(self)
-        self._update_checker.result.connect(self._on_update_check)
-        self._update_checker.start()
+        off = updates_disabled()
+        if off:
+            self._log_panel.info(f"Päivitystarkistus pois päältä: {off}.")
+        else:
+            self._update_checker = UpdateChecker(self)
+            self._update_checker.result.connect(self._on_update_check)
+            self._update_checker.start()
 
     def _on_update_check(self, info: object) -> None:
         if info is not None:

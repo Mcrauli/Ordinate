@@ -4,8 +4,9 @@ Ordinate release is available on GitHub.
 Wired by :class:`MainWindow` to:
     1. A background ``UpdateChecker`` that polls
        :func:`ordinate.core.updater.check_for_update` once on startup.
-    2. A click handler that downloads the new exe with progress and
-       hands it to :func:`replace_exe` before quitting the app.
+    2. A click handler that verifies the release signature, downloads the
+       package with progress, checks it against the signed manifest and
+       hands it to :func:`apply_downloaded_update` before quitting the app.
 """
 
 from __future__ import annotations
@@ -22,9 +23,10 @@ from ordinate.core.updater import (
     apply_downloaded_update,
     check_for_update,
     download_asset,
-    fetch_expected_sha256,
+    fetch_signed_manifest,
     is_running_bundled,
 )
+from ordinate.core.release_signing import VerificationError
 
 
 class UpdateChecker(QtCore.QObject):
@@ -152,13 +154,20 @@ class _DownloadRunnable(QtCore.QRunnable):
                 raise RuntimeError("cancelled")
             self._owner.report_progress(downloaded, total)
 
-        expected_sha256 = fetch_expected_sha256(info.download_url)
+        try:
+            manifest = fetch_signed_manifest(info.download_url, info.version)
+        except VerificationError as exc:
+            self._owner.failed.emit(
+                f"Päivityksen allekirjoitusta ei voitu varmistaa ({exc}). "
+                "Päivitystä ei asennettu.")
+            return
         try:
             download_asset(
                 info.download_url,
                 self._target_path,
                 progress_cb=progress_cb,
-                expected_sha256=expected_sha256,
+                expected_sha256=manifest["sha256"],
+                expected_size=manifest["size"],
             )
         except RuntimeError:
             return

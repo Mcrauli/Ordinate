@@ -38,6 +38,7 @@ GITHUB_API_URL: str = "https://api.github.com/repos/{repo}/releases"
 USER_AGENT: str = f"ordinate-updater/{__version__}"
 APP_EXE: str = "Ordinate.exe"
 LEGACY_EXE: str = "scan2bim.exe"
+POLICY_KEY: str = r"SOFTWARE\Policies\Ordinate"
 
 
 @dataclass(frozen=True)
@@ -142,7 +143,7 @@ def check_for_update(
     blocks app startup.
     """
     current = _normalise_version(current_version)
-    if current is None:
+    if current is None or updates_disabled():
         return None
     try:
         releases = _open_releases(repo, timeout=timeout)
@@ -182,6 +183,65 @@ def check_for_update(
     )
 
 
+def updates_disabled() -> str | None:
+    """Syy jos ylläpitäjä tai käyttäjä on kytkenyt päivitystarkistuksen pois.
+
+    Kun palautetaan syy, ohjelma ei ota verkkoon MITÄÄN yhteyttä. Lähteet:
+    ympäristömuuttuja ``ORDINATE_DISABLE_UPDATES=1`` tai rekisterin
+    ``SOFTWARE\\Policies\\Ordinate\\DisableUpdateCheck`` (DWORD 1) joko
+    HKLM:ssä (koko kone, ryhmäkäytännöllä jaettava) tai HKCU:ssa.
+    """
+    env = os.environ.get("ORDINATE_DISABLE_UPDATES", "").strip().lower()
+    if env in ("1", "true", "yes", "kylla", "kyllä"):
+        return "ympäristömuuttuja ORDINATE_DISABLE_UPDATES"
+    if sys.platform != "win32":
+        return None
+    import winreg  # noqa: PLC0415
+
+    for hive, name in ((winreg.HKEY_LOCAL_MACHINE, "HKLM"), (winreg.HKEY_CURRENT_USER, "HKCU")):
+        try:
+            with winreg.OpenKey(hive, POLICY_KEY) as key:
+                value, _ = winreg.QueryValueEx(key, "DisableUpdateCheck")
+        except OSError:
+            continue
+        try:
+            on = int(value) == 1
+        except (TypeError, ValueError):
+            on = str(value).strip().lower() in ("true", "yes")
+        if on:
+            return f"ryhmäkäytäntö ({name}\\{POLICY_KEY})"
+    return None
+
+
+def fetch_signed_manifest(asset_url: str, expected_version: str, *,
+                          timeout: float = 10.0) -> dict:
+    """Hae ja tarkista ``<asset>.sig.json``. Palauttaa manifestin.
+
+    Nostaa :class:`release_signing.VerificationError`:n jos allekirjoitus puuttuu,
+    ei täsmää luotettuun avaimeen, tai manifesti koskee eri tiedostoa tai
+    versiota kuin mitä ollaan asentamassa. Päivitystä EI saa asentaa silloin.
+    """
+    from ordinate.core.release_signing import VerificationError, verify  # noqa: PLC0415
+
+    request = urllib.request.Request(asset_url + ".sig.json", headers={"User-Agent": USER_AGENT})
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            doc = json.loads(response.read().decode("utf-8"))
+    except (urllib.error.URLError, TimeoutError, OSError, ValueError) as exc:
+        raise VerificationError(f"allekirjoitusta ei saatu ladattua ({exc})") from exc
+    manifest = verify(doc)
+    name = asset_url.rstrip("/").rsplit("/", 1)[-1]
+    if manifest["file"] != name:
+        raise VerificationError(f"allekirjoitus koskee tiedostoa {manifest['file']}, ei {name}")
+    want, got = _normalise_version(expected_version), _normalise_version(manifest["version"])
+    if want is None or got is None or want != got:
+        raise VerificationError(
+            f"allekirjoitus koskee versiota {manifest['version']}, ei {expected_version}")
+    if len(manifest["sha256"]) != 64:
+        raise VerificationError("manifestin SHA-256 on väärän pituinen")
+    return manifest
+
+
 def fetch_expected_sha256(asset_url: str, *, timeout: float = 5.0) -> str | None:
     """Fetch the ``.sha256`` sidecar for an asset (sha256sum format).
 
@@ -213,6 +273,7 @@ def download_asset(
     chunk_size: int = 256 * 1024,
     timeout: float = 30.0,
     expected_sha256: str | None = None,
+    expected_size: int | None = None,
 ) -> None:
     """Stream an asset to ``target_path``, calling ``progress_cb(done, total)``.
 
@@ -241,6 +302,13 @@ def download_asset(
                         progress_cb(downloaded, total)
                     except Exception:
                         pass
+    if expected_size is not None and downloaded != expected_size:
+        try:
+            part_path.unlink()
+        except OSError:
+            pass
+        raise ValueError(
+            f"size mismatch on {target_path.name}: expected {expected_size}, got {downloaded}")
     if hasher is not None:
         actual = hasher.hexdigest()
         if actual.lower() != expected_sha256.lower():

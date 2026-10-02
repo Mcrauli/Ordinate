@@ -4,6 +4,23 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 [`Mcrauli/Ordinate-web`](https://github.com/Mcrauli/Ordinate-web/releases):iin;
 sovellus päivittää itsensä sieltä.
 
+## v0.9.37 (2.10.2026) — allekirjoitetut päivitykset ja tietoturvaseloste
+
+- **Päivitykset ovat allekirjoitettuja.** Jokaisen päivityspaketin rinnalla
+  julkaistaan Ed25519-allekirjoitettu manifesti (tiedosto, versio, SHA-256,
+  koko). Ohjelma asentaa päivityksen vain, jos allekirjoitus on julkaisijan ja
+  koskee juuri tätä tiedostoa ja versiota, ja jos ladattu paketti täsmää siihen.
+  Pelkkä SHA-256 ei suojannut väärennökseltä, koska se haettiin samasta paikasta
+  kuin paketti.
+- **Päivitystarkistuksen voi kytkeä pois** ryhmäkäytännöllä
+  (`HKLM\SOFTWARE\Policies\Ordinate`, `DisableUpdateCheck` = 1) tai
+  ympäristömuuttujalla `ORDINATE_DISABLE_UPDATES=1`. Silloin ohjelma ei ota
+  verkkoon yhteyttä lainkaan.
+- **`ordinate-cli verify <tiedosto>`** tarkistaa ladatun asennusohjelman tai
+  paketin aitouden julkaisijan allekirjoituksesta.
+- **Tietoturvaseloste** (`TIETOTURVA.md` asennuskansiossa ja nettisivulla):
+  mitä ohjelma lukee, kirjoittaa ja mihin se ottaa yhteyttä.
+
 ## v0.9.36 (2.10.2026) — enemmän seiniä pienissä tiloissa, halleissa ja kellarissa
 
 - **Paloina näkyvä seinä löytyy.** Isossa matalassa tilassa seinä, jonka

@@ -278,6 +278,27 @@ def viewcloud(inputs: tuple[Path, ...], out: Path, max_points: int,
     click.echo(f"VALMIS pisteita={len(pts)}")
 
 
+@main.command(name="verify")
+@click.argument("file", required=False, type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@click.option("--selftest", is_flag=True, help="Tarkista vain, että allekirjoitustarkistus toimii")
+def verify_cmd(file: Path | None, selftest: bool) -> None:
+    """Tarkista ladatun Ordinate-tiedoston aitous julkaisijan allekirjoituksesta.
+
+    FILE:n vieressä on oltava sama nimi + .sig.json (julkaisun assetti).
+    """
+    from ordinate.core.release_signing import VerificationError, selftest as _selftest, verify_file
+
+    try:
+        _selftest()
+        if selftest or file is None:
+            click.echo("ALLEKIRJOITUSTARKISTUS OK")
+            return
+        m = verify_file(file)
+    except VerificationError as exc:
+        raise SystemExit(f"EI KELPAA: {exc}") from exc
+    click.echo(f"AITO: {m['file']} versio {m['version']}, SHA-256 {m['sha256']}")
+
+
 @main.command(name="selftest-paths", hidden=True)
 def selftest_paths() -> None:
     """Ratkaiseeko GUI komentorivin polun oikein TASSA paketissa.

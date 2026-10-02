@@ -58,6 +58,14 @@ def main() -> int:
             return 1
         print("  --help ok")
 
+        r = subprocess.run([str(exe), "verify", "--selftest"], cwd=tmp, capture_output=True,
+                           text=True, encoding="utf-8", errors="replace")
+        if r.returncode != 0 or "ALLEKIRJOITUSTARKISTUS OK" not in r.stdout:
+            print("KAATUI: päivitysten allekirjoitustarkistus ei toimi paketissa")
+            print(r.stdout[-2000:], r.stderr[-2000:])
+            return 1
+        print("  allekirjoitustarkistus ok (RFC 8032 -testivektori)")
+
         # PAKOTA semanttinen suodatin: `auto` ohittaa sen pienessa tilassa,
         # jolloin mallin latautumista ei testata lainkaan ja fallback-tarkistus
         # alla on tyhja. Tama on koko testin tarkein rivi.

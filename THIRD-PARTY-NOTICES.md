@@ -108,6 +108,7 @@ exe:hen (`build/ordinate.spec` bundlaa vain `models/`, riippuvuudet ja koodin).
 | pydantic, ezdxf, pye57 | MIT |
 | click | BSD-3-Clause |
 | packaging | Apache-2.0 / BSD-2-Clause |
+| cryptography (päivitysten allekirjoitus) | Apache-2.0 / BSD-3-Clause |
 
 **Open3D:n transitiiviset riippuvuudet** (paketoituvat mukaan, koska Open3D
 vetää ne web-visualisoijaansa/TensorBoard-integraatioonsa; ordinate ei käytä

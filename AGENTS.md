@@ -2714,7 +2714,17 @@ Kirjaa tähän jokainen uusi setti + sen LÄHDE, muuten kukaan ei tiedä mistä 
   kymmenen päivää. `scripts/build_installer.ps1` tekee kopion automaattisesti;
   tarkista julkaisun jälkeen `curl -sL -r 0-100 -o /dev/null -w "%{http_code}"`.
   Julkaisuketju: `$env:ISCC = "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe"`
-  → `scripts\build_installer.ps1` → `gh release create`.
+  → `scripts\build_installer.ps1` → **`scripts/sign_release.py <v>`** → `gh release create`
+  (assetteihin MYÖS `*.sig.json`). **Allekirjoitus on pakollinen 0.9.37:stä alkaen:**
+  0.9.37+ hylkää päivityksen jolla ei ole `<zip>.sig.json`ia, ja käyttäjä jää
+  vanhaan versioon. Yksityinen avain `%USERPROFILE%\.ordinate\release_ed25519.pem`
+  (ei repossa — varmuuskopio julkaisijalla); julkinen avain
+  `core/release_signing.py:PUBLIC_KEYS`. Avaimen vaihto: lisää uusi julkinen avain
+  listaan yhdessä julkaisussa ENNEN kuin vanhalla lakataan allekirjoittamasta.
+  Tarkista julkaisun jälkeen: lataa Setup + `.sig.json` ja aja
+  `ordinate-cli verify`. Tietoturvaseloste `docs/TIETOTURVA.md` (myös nettisivulla
+  `tietoturva.html`) — päivitä se jos ohjelman verkko-, tiedosto- tai
+  rekisterikäyttäytyminen muuttuu.
 - **Koodi: ei kommentteja ellei pyydetä; ei ennenaikaisia abstraktioita.**
 - **Tarkkuusväitteet aina mitattuna** (QA-skripti + vision), ei arviona.
 
