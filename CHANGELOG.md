@@ -4,7 +4,7 @@ Versiointi: `vMAJOR.MINOR.PATCH`. Releaset julkaistaan
 [`Mcrauli/Ordinate-web`](https://github.com/Mcrauli/Ordinate-web/releases):iin;
 sovellus päivittää itsensä sieltä.
 
-## Julkaisematon — katveiden katkoma seinä löytyy yhtenä
+## v0.9.36 (2.10.2026) — enemmän seiniä pienissä tiloissa, halleissa ja kellarissa
 
 - **Paloina näkyvä seinä löytyy.** Isossa matalassa tilassa seinä, jonka
   putket ja laitteet katkovat moneen osaan, kootaan nyt yhdeksi seinäksi

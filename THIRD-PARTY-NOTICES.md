@@ -25,7 +25,7 @@ purkautuu väliaikaishakemistoon) on tässä tulkinnanvaraisempi.
 
 ---
 
-## B. Koulutusdatan lisenssi — koskee `models/*.onnx`
+## B. Koulutusdatan lisenssi — koskee `models/*.onnx` ja `models/wall_verifier.json`
 
 **Toimitettavat painot ovat LISENSSIPUHTAAT (3.8.2026):** malli on harjoitettu
 UUDELLEEN ilman 3DSES:ää, joten CC BY-SA -dataa ei ole painoissa. ShareAlike-
@@ -33,7 +33,7 @@ kysymys ei enää koske tuotetta.
 
 | Aineisto | Lisenssi | Huomio |
 |---|---|---|
-| **Rohbau3D** (doi:10.60776/ZWJFI4) | **MIT** | Ei rajoitteita, attribuutio riittää. |
+| **Rohbau3D** (doi:10.60776/ZWJFI4) | **CC BY 4.0** (data; koodirepo MIT) | Kaupallinen käyttö sallittu, attribuutio pakollinen. Seinätarkistin (`wall_verifier.json`) on koulutettu Rohbau3D:n sitejen 00, 01, 02, 04, 07 ja 10 labeleilla. |
 | Synteettiset scenet (liiketila, monikerros, kalustetut huoneet) | oma | Ei rajoitteita. |
 
 **Attribuutio (Rohbau3D):** RauchLukas/Rohbau3D, Open Data UniBw M,
@@ -191,7 +191,7 @@ pidettävä mukana.
 
 | Aineisto | Saako käyttää markkinoinnissa |
 |---|---|
-| Rohbau3D | **Kyllä**, MIT + attribuutio. |
+| Rohbau3D | **Kyllä**, CC BY 4.0 + attribuutio. |
 | 3DSES | Kyllä, mutta **CC BY-SA**: attribuutio pakollinen, ja johdannainen kuva voi joutua saman lisenssin alle. Turvallisinta olla käyttämättä myyntimateriaalissa. |
 | Asiakas- ja omat keilaukset (`raw_scans_apartment`, `aligned_low_*`, `gargage.e57`) | **Selvitettävä erikseen.** Jos data on asiakkaan, markkinointikäyttöön tarvitaan lupa. |
 

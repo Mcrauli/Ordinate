@@ -4,8 +4,8 @@
 
 VSVersionInfo(
     ffi=FixedFileInfo(
-        filevers=(0, 9, 35, 0),
-        prodvers=(0, 9, 35, 0),
+        filevers=(0, 9, 36, 0),
+        prodvers=(0, 9, 36, 0),
         mask=0x3F,
         flags=0x0,
         OS=0x40004,
@@ -21,12 +21,12 @@ VSVersionInfo(
                     [
                         StringStruct("CompanyName", "Lauri Rekola"),
                         StringStruct("FileDescription", "Ordinate — point cloud to IFC/DXF"),
-                        StringStruct("FileVersion", "0.9.35"),
+                        StringStruct("FileVersion", "0.9.36"),
                         StringStruct("InternalName", "Ordinate"),
                         StringStruct("LegalCopyright", "(c) 2026 Lauri Rekola"),
                         StringStruct("OriginalFilename", "Ordinate.exe"),
                         StringStruct("ProductName", "Ordinate"),
-                        StringStruct("ProductVersion", "0.9.35"),
+                        StringStruct("ProductVersion", "0.9.36"),
                     ],
                 )
             ]
