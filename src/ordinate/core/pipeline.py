@@ -1946,6 +1946,8 @@ class Pipeline:
         from ordinate.core.semantics import wall_verifier as V  # noqa: PLC0415
 
         trees = V.load()
+        if trees is None:
+            self._progress("  VAROITUS: seinätarkistimen malli puuttuu — lisäseiniä ei haeta")
         fz = min((s.elevation for s in base.slabs if s.slab_type == "floor"), default=None)
         cz = max((s.elevation for s in base.slabs if s.slab_type == "ceiling"), default=None)
         if trees is None or fz is None or cz is None or not others:

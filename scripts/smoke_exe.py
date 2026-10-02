@@ -38,7 +38,8 @@ def main() -> int:
     # paketti on vajaa vaikka konversio onnistuisi.
     missing = [str(f) for f in (dist / "Ordinate.exe",
                                 dist / "scan2bim.exe",
-                                dist / "_internal" / "models" / "s3dis_pointnet.onnx")
+                                dist / "_internal" / "models" / "s3dis_pointnet.onnx",
+                                dist / "_internal" / "models" / "wall_verifier.json")
                if not f.exists()]
     if missing:
         print("PUUTTUU PAKETISTA: " + ", ".join(missing))
@@ -82,6 +83,10 @@ def main() -> int:
             print("KAATUI: semanttista suodatinta ei ajettu vaikka se pakotettiin")
             return 1
         print("  semanttinen suodatin latasi mallin paketista")
+        if "seinätarkistimen malli puuttuu" in log:
+            print("KAATUI: seinätarkistimen malli ei latautunut paketista")
+            return 1
+        print("  seinätarkistin latautui paketista")
 
         # GUI EI AJA PUTKEA ITSE — se kaynnistaa taman komennon aliprosessina
         # (jaatymisen juurisyy oli in-process QThread). Jos `run` puuttuu tai
