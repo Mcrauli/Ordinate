@@ -13,7 +13,7 @@ ArchiCADissa / Solibrissa.
 Tavoite: tuottaa **inventointimallitason** pohja niin että arkkitehdin ei
 tarvitse juuri korjailla mallia käsin.
 
-Nykyinen versio: **v0.9.3** — pre-release-vaiheessa.
+Nykyinen versio: **v0.9.37** — pre-release-vaiheessa.
 
 ## Mitä se osaa
 
@@ -38,7 +38,7 @@ Nykyinen versio: **v0.9.3** — pre-release-vaiheessa.
 
 ## Tarkkuus
 
-Mitattu round-trip-validoinnilla (tunnettu malli → puhdas pilvi → pipeline → vertaa):
+Mitattu round-trip-validoinnilla (tunnettu malli → puhdas pilvi → pipeline → vertaa) sekä avoimella Rohbau3D-aineistolla (93 keilausta / 6 rakennustyömaata, CC BY 4.0):
 
 | Mitta | Puhdas data (algoritmin raja) | Kalustettu oikea skannaus |
 |---|---|---|
@@ -46,13 +46,24 @@ Mitattu round-trip-validoinnilla (tunnettu malli → puhdas pilvi → pipeline �
 | **Kerroskorkeus** | <1 mm | ~4 mm (katto 0.3 mm) |
 | **Nurkkasijainti** | ~4 mm | ~100 mm |
 
+**Rohbau3D-benchmark (runkovaihe, 93 sceneä):**
+
+| Mittari | Arvo |
+|---|---|
+| **Seinäinstanssikattavuus (GTinst)** | **0.710** — 71 % GT-seinäinstansseista löytyy |
+| **Tarkkuus** | **0.855** — löydetyistä seinistä 86 % on aitoja |
+| Tarkkuusvaihteluväli per scene | 0.85–0.96 |
+
 > **Miksi nurkkasijainti on heikompi oikealla datalla?** Kalustetussa
 > tilassa suuri osa seinistä on **yksipuolisia** (vain sisäpinta keilattu;
 > ulkopintaa ei nähdä) ja kalusteet peittävät nurkat (occluusio). Nämä ovat
 > **datan fyysisiä rajoja, eivät algoritmin** — puhtaalla datalla sama
-> pipeline antaa millimetritarkkuuden. Seuraava kehitysaskel (semanttinen
-> suodatin, ks. [Roadmap](#roadmap)) puhdistaa kalusteet pois ja avaa tämän
-> tarkkuuden myös oikealla datalla.
+> pipeline antaa millimetritarkkuuden.
+
+> **Pistekattavuus vs. instanssikattavuus:** suuri seinä pystyy kattamaan
+> suuren osan pistekattavuudesta vaikka moni pieni seinä puuttuu.
+> Instanssikattavuus (GTinst) on rehellisempi mittari: se laskee montako
+> yksittäistä GT-seinää mallissa on.
 
 ## Miten se toimii
 
@@ -139,12 +150,21 @@ Python 3.12 · **open3d** (pistepilvet) · **opencv-python** (ääriviiva-raster
 
 ## Roadmap
 
-- **Vaihe 2 — semanttinen suodatin (valmis, v0.8.0):** PointNet-ONNX-malli
-  luokittelee pisteet (seinä/lattia/katto vs. kaluste/hylly/krääsä) ja suodattaa
-  kalusteet, krääsän ja **liiketilojen lattia-katto-hyllyt** ennen geometrista
-  putkea. CPU-inferenssi (ei GPU-pakkoa). Ks. [`AGENTS.md`](AGENTS.md).
-- **Seuraavaksi:** nurkka-/kulmaviimeistely puhtaammalla pilvellä, lisää
-  GT-validointia (SpatialLM-scenet), monikerros/monikorkuiset tilat.
+Toteutetut vaiheet:
+
+- **Semanttinen suodatin (valmis, v0.8.0):** PointNet-ONNX-malli luokittelee
+  pisteet (seinä/lattia/katto vs. kaluste/hylly/krääsä) ja suodattaa kalusteet
+  ennen geometrista putkea. CPU-inferenssi (ei GPU-pakkoa).
+- **Opittu seinätarkistin (valmis, v0.9.36):** random forest -tarkistin erottaa
+  seinän palkki-/porraslinjasta. Rohbau3D:ssä GTinst 0.664 → 0.710.
+- **Allekirjoitetut päivitykset (v0.9.37):** jokainen päivitys on
+  Ed25519-allekirjoitettu; IT voi kytkeä päivitystarkistuksen pois.
+
+Seuraavaksi:
+
+- Monikerroksiset ja porrastetut tilat
+- Lisää GT-validointia (SpatialLM-scenet, ulkopuoliset aineistot)
+- Aukkokattavuuden parantaminen
 
 ## Dokumentaatio
 
